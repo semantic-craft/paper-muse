@@ -575,7 +575,10 @@ def clear_other_page_session_state(page_index: Optional[int]):
 
 
 def set_storm_runner():
-    current_working_dir = os.path.join(get_demo_dir(), "DEMO_WORKING_DIR")
+    # PAPER_MUSE_OUTPUT_DIR 由 anamra「论文工具」启动器设置，指向选定的论文目录；未设则用默认
+    current_working_dir = os.environ.get("PAPER_MUSE_OUTPUT_DIR") or os.path.join(
+        get_demo_dir(), "DEMO_WORKING_DIR"
+    )
     if not os.path.exists(current_working_dir):
         os.makedirs(current_working_dir)
 
