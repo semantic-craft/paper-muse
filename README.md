@@ -1,3 +1,16 @@
+> # 论文构思者 · paper-muse
+>
+> 本仓库 fork 自 [stanford-oval/storm](https://github.com/stanford-oval/storm)（MIT License），面向中文学术写作场景做本地化改造，用于论文 / 综述的自动构思与初稿生成。
+>
+> **相对上游的主要改动：**
+> - 接入 DeepSeek（`v4-flash`/`v4-pro` 分层）、阿里云百炼 `text-embedding-v4`；OpenAI / Gemini 适配 2026 新模型（`chat-latest` / `gemini-3.1-flash-lite`）
+> - 修复 `OpenAIModel` 走错 API 端点 + 新模型参数兼容；修复 `TavilySearchRM` 空 query 拖垮整条流程的真 bug
+> - 前端（demo_light）改为 DeepSeek 栈，加双击启动脚本 `start.command`
+>
+> 下方为上游原始 README，完整保留。感谢 Stanford OVAL 团队的原创工作。
+
+---
+
 <p align="center">
   <img src="assets/logo.svg" style="width: 25%; height: auto;">
 </p>

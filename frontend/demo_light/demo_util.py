@@ -18,8 +18,8 @@ from knowledge_storm import (
     STORMWikiRunner,
     STORMWikiLMConfigs,
 )
-from knowledge_storm.lm import OpenAIModel
-from knowledge_storm.rm import YouRM
+from knowledge_storm.lm import OpenAIModel, DeepSeekModel
+from knowledge_storm.rm import YouRM, TavilySearchRM
 from knowledge_storm.storm_wiki.modules.callback import BaseCallbackHandler
 from knowledge_storm.utils import truncate_filename
 from stoc import stoc
@@ -579,20 +579,30 @@ def set_storm_runner():
     if not os.path.exists(current_working_dir):
         os.makedirs(current_working_dir)
 
-    # configure STORM runner
+    # configure STORM runner —— DeepSeek LLM + Tavily 检索
+    # encoder（embedding）走 secrets 里的 ENCODER_* 环境变量（百炼 text-embedding-v4），
+    # 由 STORMWikiRunner 内部读取，无需在此显式配置
     llm_configs = STORMWikiLMConfigs()
-    llm_configs.init_openai_model(
-        openai_api_key=st.secrets["OPENAI_API_KEY"], openai_type="openai"
+    deepseek_kwargs = {
+        "api_key": st.secrets["DEEPSEEK_API_KEY"],
+        "api_base": st.secrets.get("DEEPSEEK_API_BASE", "https://api.deepseek.com"),
+        "temperature": 1.0,
+        "top_p": 0.9,
+    }
+    llm_configs.set_conv_simulator_lm(
+        DeepSeekModel(model="deepseek-v4-flash", max_tokens=500, **deepseek_kwargs)
     )
     llm_configs.set_question_asker_lm(
-        OpenAIModel(
-            model="gpt-4-1106-preview",
-            api_key=st.secrets["OPENAI_API_KEY"],
-            api_provider="openai",
-            max_tokens=500,
-            temperature=1.0,
-            top_p=0.9,
-        )
+        DeepSeekModel(model="deepseek-v4-flash", max_tokens=500, **deepseek_kwargs)
+    )
+    llm_configs.set_outline_gen_lm(
+        DeepSeekModel(model="deepseek-v4-pro", max_tokens=400, **deepseek_kwargs)
+    )
+    llm_configs.set_article_gen_lm(
+        DeepSeekModel(model="deepseek-v4-pro", max_tokens=700, **deepseek_kwargs)
+    )
+    llm_configs.set_article_polish_lm(
+        DeepSeekModel(model="deepseek-v4-pro", max_tokens=4000, **deepseek_kwargs)
     )
     engine_args = STORMWikiRunnerArguments(
         output_dir=current_working_dir,
@@ -602,7 +612,11 @@ def set_storm_runner():
         retrieve_top_k=5,
     )
 
-    rm = YouRM(ydc_api_key=st.secrets["YDC_API_KEY"], k=engine_args.search_top_k)
+    rm = TavilySearchRM(
+        tavily_search_api_key=st.secrets["TAVILY_API_KEY"],
+        k=engine_args.search_top_k,
+        include_raw_content=True,
+    )
 
     runner = STORMWikiRunner(engine_args, llm_configs, rm)
     st.session_state["runner"] = runner

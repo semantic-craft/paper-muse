@@ -55,10 +55,11 @@ def main(args):
     )
     # If you are using Azure service, make sure the model name matches your own deployed model name.
     # The default name here is only used for demonstration and may not match your case.
+    # chat-latest：滚动指向最新非推理聊天模型（用户指定）
     gpt_35_model_name = (
-        "gpt-3.5-turbo" if os.getenv("OPENAI_API_TYPE") == "openai" else "gpt-35-turbo"
+        "chat-latest" if os.getenv("OPENAI_API_TYPE") == "openai" else "gpt-35-turbo"
     )
-    gpt_4_model_name = "gpt-4o"
+    gpt_4_model_name = "chat-latest"
     if os.getenv("OPENAI_API_TYPE") == "azure":
         openai_kwargs["api_base"] = os.getenv("AZURE_API_BASE")
         openai_kwargs["api_version"] = os.getenv("AZURE_API_VERSION")

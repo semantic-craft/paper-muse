@@ -820,7 +820,14 @@ class DuckDuckGoSearchRM(dspy.Retrieve):
 
         for query in queries:
             #  list of dicts that will be parsed to return
-            results = self.request(query)
+            # ponytail: DDG rate-limits hard and STORM's giveup_hdlr crashes on
+            # DuckDuckGoSearchException (no .message). Swallow per-query failures so one
+            # blocked query doesn't kill the whole run. Upgrade path: paid retriever / VectorRM.
+            try:
+                results = self.request(query)
+            except Exception as e:
+                logging.warning(f"DuckDuckGo query failed, skipping: {e}")
+                results = []
 
             for d in results:
                 # assert d is dict
@@ -937,13 +944,21 @@ class TavilySearchRM(dspy.Retrieve):
         collected_results = []
 
         for query in queries:
+            # ponytail: 跳过空 query（STORM 偶尔生成空串）+ 单次检索失败容错，
+            # 否则一次失败会拖垮整条几分钟的长流程
+            if not query or not query.strip():
+                continue
             args = {
                 "max_results": self.k,
                 "include_raw_contents": self.include_raw_content,
             }
             #  list of dicts that will be parsed to return
-            responseData = self.tavily_client.search(query)
-            results = responseData.get("results")
+            try:
+                responseData = self.tavily_client.search(query)
+            except Exception as e:
+                print(f"Tavily search failed for query {query!r}: {e}")
+                continue
+            results = responseData.get("results") or []
             for d in results:
                 # assert d is dict
                 if not isinstance(d, dict):
