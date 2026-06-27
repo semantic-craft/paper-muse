@@ -195,12 +195,12 @@ class VectorRM(dspy.Retrieve):
         device: str = "mps",
         k: int = 3,
     ):
-        from langchain_huggingface import HuggingFaceEmbeddings
+        from knowledge_storm.utils import build_embeddings
 
         """
         Params:
             collection_name: Name of the Qdrant collection.
-            embedding_model: Name of the Hugging Face embedding model.
+            embedding_model: HF 模型名（本地），或 'dashscope:text-embedding-v4'（百炼 API）。
             device: Device to run the embeddings model on, can be "mps", "cuda", "cpu".
             k: Number of top chunks to retrieve.
         """
@@ -213,20 +213,17 @@ class VectorRM(dspy.Retrieve):
         if not embedding_model:
             raise ValueError("Please provide an embedding model.")
 
-        model_kwargs = {"device": device}
-        encode_kwargs = {"normalize_embeddings": True}
-        self.model = HuggingFaceEmbeddings(
-            model_name=embedding_model,
-            model_kwargs=model_kwargs,
-            encode_kwargs=encode_kwargs,
-        )
+        # ponytail: 检索端与灌库端共用同一工厂，保证向量空间一致（本地 HF 或百炼 API）
+        self.model = build_embeddings(embedding_model, device)
 
         self.collection_name = collection_name
         self.client = None
         self.qdrant = None
 
     def _check_collection(self):
-        from langchain_qdrant import Qdrant
+        # ponytail: 上游用 deprecated langchain_qdrant.Qdrant，它调旧版 client.search（新版已移除）。
+        # 换成 QdrantVectorStore（embedding 单数参数），兼容新 qdrant-client。
+        from langchain_qdrant import QdrantVectorStore
 
         """
         Check if the Qdrant collection exists and create it if it does not.
@@ -237,10 +234,10 @@ class VectorRM(dspy.Retrieve):
             print(
                 f"Collection {self.collection_name} exists. Loading the collection..."
             )
-            self.qdrant = Qdrant(
+            self.qdrant = QdrantVectorStore(
                 client=self.client,
                 collection_name=self.collection_name,
-                embeddings=self.model,
+                embedding=self.model,
             )
         else:
             raise ValueError(

@@ -35,7 +35,7 @@ from knowledge_storm import (
     STORMWikiLMConfigs,
 )
 from knowledge_storm.rm import VectorRM
-from knowledge_storm.lm import OpenAIModel, AzureOpenAIModel
+from knowledge_storm.lm import DeepSeekModel
 from knowledge_storm.utils import load_api_key, QdrantVectorStoreManager
 
 
@@ -43,42 +43,28 @@ def main(args):
     # Load API key from the specified toml file path
     load_api_key(toml_file_path="secrets.toml")
 
-    # Initialize the language model configurations
+    # Initialize the language model configurations —— DeepSeek 分层（v4-flash 便宜步骤 + v4-pro 强步骤）
     engine_lm_configs = STORMWikiLMConfigs()
-    openai_kwargs = {
-        "api_key": os.getenv("OPENAI_API_KEY"),
+    deepseek_kwargs = {
+        "api_key": os.getenv("DEEPSEEK_API_KEY"),
+        "api_base": os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com"),
         "temperature": 1.0,
         "top_p": 0.9,
     }
-
-    ModelClass = (
-        OpenAIModel if os.getenv("OPENAI_API_TYPE") == "openai" else AzureOpenAIModel
+    conv_simulator_lm = DeepSeekModel(
+        model="deepseek-v4-flash", max_tokens=500, **deepseek_kwargs
     )
-    # If you are using Azure service, make sure the model name matches your own deployed model name.
-    # The default name here is only used for demonstration and may not match your case.
-    gpt_35_model_name = (
-        "gpt-3.5-turbo" if os.getenv("OPENAI_API_TYPE") == "openai" else "gpt-35-turbo"
+    question_asker_lm = DeepSeekModel(
+        model="deepseek-v4-flash", max_tokens=500, **deepseek_kwargs
     )
-    gpt_4_model_name = "gpt-4o"
-    if os.getenv("OPENAI_API_TYPE") == "azure":
-        openai_kwargs["api_base"] = os.getenv("AZURE_API_BASE")
-        openai_kwargs["api_version"] = os.getenv("AZURE_API_VERSION")
-
-    # STORM is a LM system so different components can be powered by different models.
-    # For a good balance between cost and quality, you can choose a cheaper/faster model for conv_simulator_lm
-    # which is used to split queries, synthesize answers in the conversation. We recommend using stronger models
-    # for outline_gen_lm which is responsible for organizing the collected information, and article_gen_lm
-    # which is responsible for generating sections with citations.
-    conv_simulator_lm = ModelClass(
-        model=gpt_35_model_name, max_tokens=500, **openai_kwargs
+    outline_gen_lm = DeepSeekModel(
+        model="deepseek-v4-pro", max_tokens=400, **deepseek_kwargs
     )
-    question_asker_lm = ModelClass(
-        model=gpt_35_model_name, max_tokens=500, **openai_kwargs
+    article_gen_lm = DeepSeekModel(
+        model="deepseek-v4-pro", max_tokens=700, **deepseek_kwargs
     )
-    outline_gen_lm = ModelClass(model=gpt_4_model_name, max_tokens=400, **openai_kwargs)
-    article_gen_lm = ModelClass(model=gpt_4_model_name, max_tokens=700, **openai_kwargs)
-    article_polish_lm = ModelClass(
-        model=gpt_4_model_name, max_tokens=4000, **openai_kwargs
+    article_polish_lm = DeepSeekModel(
+        model="deepseek-v4-pro", max_tokens=4000, **deepseek_kwargs
     )
 
     engine_lm_configs.set_conv_simulator_lm(conv_simulator_lm)
@@ -180,8 +166,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--embedding_model",
         type=str,
-        default="BAAI/bge-m3",
-        help="The collection name for vector store.",
+        default="dashscope:text-embedding-v4",
+        help="Embedding 模型：'dashscope:text-embedding-v4'（百炼 API，默认）或本地 HF 名如 'BAAI/bge-m3'。",
     )
     parser.add_argument(
         "--device",
