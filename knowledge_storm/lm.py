@@ -280,6 +280,7 @@ class OpenAIModel(dspy.OpenAI):
         self,
         model: str = "gpt-4o-mini",
         api_key: Optional[str] = None,
+        api_base: str = "https://api.openai.com",
         model_type: Literal["chat", "text"] = None,
         **kwargs,
     ):
@@ -287,6 +288,13 @@ class OpenAIModel(dspy.OpenAI):
         self._token_usage_lock = threading.Lock()
         self.prompt_tokens = 0
         self.completion_tokens = 0
+        self.model = model
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_base = api_base
+        if not self.api_key:
+            raise ValueError(
+                "OpenAI API key must be provided either as an argument or as the environment variable OPENAI_API_KEY"
+            )
 
     def log_usage(self, response):
         """Log the total tokens from the OpenAI API response."""
@@ -310,6 +318,51 @@ class OpenAIModel(dspy.OpenAI):
 
         return usage
 
+    @backoff.on_exception(
+        backoff.expo,
+        ERRORS,
+        max_time=1000,
+        on_backoff=backoff_hdlr,
+        giveup=giveup_hdlr,
+    )
+    def _create_completion(self, prompt: str, **kwargs):
+        """Chat completion via the OpenAI /v1/chat/completions endpoint.
+
+        ponytail: 仿 DeepSeekModel 直连 chat 端点，绕过老 dspy.OpenAI 的
+        text-completion 路径（chat 模型走那条会 404）。新模型（chat-latest /
+        gpt-5.x）只认 max_completion_tokens，且会拒绝 top_p/stop/logprobs 等老参数——
+        下面遇到被拒参数就剔除再试，等价于 litellm 的 drop_params（OpenAI 以后加限制也扛得住）。
+        """
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
+        if "max_tokens" in kwargs:
+            kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
+        data = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            **kwargs,
+        }
+        url = f"{self.api_base}/v1/chat/completions"
+        for _ in range(8):  # ponytail: 8 次足够剔光被拒参数；之后当真错误抛出
+            response = requests.post(url, headers=headers, json=data)
+            if response.status_code in (400, 403):
+                err = response.json().get("error", {}).get("message", "")
+                if "Unsupported parameter:" in err and "'" in err:
+                    dropped = err.split("'")[1]
+                elif "logprobs" in err:
+                    dropped = "logprobs"
+                else:
+                    dropped = None
+                if dropped and dropped in data:
+                    data.pop(dropped)
+                    continue
+            response.raise_for_status()
+            return response.json()
+        response.raise_for_status()
+        return response.json()
+
     def __call__(
         self,
         prompt: str,
@@ -317,49 +370,18 @@ class OpenAIModel(dspy.OpenAI):
         return_sorted: bool = False,
         **kwargs,
     ) -> list[dict[str, Any]]:
-        """Copied from dspy/dsp/modules/gpt3.py with the addition of tracking token usage."""
-
         assert only_completed, "for now"
         assert return_sorted is False, "for now"
 
-        # if kwargs.get("n", 1) > 1:
-        #     if self.model_type == "chat":
-        #         kwargs = {**kwargs}
-        #     else:
-        #         kwargs = {**kwargs, "logprobs": 5}
-
-        response = self.request(prompt, **kwargs)
-
-        # Log the token usage from the OpenAI API response.
+        response = self._create_completion(prompt, **kwargs)
         self.log_usage(response)
 
         choices = response["choices"]
+        completions = [choice["message"]["content"] for choice in choices]
 
-        completed_choices = [c for c in choices if c["finish_reason"] != "length"]
-
-        if only_completed and len(completed_choices):
-            choices = completed_choices
-
-        completions = [self._get_choice_text(c) for c in choices]
-        if return_sorted and kwargs.get("n", 1) > 1:
-            scored_completions = []
-
-            for c in choices:
-                tokens, logprobs = (
-                    c["logprobs"]["tokens"],
-                    c["logprobs"]["token_logprobs"],
-                )
-
-                if "<|endoftext|>" in tokens:
-                    index = tokens.index("<|endoftext|>") + 1
-                    tokens, logprobs = tokens[:index], logprobs[:index]
-
-                avglog = sum(logprobs) / len(logprobs)
-                scored_completions.append((avglog, self._get_choice_text(c)))
-
-            scored_completions = sorted(scored_completions, reverse=True)
-            completions = [c for _, c in scored_completions]
-
+        self.history.append(
+            {"prompt": prompt, "response": response, "kwargs": kwargs}
+        )
         return completions
 
 

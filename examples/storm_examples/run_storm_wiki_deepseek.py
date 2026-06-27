@@ -80,10 +80,10 @@ def main(args):
     # DeepSeek offers two main models: 'deepseek-chat' for general tasks and 'deepseek-coder' for coding tasks
     # Users can choose the appropriate model based on their needs
     conv_simulator_lm = DeepSeekModel(
-        model=args.model, max_tokens=500, **deepseek_kwargs
+        model="deepseek-v4-flash", max_tokens=500, **deepseek_kwargs
     )
     question_asker_lm = DeepSeekModel(
-        model=args.model, max_tokens=500, **deepseek_kwargs
+        model="deepseek-v4-flash", max_tokens=500, **deepseek_kwargs
     )
     outline_gen_lm = DeepSeekModel(model=args.model, max_tokens=400, **deepseek_kwargs)
     article_gen_lm = DeepSeekModel(model=args.model, max_tokens=700, **deepseek_kwargs)
@@ -191,9 +191,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        choices=["deepseek-chat", "deepseek-coder"],
-        default="deepseek-chat",
-        help='DeepSeek model to use. "deepseek-chat" for general tasks, "deepseek-coder" for coding tasks.',
+        choices=["deepseek-v4-pro", "deepseek-v4-flash"],
+        default="deepseek-v4-pro",
+        help='DeepSeek model. "deepseek-v4-pro" 强/推理（默认）, "deepseek-v4-flash" 快/便宜.',
     )
     parser.add_argument(
         "--temperature", type=float, default=1.0, help="Sampling temperature to use."

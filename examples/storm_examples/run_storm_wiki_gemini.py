@@ -54,19 +54,19 @@ def main(args):
     # To check out available Google models, see:
     # https://ai.google.dev/gemini-api/docs/get-started/tutorial?lang=python#list_models
     conv_simulator_lm = GoogleModel(
-        model="models/gemini-1.5-flash", max_tokens=500, **gemini_kwargs
+        model="models/gemini-3.1-flash-lite", max_tokens=500, **gemini_kwargs
     )
     question_asker_lm = GoogleModel(
-        model="models/gemini-1.5-flash", max_tokens=500, **gemini_kwargs
+        model="models/gemini-3.1-flash-lite", max_tokens=500, **gemini_kwargs
     )
     outline_gen_lm = GoogleModel(
-        model="models/gemini-1.5-pro-exp-0801", max_tokens=400, **gemini_kwargs
+        model="models/gemini-3.1-flash-lite", max_tokens=400, **gemini_kwargs
     )
     article_gen_lm = GoogleModel(
-        model="models/gemini-1.5-pro-exp-0801", max_tokens=700, **gemini_kwargs
+        model="models/gemini-3.1-flash-lite", max_tokens=700, **gemini_kwargs
     )
     article_polish_lm = GoogleModel(
-        model="models/gemini-1.5-pro-exp-0801", max_tokens=4000, **gemini_kwargs
+        model="models/gemini-3.1-flash-lite", max_tokens=4000, **gemini_kwargs
     )
 
     lm_configs.set_conv_simulator_lm(conv_simulator_lm)

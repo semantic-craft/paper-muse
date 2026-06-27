@@ -80,8 +80,17 @@ class Encoder:
             raise ValueError("ENCODER_API_TYPE environment variable is not set.")
 
         if encoder_type.lower() == "openai":
-            self.embedding_model_name = "text-embedding-3-small"
-            self.kargs = {"api_key": api_key or os.getenv("OPENAI_API_KEY")}
+            # ponytail: 默认 OpenAI text-embedding-3-small；设 ENCODER_MODEL/ENCODER_API_BASE
+            # 即可指向任意 OpenAI 兼容端点（如阿里云百炼 text-embedding-v4）
+            self.embedding_model_name = os.getenv("ENCODER_MODEL", "text-embedding-3-small")
+            self.kargs = {
+                "api_key": api_key
+                or os.getenv("ENCODER_API_KEY")
+                or os.getenv("OPENAI_API_KEY")
+            }
+            encoder_api_base = api_base or os.getenv("ENCODER_API_BASE")
+            if encoder_api_base:
+                self.kargs["api_base"] = encoder_api_base
         elif encoder_type.lower() == "azure":
             self.embedding_model_name = "azure/text-embedding-3-small"
             self.kargs = {
