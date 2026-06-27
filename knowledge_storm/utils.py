@@ -57,6 +57,63 @@ def makeStringRed(message):
     return f"\033[91m {message}\033[00m"
 
 
+from langchain_core.embeddings import Embeddings
+
+
+class _APIEmbeddings(Embeddings):
+    """ponytail: 用 litellm 接 OpenAI 兼容的 embedding API（如阿里云百炼 text-embedding-v4），
+    复用 encoder 已验证的路径，避免引入 langchain_openai/dashscope 新依赖。
+    分批（默认 10）以绕开 DashScope 单次请求的条数上限。"""
+
+    def __init__(self, model: str, api_key: str, api_base: str, batch: int = 10):
+        self.model, self.api_key, self.api_base, self.batch = (
+            model,
+            api_key,
+            api_base,
+            batch,
+        )
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        import litellm
+
+        litellm.drop_params = True
+        out: List[List[float]] = []
+        for i in range(0, len(texts), self.batch):
+            resp = litellm.embedding(
+                model=self.model,
+                input=texts[i : i + self.batch],
+                api_key=self.api_key,
+                api_base=self.api_base,
+            )
+            out.extend(d["embedding"] for d in resp.data)
+        return out
+
+    def embed_query(self, text: str) -> List[float]:
+        return self.embed_documents([text])[0]
+
+
+def build_embeddings(embedding_model: str, device: str = "mps"):
+    """构造 langchain Embeddings：embedding_model 以 'dashscope:' 开头（如
+    'dashscope:text-embedding-v4'）走百炼 API（复用 secrets 里的 ENCODER_API_KEY/BASE，
+    默认 1024 维，匹配 Qdrant collection）；否则本地 HuggingFaceEmbeddings。"""
+    if embedding_model.startswith("dashscope:"):
+        return _APIEmbeddings(
+            model="openai/" + embedding_model.split(":", 1)[1],
+            api_key=os.getenv("ENCODER_API_KEY") or os.getenv("DASHSCOPE_API_KEY"),
+            api_base=os.getenv(
+                "ENCODER_API_BASE",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ),
+        )
+    from langchain_huggingface import HuggingFaceEmbeddings
+
+    return HuggingFaceEmbeddings(
+        model_name=embedding_model,
+        model_kwargs={"device": device},
+        encode_kwargs={"normalize_embeddings": True},
+    )
+
+
 class QdrantVectorStoreManager:
     """
     Helper class for managing the Qdrant vector store, can be used with `VectorRM` in rm.py.
@@ -69,7 +126,8 @@ class QdrantVectorStoreManager:
     def _check_create_collection(
         client: "QdrantClient", collection_name: str, model: "HuggingFaceEmbeddings"
     ):
-        from langchain_qdrant import Qdrant
+        # ponytail: deprecated Qdrant → QdrantVectorStore，兼容新 qdrant-client（见 rm.py 同因）
+        from langchain_qdrant import QdrantVectorStore
         from qdrant_client import models
 
         """Check if the Qdrant collection exists and create it if it does not."""
@@ -77,10 +135,10 @@ class QdrantVectorStoreManager:
             raise ValueError("Qdrant client is not initialized.")
         if client.collection_exists(collection_name=f"{collection_name}"):
             print(f"Collection {collection_name} exists. Loading the collection...")
-            return Qdrant(
+            return QdrantVectorStore(
                 client=client,
                 collection_name=collection_name,
-                embeddings=model,
+                embedding=model,
             )
         else:
             print(
@@ -93,10 +151,10 @@ class QdrantVectorStoreManager:
                     size=1024, distance=models.Distance.COSINE
                 ),
             )
-            return Qdrant(
+            return QdrantVectorStore(
                 client=client,
                 collection_name=collection_name,
-                embeddings=model,
+                embedding=model,
             )
 
     @staticmethod
@@ -166,7 +224,9 @@ class QdrantVectorStoreManager:
         embedding_model: str = "BAAI/bge-m3",
         device: str = "mps",
     ):
-        from qdrant_client import Document
+        # ponytail: 上游错写成 from qdrant_client import Document（新版无此类，且这里用的是
+        # page_content+metadata 接口 = langchain Document）。修成 langchain 的 Document。
+        from langchain_core.documents import Document
 
         """
         Takes a CSV file and adds each row in the CSV file to the Qdrant collection.
@@ -194,15 +254,7 @@ class QdrantVectorStoreManager:
         if collection_name is None:
             raise ValueError("Please provide a collection name.")
 
-        model_kwargs = {"device": device}
-        encode_kwargs = {"normalize_embeddings": True}
-        from langchain_huggingface import HuggingFaceEmbeddings
-
-        model = HuggingFaceEmbeddings(
-            model_name=embedding_model,
-            model_kwargs=model_kwargs,
-            encode_kwargs=encode_kwargs,
-        )
+        model = build_embeddings(embedding_model, device)
 
         if file_path is None:
             raise ValueError("Please provide a file path.")
