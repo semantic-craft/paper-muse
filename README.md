@@ -7,6 +7,34 @@
 > - 修复 `OpenAIModel` 走错 API 端点 + 新模型参数兼容；修复 `TavilySearchRM` 空 query 拖垮整条流程的真 bug
 > - 前端（demo_light）改为 DeepSeek 栈，加双击启动脚本 `start.command`
 >
+> ## 怎么用
+>
+> **1. 装依赖**（本仓库用 uv 建的 venv，无 pip）：
+> ```bash
+> VIRTUAL_ENV=.venv uv pip install -r requirements.txt tavily-python google-generativeai
+> ```
+>
+> **2. 配 key**：复制模板填入真实 key（`secrets.toml` 已 gitignore，不会进仓库）：
+> ```bash
+> cp secrets.toml.example secrets.toml   # 然后编辑填 key
+> cp secrets.toml frontend/demo_light/.streamlit/secrets.toml   # 前端单独读一份
+> ```
+>
+> **3. 启动**——两种方式任选：
+> - **网页版（推荐）**：Finder 双击 `start.command`，浏览器自动打开 → 输主题 → 点 **Research** → 实时看检索/提问/写作过程，几分钟出成品。关掉弹出的终端窗口即停止。
+> - **命令行**（可控参数、批量）：
+>   ```bash
+>   echo "你的主题" | .venv/bin/python examples/storm_examples/run_storm_wiki_deepseek.py \
+>       --retriever tavily --output-dir ./results/我的主题 \
+>       --do-research --do-generate-outline --do-generate-article --do-polish-article
+>   ```
+>
+> **4. 成品**：`results/<主题>/storm_gen_article_polished.txt`（带 `[1][2]` 引用的维基式长文）。
+>
+> **换 LLM**（三套均已端到端验证）：DeepSeek 主力 `run_storm_wiki_deepseek.py`（默认）/ OpenAI `run_storm_wiki_gpt.py`（chat-latest）/ Gemini `run_storm_wiki_gemini.py`（gemini-3.1-flash-lite）。
+>
+> **省钱/提速**：先用小参数试水 `--max-conv-turn 1 --max-perspective 1 --search-top-k 2`；DeepSeek `v4-pro` 是推理模型较慢，加 `--model deepseek-v4-flash` 可全程用快模型。
+>
 > 下方为上游原始 README，完整保留。感谢 Stanford OVAL 团队的原创工作。
 
 ---
