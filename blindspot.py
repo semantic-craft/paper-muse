@@ -113,3 +113,123 @@ def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str
         c["source_models"] = [model_tag]
         cards.append(c)
     return cards
+
+
+# ---- run_scan 编排 + 落盘 ----
+
+MUSE_SUBDIR = os.path.join("docs", "agents", "muse")
+
+
+def _muse_dir(output_dir: str) -> Path:
+    d = Path(output_dir) / MUSE_SUBDIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def load_suppressed(output_dir: str) -> set:
+    f = _muse_dir(output_dir) / "angle-feedback.json"
+    if not f.exists():
+        return set()
+    data = json.loads(f.read_text(encoding="utf-8"))
+    return {k for k, v in data.items() if v.get("verdict") == "已知"}
+
+
+def record_feedback(output_dir: str, name: str, verdict: str):
+    f = _muse_dir(output_dir) / "angle-feedback.json"
+    data = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    data[normalize_name(name)] = {"name": name, "verdict": verdict}
+    f.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _novelty_for(card, topic, en_search, zh_search, own_search=None):
+    query = f"{card['name']} {topic}"
+    try:
+        en = en_search(query) or []
+    except Exception:
+        en = []
+    try:
+        zh = zh_search(query)  # 中文学界面 = CNKI（新颖性判据）
+        zh_hits = len(zh or [])
+    except Exception:
+        zh_hits = None  # 中文面未检，明示不装懂
+    if own_search is None:
+        card["own_hits"] = None
+    else:
+        try:
+            card["own_hits"] = len(own_search(query) or [])  # 自有语料面 = zsearch（unknown-knowns 信号）
+        except Exception:
+            card["own_hits"] = None
+    card["novelty"], card["gold"] = classify_novelty(len(en), zh_hits)
+    card["zh_hits"] = zh_hits
+    card["en_hits"] = len(en)
+    card["anchors"] = [{"title": r.get("title", ""), "url": r.get("url", "")} for r in en[:3]]
+    return card
+
+
+def _write_outputs(output_dir, topic, profile, cards):
+    d = _muse_dir(output_dir)
+    if profile:
+        (d / "profile.md").write_text(profile, encoding="utf-8")
+    lines = [f"# 切入点卡片：{topic}\n"]
+    qlines = [f"# 拷问弹药（grill-with-docs 用）：{topic}\n"]
+    slines = [f"# 文献锚点：{topic}\n"]
+    for c in sorted(cards, key=lambda x: (not x.get("gold", False), not x.get("outlier", False))):
+        badges = []
+        if c.get("gold"):
+            badges.append("🥇英热中冷")
+        if c.get("outlier"):
+            badges.append("🔸离群")
+        if c.get("own_hits") and c.get("novelty") in ("交叉空白", "边缘有人做"):
+            badges.append("📚已藏未用")
+        badge = "｜".join(badges) or "共识"
+        lines += [
+            f"\n## {c['name']}（{c['type']}｜{c.get('novelty','?')}｜{badge}）",
+            f"- 机制：{c['mechanism']}",
+            f"- 为什么非显而易见：{c['why_nonobvious']}",
+            f"- 最强反驳：{c['steelman']}",
+        ]
+        if c.get("feasibility"):
+            lines.append(f"- 可行性/数据：{c['feasibility']}")
+        lines.append(f"- 提出方：{'、'.join(c['source_models'])}；英文命中 {c.get('en_hits')}，中文学界命中 {c.get('zh_hits')}，自有库命中 {c.get('own_hits')}")
+        qlines += [f"\n## {c['name']}"] + [f"- {q}" for q in c.get("questions", [])]
+        for a in c.get("anchors", []):
+            slines.append(f"- [{c['name']}] {a['title']} — {a['url']}")
+    (d / "perspectives.md").write_text("\n".join(lines), encoding="utf-8")
+    (d / "questions.md").write_text("\n".join(qlines), encoding="utf-8")
+    (d / "sources.md").write_text("\n".join(slines), encoding="utf-8")
+
+
+def run_scan(topic, profile, output_dir, providers, decompose_llm,
+             en_search, zh_search, on_card, own_search=None):
+    """providers: {model_tag: llm_call}；on_card(card) 在每张卡出炉（含新颖性）时回调。"""
+    fundamentals = decompose_topic(topic, profile, decompose_llm)
+    suppressed = load_suppressed(output_dir)
+
+    all_cards, lock = [], threading.Lock()
+
+    def one_provider(tag, call):
+        try:
+            return enumerate_cards(topic, fundamentals, profile, tag, call)
+        except Exception:
+            return []  # 单家失败不拖垮扫描
+
+    threads_out = {}
+    ts = []
+    for tag, call in providers.items():
+        t = threading.Thread(target=lambda tg=tag, c=call: threads_out.__setitem__(tg, one_provider(tg, c)))
+        t.start()
+        ts.append(t)
+    for t in ts:
+        t.join()
+
+    merged = mark_outliers(dedupe_cards([c for v in threads_out.values() for c in v]))
+    merged = apply_suppression(merged, suppressed)
+
+    for card in merged:
+        _novelty_for(card, topic, en_search, zh_search, own_search)
+        with lock:
+            all_cards.append(card)
+        on_card(card)
+
+    _write_outputs(output_dir, topic, profile, all_cards)
+    return all_cards

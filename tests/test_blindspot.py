@@ -9,6 +9,7 @@ from blindspot import (
     apply_suppression,
     classify_novelty,
     extract_json,
+    CARD_TYPES,
 )
 
 
@@ -123,3 +124,82 @@ def test_enumerate_cards_drops_malformed_entries():
     llm = FakeLLM([reply])
     cards = enumerate_cards("t", ["f"], "", "gemini", llm)
     assert len(cards) == 1 and cards[0]["name"] == "X"
+
+
+from blindspot import run_scan, load_suppressed, record_feedback
+
+
+def test_run_scan_end_to_end_offline(tmp_path):
+    replies = {
+        "decompose": json.dumps({"fundamentals": ["根1"]}),
+        "deepseek": json.dumps({"cards": [
+            {"type": "理论框架", "name": "交易成本", "mechanism": "m", "why_nonobvious": "w",
+             "steelman": "s", "questions": ["q1"]},
+            {"type": "研究方法", "name": "文书量化", "mechanism": "m", "why_nonobvious": "w",
+             "steelman": "s", "feasibility": "裁判文书网", "questions": ["q2"]},
+            {"type": "学科视角", "name": "组织社会学", "mechanism": "m", "why_nonobvious": "w",
+             "steelman": "s", "questions": ["q3"]}]}),
+        "gemini": json.dumps({"cards": [
+            {"type": "理论框架", "name": "交易成本（TCE）", "mechanism": "m", "why_nonobvious": "w",
+             "steelman": "s", "questions": ["q1"]},
+            {"type": "学科视角", "name": "STS", "mechanism": "m", "why_nonobvious": "w",
+             "steelman": "s", "questions": ["q4"]},
+            {"type": "研究方法", "name": "比较法样本", "mechanism": "m", "why_nonobvious": "w",
+             "steelman": "s", "feasibility": "域外判例库", "questions": ["q5"]}]}),
+    }
+
+    def llm_for(tag):
+        return lambda prompt: replies[tag if tag in replies else "decompose"]
+
+    emitted = []
+    cards = run_scan(
+        topic="平台责任",
+        profile="画像",
+        output_dir=str(tmp_path),
+        providers={"deepseek": llm_for("deepseek"), "gemini": llm_for("gemini")},
+        decompose_llm=llm_for("decompose"),
+        en_search=lambda q: [{"title": "T", "url": "https://e.com/1"}] * 4,
+        zh_search=lambda q: [],
+        own_search=lambda q: [1, 2] if "交易成本" in q else [],
+        on_card=emitted.append,
+    )
+    # 去重后 5 张；交易成本双模型共识、其余离群
+    assert len(cards) == 5 and len(emitted) == 5
+    byname = {c["name"]: c for c in cards}
+    assert byname["交易成本"]["outlier"] is False and byname["STS"]["outlier"] is True
+    # 自有语料面独立于新颖性判据：own_hits 记数，学界空白×自有有藏 → 已藏未用
+    assert byname["交易成本"]["own_hits"] == 2 and byname["STS"]["own_hits"] == 0
+    # 新颖性：en=4, zh=0 → 交叉空白 + 金标
+    assert byname["交易成本"]["novelty"] == "交叉空白" and byname["交易成本"]["gold"] is True
+    assert byname["交易成本"]["anchors"][0]["url"] == "https://e.com/1"
+    # 三类齐备
+    assert {c["type"] for c in cards} == set(CARD_TYPES)
+    # 落盘四件
+    d = tmp_path / "docs" / "agents" / "muse"
+    assert (d / "perspectives.md").exists() and (d / "questions.md").exists()
+    assert (d / "sources.md").exists() and (d / "profile.md").read_text(encoding="utf-8") == "画像"
+
+
+def test_feedback_roundtrip_and_suppression(tmp_path):
+    d = tmp_path / "docs" / "agents" / "muse"
+    record_feedback(str(tmp_path), name="交易成本", verdict="已知")
+    record_feedback(str(tmp_path), name="STS", verdict="新且值得深挖")
+    sup = load_suppressed(str(tmp_path))
+    assert normalize_name("交易成本") in sup and normalize_name("STS") not in sup
+    data = json.loads((d / "angle-feedback.json").read_text(encoding="utf-8"))
+    assert data[normalize_name("STS")]["verdict"] == "新且值得深挖"
+
+
+def test_run_scan_zh_search_failure_degrades(tmp_path):
+    def boom(q):
+        raise RuntimeError("zsearch down")
+
+    cards = run_scan(
+        topic="t", profile="", output_dir=str(tmp_path),
+        providers={"deepseek": lambda p: json.dumps({"cards": [
+            {"type": "理论框架", "name": "X", "mechanism": "m", "why_nonobvious": "w",
+             "steelman": "s", "questions": ["q"]}]})},
+        decompose_llm=lambda p: json.dumps({"fundamentals": ["f"]}),
+        en_search=lambda q: [], zh_search=boom, on_card=lambda c: None,
+    )
+    assert cards[0]["novelty"] == "中文面未检"
