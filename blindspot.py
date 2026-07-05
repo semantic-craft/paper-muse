@@ -248,7 +248,7 @@ def _litellm_call(model, api_key=None, api_base=None):
             kw["api_base"] = api_base
         resp = litellm.completion(
             model=model, messages=[{"role": "user", "content": prompt}],
-            temperature=0.9, timeout=60, **kw)
+            timeout=60, **kw)
         return resp.choices[0].message.content
 
     return call
