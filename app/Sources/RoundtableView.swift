@@ -127,7 +127,9 @@ final class RoundtableViewModel: ObservableObject {
 }
 
 struct RoundtableView: View {
+    var seedTopic: String? = nil
     @StateObject private var vm = RoundtableViewModel()
+    @State private var seeded = false
 
     var body: some View {
         Group {
@@ -147,6 +149,13 @@ struct RoundtableView: View {
             Button("好") { vm.errorMessage = nil }
         } message: {
             Text(vm.errorMessage ?? "")
+        }
+        .onAppear {
+            // 深挖入口：带种子话题进来时自动起圆桌，跳过手输 setup
+            guard !seeded, let s = seedTopic, !s.isEmpty else { return }
+            seeded = true
+            vm.topic = s
+            vm.start()
         }
     }
 

@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent
 os.chdir(ROOT)
 
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from knowledge_storm.collaborative_storm.engine import (
@@ -92,6 +93,10 @@ SCAN = {"phase": "idle", "topic": None, "cards": [], "output_dir": None, "error"
 SCAN_LOCK = threading.Lock()
 
 app = FastAPI()
+
+# web 画布：muse_server 同源静态托管 webui/（WKWebView 加载 /ui/，fetch /scan 无跨域）
+# 挂在 /ui 子路径，不遮挡 /scan、/session 等 API 路由。
+app.mount("/ui", StaticFiles(directory=str(ROOT / "webui"), html=True), name="ui")
 
 
 class SessionReq(BaseModel):

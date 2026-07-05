@@ -6,8 +6,8 @@ struct PaperMuseApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RoundtableView()
-                .frame(minWidth: 640, minHeight: 560)
+            MuseCanvasView()
+                .frame(minWidth: 860, minHeight: 620)
         }
         .windowResizability(.contentMinSize)
     }
