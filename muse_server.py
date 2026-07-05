@@ -330,13 +330,15 @@ def scan_bg(req: ScanReq):
 
 @app.post("/scan")
 def start_scan(req: ScanReq):
-    if SCAN["phase"] == "scanning":
-        raise HTTPException(409, "扫描进行中")
     topic = req.topic.strip()
     if not topic:
         raise HTTPException(400, "主题不能为空")
     base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(ROOT / "results" / "muse" / sanitize_topic(topic))
-    SCAN.update(phase="scanning", topic=topic, cards=[], error=None, output_dir=base)
+    # 同 /step：相位检查与置位必须原子，堵并发 /scan 双双通过检查各起一个扫描线程
+    with SCAN_LOCK:
+        if SCAN["phase"] == "scanning":
+            raise HTTPException(409, "扫描进行中")
+        SCAN.update(phase="scanning", topic=topic, cards=[], error=None, output_dir=base)
     threading.Thread(target=scan_bg, args=(req,), daemon=True).start()
     return {"ok": True, "output_dir": base}
 
