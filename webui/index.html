@@ -450,10 +450,97 @@
     .topic-field { order: 3; flex-basis: 100%; }
     .flow { padding: 24px 20px 100px; }
   }
+
+  /* ── 圆桌 · 对谈手稿 ─────────────────────────── */
+  #rtView { min-height: 100vh; display: flex; flex-direction: column; }
+  #rtView[hidden] { display: none; }  /* 显式 display 会盖过 [hidden] 的 UA 规则，须补这条 */
+  .rt-bar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: baseline; gap: 18px;
+    padding: 12px 28px;
+    background: color-mix(in srgb, var(--paper) 94%, transparent);
+    backdrop-filter: saturate(1.1) blur(6px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .rt-back {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+    color: var(--ink-2); background: none; border: none; cursor: pointer;
+    padding: 4px 2px; white-space: nowrap; flex: 0 0 auto;
+  }
+  .rt-back:hover { color: var(--vermilion); }
+  .rt-seed {
+    flex: 1 1 auto; min-width: 0; font-family: var(--serif-zh);
+    font-size: 14px; color: var(--ink-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .rt-seed b { color: var(--ink); font-weight: 600; }
+  .rt-phase {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-2); white-space: nowrap; flex: 0 0 auto;
+  }
+  .rt-phase.live::before {
+    content: "•"; color: var(--vermilion); margin-right: 5px;
+    animation: rtpulse 1.4s ease-in-out infinite;
+  }
+  @keyframes rtpulse { 0%,100% { opacity: .3 } 50% { opacity: 1 } }
+  .rt-scroll { flex: 1 1 auto; overflow-y: auto; }
+  .rt-flow { max-width: 720px; margin: 0 auto; padding: 30px 28px 40px; }
+  .rt-seedline {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-2);
+    padding-bottom: 14px; border-bottom: 1px solid var(--hair); margin-bottom: 24px;
+  }
+  /* 热身面板（朱批式清单） */
+  .rt-warm { font-family: var(--kai); color: var(--ink-2); padding: 12px 0 20px; }
+  .rt-warm .h { font-family: var(--serif-zh); color: var(--ink); font-size: 17px; display: block; margin-bottom: 12px; }
+  .rt-warm ol { list-style: none; margin: 0; padding: 0; }
+  .rt-warm li { padding: 5px 0 5px 24px; position: relative; font-size: 14.5px; line-height: 1.5; }
+  .rt-warm li::before { content: "○"; position: absolute; left: 0; color: var(--hair-strong); font-family: var(--mono); }
+  .rt-warm li.done { color: var(--ink-2); }
+  .rt-warm li.done::before { content: "◑"; color: var(--vermilion); }
+  .rt-warm li.now { color: var(--ink); }
+  .rt-warm li.now::before { content: "◐"; color: var(--vermilion); animation: rtpulse 1.2s infinite; }
+  /* 对谈条目 */
+  .rt-turn { padding: 18px 0; border-bottom: 1px solid var(--hair); }
+  .rt-turn:last-child { border-bottom: none; }
+  .rt-kicker {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 7px;
+  }
+  .rt-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+  .rt-role { font-family: var(--serif-zh); font-size: 14px; color: var(--ink); font-weight: 600; }
+  .rt-text { font-size: 16px; line-height: 1.85; }
+  .rt-turn.is-user { padding-left: 16px; border-left: 2px solid var(--vermilion); }
+  .rt-turn.is-user .rt-text { font-family: var(--kai); }
+  .rt-turn.is-mod .rt-role { color: var(--gold); }
+  /* 底部操作坞 */
+  .rt-dock {
+    position: sticky; bottom: 0; z-index: 10;
+    border-top: 1px solid var(--hair);
+    background: color-mix(in srgb, var(--paper) 94%, transparent);
+    backdrop-filter: blur(6px); padding: 12px 28px;
+  }
+  .rt-dock .wrap { max-width: 720px; margin: 0 auto; display: flex; gap: 10px; align-items: center; }
+  .rt-input {
+    flex: 1 1 auto; min-width: 0; font-family: var(--serif-zh); font-size: 15px;
+    color: var(--ink); background: transparent; border: none;
+    border-bottom: 1px solid var(--hair-strong); padding: 4px 2px;
+  }
+  .rt-input:focus { border-bottom-color: var(--vermilion); outline: none; }
+  .rt-btn {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+    color: var(--ink-2); background: none; border: 1px solid var(--hair-strong);
+    padding: 6px 12px; cursor: pointer; white-space: nowrap; flex: 0 0 auto;
+  }
+  .rt-btn:hover:not(:disabled) { border-color: var(--vermilion); color: var(--vermilion); }
+  .rt-btn.primary { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+  .rt-btn.primary:hover:not(:disabled) { background: var(--vermilion); border-color: var(--vermilion); }
+  .rt-btn:disabled { opacity: .4; cursor: default; }
+  .rt-busy { font-family: var(--kai); color: var(--ink-2); font-size: 15px; padding: 16px 0; }
 </style>
 </head>
 <body>
 
+<div id="wallView">
 <header class="topbar">
   <span class="wordmark"><b>论文构思者</b> · 文稿台</span>
   <div class="topic-field">
@@ -514,6 +601,41 @@
   <div class="margins" id="margins" aria-hidden="true"></div>
 
 </main>
+</div><!-- /wallView -->
+
+<!-- 圆桌 · 对谈手稿（深挖一张卡进来；与卡片墙同一画布切换） -->
+<section id="rtView" hidden aria-label="圆桌深挖">
+  <header class="rt-bar">
+    <button class="rt-back" id="rtBack" type="button">← 卡片墙</button>
+    <span class="rt-seed">对谈种子 · <b id="rtSeed">—</b></span>
+    <span class="rt-phase" id="rtPhase">热身中</span>
+    <button id="rtTheme" class="theme-btn" type="button" aria-label="切换明暗主题" title="切换明暗主题">☾</button>
+  </header>
+  <div class="rt-scroll">
+    <div class="rt-flow">
+      <div class="rt-seedline" id="rtSeedline">以选中切入点为种子 · Co-STORM 圆桌</div>
+      <div class="rt-warm" id="rtWarm" hidden>
+        <span class="h">圆桌热身中…</span>
+        <ol id="rtWarmSteps">
+          <li data-k="1">组建专家团并检索资料</li>
+          <li data-k="2">整理检索到的信息</li>
+          <li data-k="3">构建思维导图</li>
+          <li data-k="4">生成圆桌开场</li>
+        </ol>
+      </div>
+      <div id="rtTurns"></div>
+      <div class="rt-busy" id="rtBusy" hidden>圆桌思考中…</div>
+    </div>
+  </div>
+  <footer class="rt-dock">
+    <div class="wrap">
+      <input class="rt-input" id="rtInput" type="text" placeholder="插话、追问或转向…" aria-label="向圆桌插话">
+      <button class="rt-btn" id="rtInject" type="button">插话</button>
+      <button class="rt-btn primary" id="rtStep" type="button">让圆桌继续</button>
+      <button class="rt-btn" id="rtReport" type="button">结束出报告</button>
+    </div>
+  </footer>
+</section>
 
 <script>
 /* ══ 内联规范数据（抄自 _shared/cards.js，勿改） ══ */
@@ -883,27 +1005,22 @@ function sendVerdict(name, verdict){
   }).catch(() => {});
 }
 
-/* 点卡深挖：桥给原生壳起圆桌；浏览器/demo 态给提示 */
-function drill(c){
-  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.museBridge;
-  if (bridge) {
-    bridge.postMessage({action: "drill", name: c.name, type: c.type,
-                        mechanism: c.mechanism, why: c.why_nonobvious});
-  } else {
-    toast("在 App 内点「深挖圆桌」，以这张卡为种子起 Co-STORM 圆桌");
-  }
-}
+/* 点卡深挖：同画布切到圆桌视图（不再跳原生） */
+function drill(c){ enterRoundtable(c); }
 
-/* ══ 明暗切换 ══ */
+/* ══ 明暗切换（卡片墙与圆桌两个按钮同步） ══ */
+function applyThemeIcon(){
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  ["#themeBtn", "#rtTheme"].forEach(sel => { const b = $(sel); if (b) b.textContent = dark ? "☀" : "☾"; });
+}
+function toggleTheme(){
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+  applyThemeIcon();
+}
 function wireTheme(){
-  const btn = $("#themeBtn");
-  const root = document.documentElement;
-  btn.addEventListener("click", () => {
-    const dark = root.getAttribute("data-theme") === "dark";
-    root.setAttribute("data-theme", dark ? "light" : "dark");
-    btn.textContent = dark ? "☾" : "☀";
-    btn.setAttribute("aria-label", dark ? "切换到暗色主题" : "切换到亮色主题");
-  });
+  $("#themeBtn").addEventListener("click", toggleTheme);
+  const rt = $("#rtTheme"); if (rt) rt.addEventListener("click", toggleTheme);
 }
 
 /* ══ 顶部状态（flow-head） ══ */
@@ -1014,8 +1131,141 @@ function toast(msg){
   toastTimer = setTimeout(() => { t.style.opacity = "0"; }, 2600);
 }
 
+/* ══ 圆桌 · 对谈手稿 ══ */
+const RT = { seed: null, turns: [], busy: false, reportDir: null, poll: null };
+const DEMO_TURNS = [
+  { role: "主持人", utterance: "我们以「热力学熵增与信息不对称的负熵逻辑」为种子。核心张力是：把平台的数据聚合读成局部负熵，究竟给法律分析新增了什么可操作的东西？先请第一性原理专家把问题拆到根上。" },
+  { role: "第一性原理专家", utterance: "根本问题有三：其一，数据垄断的伤害是分配问题还是权力问题；其二，若是权力，它靠排他占有维持，还是靠信息势差的自我强化；其三，法律要规制的是状态还是动力学。熵视角只有回答了第三问才成立——它主张要管的是「势差扩大的速率」，而非某一时点的份额。" },
+  { role: "跨学科猎人", utterance: "顺动力学往下：非平衡态热力学里，开放系统靠持续耗散维持低熵。平台正是如此——持续消耗用户注意力与行为数据来维持自身的信息有序度。可操作含义是：反垄断的静态市场界定会失灵，因为伤害不在份额而在「耗散通道」，规制应盯数据回流的速率与不可逆性——这恰好能量化。" },
+  { role: "领域专家 · 法学", utterance: "踩一脚刹车。「速率」漂亮，但法律要件得可涵摄。盯住数据回流速率——它对应现行法哪个构成要件？滥用市场支配地位，还是个人信息处理的必要性原则？两头都挂不上，它就还是隐喻，进不了裁判文书。" },
+  { role: "你", utterance: "那如果把「不可逆性」对到个人信息保护法的「可撤回同意」呢？熵增在物理上不可逆，法律却用撤回权人为制造可逆性——这个错位本身是不是就是论点？" },
+  { role: "跨学科猎人", utterance: "好楔子。你等于说：法律用撤回权对抗数据聚合的热力学不可逆性，而撤回权因锁定效应近乎失效——「形式可逆、实质不可逆」的落差，正是负熵逻辑能量化的那个伤害。下一步该找的证据是：撤回同意后数据影响的实际衰减曲线。" },
+];
+function roleMeta(role){
+  const r = role || "";
+  if (r === "你") return { cls: "is-user", dot: "var(--vermilion)" };
+  if (/主持|moderator/i.test(r)) return { cls: "is-mod", dot: "var(--gold)" };
+  if (/第一性原理/.test(r)) return { cls: "", dot: "var(--pt-theory)" };
+  if (/跨学科|猎人/.test(r)) return { cls: "", dot: "var(--pt-method)" };
+  return { cls: "", dot: "var(--pt-view)" };
+}
+function showView(which){
+  $("#wallView").hidden = which !== "wall";
+  $("#rtView").hidden = which !== "rt";
+}
+function rtSetPhase(txt, live){
+  const el = $("#rtPhase"); el.textContent = txt; el.classList.toggle("live", !!live);
+}
+function rtRenderTurns(){
+  $("#rtTurns").innerHTML = RT.turns.map(t => {
+    const m = roleMeta(t.role);
+    return `<div class="rt-turn ${m.cls}">
+      <div class="rt-kicker"><span class="rt-dot" style="background:${m.dot}"></span>
+        <span class="rt-role">${esc(t.role)}</span></div>
+      <div class="rt-text">${esc(t.utterance)}</div>
+    </div>`;
+  }).join("");
+  const sc = $(".rt-scroll"); if (sc) sc.scrollTop = sc.scrollHeight;
+}
+function rtWarm(step){
+  $("#rtWarm").hidden = false;
+  $("#rtWarmSteps").querySelectorAll("li").forEach(li => {
+    const k = +li.dataset.k;
+    li.classList.toggle("done", k < step);
+    li.classList.toggle("now", k === step);
+  });
+}
+function rtBusy(on){
+  RT.busy = on; $("#rtBusy").hidden = !on;
+  ["rtStep", "rtInject", "rtReport"].forEach(id => { $("#" + id).disabled = on; });
+}
+function warmStepOf(s){
+  if (/Step 4|开场/.test(s)) return 4;
+  if (/Step 3|思维导图/.test(s)) return 3;
+  if (/Step 2|整理/.test(s)) return 2;
+  return 1;
+}
+function enterRoundtable(card){
+  RT.seed = card; RT.turns = []; RT.reportDir = null;
+  $("#rtSeed").textContent = card.name;
+  $("#rtSeedline").textContent = `以「${card.name}」为种子 · Co-STORM 圆桌`;
+  const rb = $("#rtReport"); rb.textContent = "结束出报告"; delete rb.dataset.reveal;
+  rtRenderTurns(); showView("rt");
+  if (DEMO) { $("#rtWarm").hidden = true; rtSetPhase("进行中", false); RT.turns = DEMO_TURNS.slice(); rtRenderTurns(); return; }
+  rtStartSession(card);
+}
+function backToWall(){
+  if (RT.poll) { clearInterval(RT.poll); RT.poll = null; }
+  showView("wall");
+}
+async function rtStartSession(card){
+  rtSetPhase("热身中", true); rtWarm(1);
+  const topic = card.mechanism ? `${card.name}：${card.mechanism}` : card.name;
+  try {
+    const r = await fetch("/session", { method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ topic }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ("HTTP " + r.status));
+    rtPollWarm();
+  } catch (e) { rtSetPhase("热身失败", false); toast("圆桌启动失败：" + (e.message || e)); }
+}
+function rtPollWarm(){
+  clearInterval(RT.poll);
+  RT.poll = setInterval(async () => {
+    try {
+      const s = await (await fetch("/status")).json();
+      if (s.phase === "error") { clearInterval(RT.poll); RT.poll = null; rtSetPhase("热身失败", false); toast("热身失败，检查服务端日志"); return; }
+      if (s.phase === "ready") {
+        clearInterval(RT.poll); RT.poll = null;
+        $("#rtWarm").hidden = true; rtSetPhase("进行中", false);
+        RT.turns = s.turns || []; rtRenderTurns();
+      } else {
+        rtWarm(warmStepOf((s.progress || []).slice(-1)[0] || ""));
+      }
+    } catch (e) { /* 瞬时错误，下次再试 */ }
+  }, 2000);
+}
+async function rtStep(utterance){
+  if (RT.busy) return; rtBusy(true);
+  if (utterance) { RT.turns.push({ role: "你", utterance }); rtRenderTurns(); }
+  try {
+    const r = await fetch("/step", { method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ utterance: utterance || "" }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "本轮发言失败");
+    (d.turns || []).forEach(t => { if (t.role !== "你") RT.turns.push(t); });
+    rtRenderTurns();
+  } catch (e) { toast("发言失败：" + (e.message || e)); }
+  rtBusy(false);
+}
+async function rtReport(){
+  if (RT.busy) return; rtBusy(true); rtSetPhase("出报告中", true);
+  try {
+    const r = await fetch("/report", { method: "POST", headers: {"Content-Type": "application/json"}, body: "{}" });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "出报告失败");
+    RT.reportDir = d.output_dir; rtSetPhase("报告已出", false);
+    const btn = $("#rtReport"); btn.textContent = "在访达打开"; btn.dataset.reveal = "1";
+    toast("报告已落盘：report.md / conversation.md 等");
+  } catch (e) { toast("出报告失败：" + (e.message || e)); rtSetPhase("进行中", false); }
+  rtBusy(false);
+}
+function rtRevealReport(){
+  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.museBridge;
+  if (bridge && RT.reportDir) bridge.postMessage({ action: "reveal", path: RT.reportDir });
+  else toast("产物目录：" + (RT.reportDir || "—"));
+}
+function wireRoundtable(){
+  $("#rtBack").addEventListener("click", backToWall);
+  $("#rtStep").addEventListener("click", () => rtStep(""));
+  const inject = () => { const v = $("#rtInput").value.trim(); if (v) { $("#rtInput").value = ""; rtStep(v); } };
+  $("#rtInject").addEventListener("click", inject);
+  $("#rtInput").addEventListener("keydown", e => { if (e.key === "Enter") inject(); });
+  $("#rtReport").addEventListener("click", () => { if ($("#rtReport").dataset.reveal) rtRevealReport(); else rtReport(); });
+}
+
 /* ══ 启动 ══ */
 wireTheme();
+wireRoundtable();
 $(".scan-btn").addEventListener("click", startScan);
 $("#topic").addEventListener("keydown", e => { if (e.key === "Enter") startScan(); });
 
@@ -1025,6 +1275,8 @@ if (DEMO) {
   ingest(DEMO_CARDS);
   render();
   setStatus("done");
+  if (new URLSearchParams(location.search).get("view") === "rt")
+    enterRoundtable(Object.assign({ id: 1 }, DEMO_CARDS[0]));
 } else {
   $("#topic").value = "";
   $("#topic").placeholder = "输入论文主题或研究困惑，点「扫描」…";
