@@ -603,7 +603,7 @@ def _litellm_call(model, api_key=None, api_base=None):
             kw["api_base"] = api_base
         resp = litellm.completion(
             model=model, messages=[{"role": "user", "content": prompt}],
-            temperature=0.9, timeout=60, **kw)
+            timeout=60, **kw)  # 不传 temperature：chat-latest 只接受默认值，合议多样性靠模型差异
         return resp.choices[0].message.content
 
     return call
@@ -655,14 +655,16 @@ def real_cnki_search(limit: int = 5):
 
 def real_own_search(limit: int = 8):
     """自有语料面（unknown-knowns 信号）：zsearch 本地 Zotero 语义检索。
-    ponytail: 行文本解析，Step 1 探察后按实际旗标修正此处。"""
+    实测接口（B4 探察）：`zsearch query <text> -k N --json` 返回 JSON 数组（title/url/key/abstract）；
+    embedder 依赖 GOOGLE_API_KEY（load_api_key 已注入）。"""
 
     def search(query):
-        r = subprocess.run(["zsearch", query], capture_output=True, text=True, timeout=20)
+        r = subprocess.run(["zsearch", "query", query, "-k", str(limit), "--json"],
+                           capture_output=True, text=True, timeout=20)
         if r.returncode != 0:
             raise RuntimeError(r.stderr[:200])
-        lines = [l for l in r.stdout.splitlines() if l.strip()]
-        return [{"title": l, "url": ""} for l in lines[:limit]]
+        rows = json.loads(r.stdout)
+        return [{"title": x.get("title", ""), "url": x.get("url", "")} for x in rows]
 
     return search
 
