@@ -6,6 +6,7 @@
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -30,11 +31,37 @@ def normalize_name(name: str) -> str:
 
 
 def extract_json(text: str):
-    """从可能带说明文字/代码围栏的模型输出里抠出第一个 JSON 对象。"""
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m:
+    """从可能带说明文字/代码围栏的模型输出里抠出 JSON 对象。
+    优先 ```json 围栏；否则花括号平衡扫描收集全部可解析对象、取最大者
+    （贪婪 `\\{.*\\}` 在「思考 {…} + 正文 {…}」多对象输出下会整体解析失败，
+    静默丢掉一整家模型——终审 Important #1）。"""
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    if m:
+        return json.loads(m.group(1))
+    candidates = []
+    start = text.find("{")
+    while start != -1:
+        depth = 0
+        end = None
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end is None:
+            break
+        span = text[start:end]
+        try:
+            candidates.append((len(span), json.loads(span)))
+        except json.JSONDecodeError:
+            pass
+        start = text.find("{", end)
+    if not candidates:
         raise ValueError(f"输出中未找到 JSON：{text[:200]}")
-    return json.loads(m.group(0))
+    return max(candidates, key=lambda x: x[0])[1]
 
 
 def dedupe_cards(cards: list) -> list:
@@ -107,11 +134,15 @@ def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str
     )
     raw = extract_json(llm_call(prompt)).get("cards", [])
     cards = []
+    dropped = 0
     for c in raw:
         if not REQUIRED_CARD_FIELDS <= set(c):
+            dropped += 1
             continue
         c["source_models"] = [model_tag]
         cards.append(c)
+    if dropped:
+        logging.info(f"enumerate_cards[{model_tag}]: 丢弃缺字段卡 {dropped}/{len(raw)}")
     return cards
 
 
@@ -210,8 +241,10 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
     def one_provider(tag, call):
         try:
             return enumerate_cards(topic, fundamentals, profile, tag, call)
-        except Exception:
-            return []  # 单家失败不拖垮扫描
+        except Exception as e:
+            # 单家失败不拖垮扫描，但必须留痕——否则三方合议静默降为两方，离群徽标失真
+            logging.error(f"provider[{tag}] 枚举失败：{e}")
+            return []
 
     threads_out = {}
     ts = []
@@ -221,6 +254,10 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
         ts.append(t)
     for t in ts:
         t.join()
+
+    # 全军覆没不许装成功——空墙必须以 error 面目示人（终审 Important #2）
+    if providers and not any(threads_out.values()):
+        raise RuntimeError("所有模型枚举均失败或零卡——检查 key/模型名/输出解析（stderr 有各家错误日志）")
 
     merged = mark_outliers(dedupe_cards([c for v in threads_out.values() for c in v]))
     merged = apply_suppression(merged, suppressed)

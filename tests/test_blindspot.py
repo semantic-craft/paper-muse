@@ -203,3 +203,22 @@ def test_run_scan_zh_search_failure_degrades(tmp_path):
         en_search=lambda q: [], zh_search=boom, on_card=lambda c: None,
     )
     assert cards[0]["novelty"] == "中文面未检"
+
+
+def test_extract_json_multi_object_picks_payload():
+    # 思考前奏 + 正文 + 尾注三个对象：贪婪 {.*} 会整体解析失败，平衡扫描应取最大的正文对象
+    noisy = '思考: {"step": 1} 好的，结果：{"cards": [{"name": "X", "type": "理论框架"}]} 附注 {"n": 2}'
+    assert "cards" in extract_json(noisy)
+
+
+def test_run_scan_all_providers_failing_raises(tmp_path):
+    def bad_provider(prompt):
+        raise RuntimeError("auth failed")
+
+    with pytest.raises(RuntimeError, match="所有模型枚举均失败"):
+        run_scan(
+            topic="t", profile="", output_dir=str(tmp_path),
+            providers={"deepseek": bad_provider, "gemini": bad_provider},
+            decompose_llm=lambda p: json.dumps({"fundamentals": ["f"]}),
+            en_search=lambda q: [], zh_search=lambda q: [], on_card=lambda c: None,
+        )
