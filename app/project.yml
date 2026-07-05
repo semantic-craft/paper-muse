@@ -1,0 +1,21 @@
+name: PaperMuse
+options:
+  bundleIdPrefix: com.xianwei
+targets:
+  PaperMuse:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources: [Sources]
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: 论文构思者
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.xianwei.papermuse
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
