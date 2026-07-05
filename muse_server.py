@@ -228,12 +228,15 @@ def status():
 
 @app.post("/step")
 def step(req: StepReq):
-    if SESSION["phase"] != "ready":
-        raise HTTPException(409, f"圆桌未就绪（当前状态 {SESSION['phase']}）")
-    runner = SESSION["runner"]
-    SESSION["phase"] = "stepping"
+    # 相位检查/置位必须与执行同锁，否则并发 /step 双双通过 ready 检查后排队多跑一轮（TOCTOU）
+    if not RUNNER_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "圆桌正忙（另一操作进行中）")
     try:
-        with RUNNER_LOCK:
+        if SESSION["phase"] != "ready":
+            raise HTTPException(409, f"圆桌未就绪（当前状态 {SESSION['phase']}）")
+        SESSION["phase"] = "stepping"
+        runner = SESSION["runner"]
+        try:
             new_turns = []
             utterance = req.utterance.strip()
             if utterance:
@@ -241,22 +244,27 @@ def step(req: StepReq):
                 new_turns.append({"role": "你", "utterance": utterance})
             turn = runner.step()
             new_turns.append(turn_to_dict(turn))
-        return {"turns": new_turns}
-    except Exception as e:
-        raise HTTPException(500, f"本轮发言失败：{e}")
+            return {"turns": new_turns}
+        except Exception as e:
+            raise HTTPException(500, f"本轮发言失败：{e}")
+        finally:
+            SESSION["phase"] = "ready"
     finally:
-        SESSION["phase"] = "ready"
+        RUNNER_LOCK.release()
 
 
 @app.post("/report")
 def report():
-    if SESSION["phase"] != "ready":
-        raise HTTPException(409, f"圆桌未就绪（当前状态 {SESSION['phase']}）")
-    runner = SESSION["runner"]
-    output_dir = SESSION["output_dir"]
-    SESSION["phase"] = "stepping"
+    # 同 /step：相位检查/置位与执行同锁，堵并发 TOCTOU
+    if not RUNNER_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "圆桌正忙（另一操作进行中）")
     try:
-        with RUNNER_LOCK:
+        if SESSION["phase"] != "ready":
+            raise HTTPException(409, f"圆桌未就绪（当前状态 {SESSION['phase']}）")
+        SESSION["phase"] = "stepping"
+        runner = SESSION["runner"]
+        output_dir = SESSION["output_dir"]
+        try:
             os.makedirs(output_dir, exist_ok=True)
             runner.knowledge_base.reorganize()
             article = runner.generate_report()
@@ -270,11 +278,13 @@ def report():
                 json.dump(runner.to_dict(), f, indent=2, ensure_ascii=False)
             with open(os.path.join(output_dir, "log.json"), "w", encoding="utf-8") as f:
                 json.dump(runner.dump_logging_and_reset(), f, indent=2, ensure_ascii=False)
-        return {"output_dir": output_dir, "files": ["report.md", "conversation.md", "instance_dump.json", "log.json"]}
-    except Exception as e:
-        raise HTTPException(500, f"生成报告失败：{e}")
+            return {"output_dir": output_dir, "files": ["report.md", "conversation.md", "instance_dump.json", "log.json"]}
+        except Exception as e:
+            raise HTTPException(500, f"生成报告失败：{e}")
+        finally:
+            SESSION["phase"] = "ready"
     finally:
-        SESSION["phase"] = "ready"
+        RUNNER_LOCK.release()
 
 
 if __name__ == "__main__":

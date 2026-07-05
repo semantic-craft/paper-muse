@@ -32,6 +32,8 @@ struct APIError: LocalizedError {
 struct MuseClient {
     var baseURL: URL { MuseServer.shared.baseURL }
 
+    // retriever/fulltext 等新服务端参数暂不在此暴露，走服务端默认（tavily）——
+    // 两幕剧重构的 web 画布设置区将接管（docs/superpowers/specs/2026-07-05-muse-two-act-design.md §10）
     func createSession(topic: String, model: String) async throws {
         struct Req: Encodable {
             let topic: String
