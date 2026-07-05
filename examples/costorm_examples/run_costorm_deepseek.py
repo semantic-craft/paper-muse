@@ -9,6 +9,7 @@
     DEEPSEEK_API_KEY / DEEPSEEK_API_BASE
     TAVILY_API_KEY
     ENCODER_API_TYPE / ENCODER_MODEL / ENCODER_API_KEY / ENCODER_API_BASE
+    PERPLEXITY_API_KEY / JINA_API_KEY（--retriever perplexity/mixed 或 --fulltext 时需要，可选）
 
 输出（默认落在 $PAPER_MUSE_OUTPUT_DIR 或 ./results 下的 costorm_<主题>/）：
     report.md            # 圆桌成果报告（带 [1][2] 引用）
@@ -36,7 +37,12 @@ from knowledge_storm.collaborative_storm.modules.callback import (
 )
 from knowledge_storm.lm import DeepSeekModel
 from knowledge_storm.logging_wrapper import LoggingWrapper
-from knowledge_storm.rm import TavilySearchRM
+from knowledge_storm.rm import (
+    TavilySearchRM,
+    PerplexitySearchRM,
+    JinaFullTextRM,
+    MixedRM,
+)
 from knowledge_storm.utils import load_api_key
 
 
@@ -109,11 +115,21 @@ def main(args):
         warmstart_max_thread=3,
         max_thread_num=5,
     )
-    rm = TavilySearchRM(
-        tavily_search_api_key=os.getenv("TAVILY_API_KEY"),
-        k=runner_argument.retrieve_top_k,
-        include_raw_content=True,
-    )
+    def _tavily():
+        return TavilySearchRM(
+            tavily_search_api_key=os.getenv("TAVILY_API_KEY"),
+            k=runner_argument.retrieve_top_k,
+            include_raw_content=True,
+        )
+
+    if args.retriever == "perplexity":
+        rm = PerplexitySearchRM(k=runner_argument.retrieve_top_k)
+    elif args.retriever == "mixed":
+        rm = MixedRM([_tavily(), PerplexitySearchRM(k=runner_argument.retrieve_top_k)])
+    else:
+        rm = _tavily()
+    if args.fulltext:
+        rm = JinaFullTextRM(base_rm=rm, top_n=3)
     runner = CoStormRunner(
         lm_config=lm_config,
         runner_argument=runner_argument,
@@ -168,6 +184,18 @@ if __name__ == "__main__":
         help="互动场景默认用快模型 v4-flash；要更深的问题可换 v4-pro（慢）",
     )
     parser.add_argument("--retrieve-top-k", type=int, default=5, help="每次检索取前 k 条")
+    parser.add_argument(
+        "--retriever",
+        type=str,
+        choices=["tavily", "perplexity", "mixed"],
+        default="tavily",
+        help="检索源：tavily 快 / perplexity 深 / mixed 双源混合",
+    )
+    parser.add_argument(
+        "--fulltext",
+        action="store_true",
+        help="用 Jina Reader 把 top3 结果增强为全文（需 JINA_API_KEY）",
+    )
     parser.add_argument("--warmstart-experts", type=int, default=2, help="热身阶段专家数")
     parser.add_argument("--warmstart-turns", type=int, default=1, help="热身阶段每专家轮数")
     main(parser.parse_args())
