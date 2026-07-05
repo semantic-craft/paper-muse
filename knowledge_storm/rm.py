@@ -1305,3 +1305,60 @@ class PerplexitySearchRM(dspy.Retrieve):
             except Exception as e:
                 logging.error(f"PerplexitySearchRM error for query '{query}': {e}")
         return collected_results
+
+
+class JinaFullTextRM(dspy.Retrieve):
+    """包装任意 RM：检索后用 Jina Reader (GET https://r.jina.ai/{url}) 抓取
+    前 top_n 条结果的正文 markdown，切成 ~1000 字符的 snippets 替换原摘要，
+    给圆桌更厚的证据。抓取失败时保留原 snippets，绝不让增强步骤拖垮检索。
+    """
+
+    SNIPPET_CHUNK = 1000
+    MAX_CHUNKS = 3
+
+    def __init__(self, base_rm, top_n: int = 3, max_tokens: int = 4000, jina_api_key=None):
+        super().__init__(k=base_rm.k)
+        self.base_rm = base_rm
+        self.top_n = top_n
+        self.max_tokens = max_tokens
+        self.jina_api_key = jina_api_key or os.environ.get("JINA_API_KEY")
+        if not self.jina_api_key:
+            raise RuntimeError(
+                "You must supply jina_api_key or set environment variable JINA_API_KEY"
+            )
+        self.usage = 0
+
+    def get_usage_and_reset(self):
+        merged = self.base_rm.get_usage_and_reset()
+        merged["JinaFullTextRM"] = self.usage
+        self.usage = 0
+        return merged
+
+    def _read(self, url: str) -> str:
+        resp = requests.get(
+            f"https://r.jina.ai/{url}",
+            headers={
+                "Authorization": f"Bearer {self.jina_api_key}",
+                "X-Max-Tokens": str(self.max_tokens),
+                "X-Timeout": "20",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.text
+
+    def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []):
+        results = self.base_rm.forward(query_or_queries, exclude_urls)
+        for r in results[: self.top_n]:
+            try:
+                full_text = self._read(r["url"])
+                if len(full_text) > 200:
+                    self.usage += 1
+                    limit = self.SNIPPET_CHUNK * self.MAX_CHUNKS
+                    r["snippets"] = [
+                        full_text[i : i + self.SNIPPET_CHUNK]
+                        for i in range(0, min(len(full_text), limit), self.SNIPPET_CHUNK)
+                    ]
+            except Exception as e:
+                logging.warning(f"JinaFullTextRM read failed for {r.get('url')}: {e}")
+        return results
