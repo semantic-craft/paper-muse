@@ -1247,4 +1247,61 @@ class AzureAISearch(dspy.Retrieve):
             except Exception as e:
                 logging.error(f"Error occurs when searching query {query}: {e}")
 
+
+class PerplexitySearchRM(dspy.Retrieve):
+    """Retrieve information using the Perplexity Search API.
+
+    POST https://api.perplexity.ai/search  body: {"query": ..., "max_results": k}
+    响应 results[] 含 title/url/snippet。返回值与 TavilySearchRM 同构。
+    """
+
+    def __init__(self, perplexity_api_key=None, k: int = 3, is_valid_source: Callable = None):
+        super().__init__(k=k)
+        self.perplexity_api_key = perplexity_api_key or os.environ.get("PERPLEXITY_API_KEY")
+        if not self.perplexity_api_key:
+            raise RuntimeError(
+                "You must supply perplexity_api_key or set environment variable PERPLEXITY_API_KEY"
+            )
+        self.k = k
+        self.usage = 0
+        self.is_valid_source = is_valid_source if is_valid_source else lambda x: True
+
+    def get_usage_and_reset(self):
+        usage = self.usage
+        self.usage = 0
+        return {"PerplexitySearchRM": usage}
+
+    def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []):
+        queries = (
+            [query_or_queries] if isinstance(query_or_queries, str) else query_or_queries
+        )
+        collected_results = []
+        for query in queries:
+            # 与 TavilySearchRM 同款容错：空 query 跳过、单次失败不拖垮长流程
+            if not query or not query.strip():
+                continue
+            self.usage += 1
+            try:
+                resp = requests.post(
+                    "https://api.perplexity.ai/search",
+                    headers={"Authorization": f"Bearer {self.perplexity_api_key}"},
+                    json={"query": query, "max_results": self.k},
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                for r in resp.json().get("results", []):
+                    url = r.get("url", "")
+                    if not url or not self.is_valid_source(url) or url in exclude_urls:
+                        continue
+                    snippet = r.get("snippet") or r.get("title", "")
+                    collected_results.append(
+                        {
+                            "description": snippet,
+                            "snippets": [snippet],
+                            "title": r.get("title", ""),
+                            "url": url,
+                        }
+                    )
+            except Exception as e:
+                logging.error(f"PerplexitySearchRM error for query '{query}': {e}")
         return collected_results
