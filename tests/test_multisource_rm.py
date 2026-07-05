@@ -99,3 +99,21 @@ def test_mixed_rm_interleaves_and_dedups():
     # 逐位交错：i=0 取 a=u1, b=u2；i=1 取 a=u2(重复丢弃), b=u4；i=2 取 a=u3
     assert urls == ["u1", "u2", "u4", "u3"]
     assert rm.get_usage_and_reset() == {"A": 1, "B": 1}
+
+
+def test_mixed_rm_survives_failing_source():
+    class _FailingRM:
+        k = 2
+
+        def get_usage_and_reset(self):
+            return {"F": 1}
+
+        def forward(self, query_or_queries, exclude_urls=[]):
+            raise RuntimeError("boom")
+
+    b = _StubRM("B", ["u1"])
+    rm = MixedRM([_FailingRM(), b])
+    results = rm.forward("任意查询")
+    assert [r["url"] for r in results] == ["u1"]
+    # 失败源的 usage 统计仍保留（get_usage_and_reset 与 forward 成败无关）
+    assert rm.get_usage_and_reset() == {"F": 1, "B": 1}

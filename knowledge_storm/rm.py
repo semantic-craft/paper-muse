@@ -1365,7 +1365,7 @@ class JinaFullTextRM(dspy.Retrieve):
 
 
 class MixedRM(dspy.Retrieve):
-    """并联多个 RM：逐源检索，按 URL 去重、逐位交错合并，保证来源多样性。
+    """并联多个 RM：逐源检索，按 URL 去重、逐位交错合并，提升来源多样性（各源条数悬殊时尾部仍会被大源占据）。
     ponytail: 顺序请求 + 简单交错，不做语义精排；要精排时在合并后接
     Jina reranker（https://jina.ai/reranker）升级。
     """
@@ -1373,6 +1373,7 @@ class MixedRM(dspy.Retrieve):
     def __init__(self, rms: List[dspy.Retrieve]):
         if not rms:
             raise ValueError("MixedRM 至少需要一个子检索器")
+        # k 仅存档，不作为合并结果条数上限——下游不做截断
         super().__init__(k=max(rm.k for rm in rms))
         self.rms = rms
 
