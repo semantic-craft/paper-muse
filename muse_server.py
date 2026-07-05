@@ -36,7 +36,12 @@ from knowledge_storm.collaborative_storm.engine import (
 from knowledge_storm.collaborative_storm.modules.callback import BaseCallbackHandler
 from knowledge_storm.lm import DeepSeekModel
 from knowledge_storm.logging_wrapper import LoggingWrapper
-from knowledge_storm.rm import TavilySearchRM
+from knowledge_storm.rm import (
+    TavilySearchRM,
+    PerplexitySearchRM,
+    JinaFullTextRM,
+    MixedRM,
+)
 from knowledge_storm.utils import load_api_key
 
 
@@ -87,6 +92,8 @@ class SessionReq(BaseModel):
     retrieve_top_k: int = 5
     warmstart_experts: int = 2
     warmstart_turns: int = 1
+    retriever: str = "tavily"       # tavily | perplexity | mixed
+    fulltext: bool = False          # True = Jina Reader 全文增强 top3
     output_dir: str | None = None
 
 
@@ -96,6 +103,27 @@ class StepReq(BaseModel):
 
 def turn_to_dict(turn):
     return {"role": turn.role, "utterance": turn.utterance}
+
+
+def build_rm(req: "SessionReq", k: int):
+    def tavily():
+        return TavilySearchRM(
+            tavily_search_api_key=os.getenv("TAVILY_API_KEY"),
+            k=k,
+            include_raw_content=True,
+        )
+
+    if req.retriever == "tavily":
+        base = tavily()
+    elif req.retriever == "perplexity":
+        base = PerplexitySearchRM(k=k)
+    elif req.retriever == "mixed":
+        base = MixedRM([tavily(), PerplexitySearchRM(k=k)])
+    else:
+        raise RuntimeError(f"未知检索源 {req.retriever}（可选 tavily / perplexity / mixed）")
+    if req.fulltext:
+        base = JinaFullTextRM(base_rm=base, top_n=3)
+    return base
 
 
 def build_runner(req: SessionReq):
@@ -131,11 +159,7 @@ def build_runner(req: SessionReq):
         warmstart_max_thread=3,
         max_thread_num=5,
     )
-    rm = TavilySearchRM(
-        tavily_search_api_key=os.getenv("TAVILY_API_KEY"),
-        k=runner_argument.retrieve_top_k,
-        include_raw_content=True,
-    )
+    rm = build_rm(req, runner_argument.retrieve_top_k)
     return CoStormRunner(
         lm_config=lm_config,
         runner_argument=runner_argument,
