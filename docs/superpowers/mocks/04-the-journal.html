@@ -1,0 +1,938 @@
+<!-- 学报 · 编辑部式跨栏拼版 -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>构思者 · 本期专题</title>
+<style>
+  /* ============ 色 token（明暗双主题） ============ */
+  :root {
+    --paper:      #FBFAF7;   /* 暖白底，避开 #F4F1EA 俗套 */
+    --ink:        #161412;   /* 浓墨 */
+    --ink-soft:   #4A443E;   /* 次级墨 */
+    --ink-faint:  #8A8177;   /* 脚注灰 */
+    --rule:       #DCD6CB;   /* 栏线/天地线 */
+    --rule-soft:  #ECE7DE;
+    --oxblood:    #6E2233;   /* 编辑主色：深酒红 */
+    --oxblood-ink:#5A1B29;
+    --gold:       #9A7B2E;   /* 古金印章 */
+    --field:      #FFFFFF;   /* 输入字段底 */
+    --stamp-bg:   rgba(110,34,51,.06);
+    --quote-tint: #F6F1EC;   /* 抽言底纹 */
+    --seal-shadow: rgba(22,20,18,.04);
+    /* 三类学科色方块（克制，酒红/墨/金家族） */
+    --cat-view:   #6E2233;   /* 学科视角 = 酒红 */
+    --cat-theory: #2B2622;   /* 理论框架 = 墨 */
+    --cat-method: #9A7B2E;   /* 研究方法 = 金 */
+    /* 新颖性 */
+    --nov-gold:   #9A7B2E;   /* 交叉空白（金矿，最亮） */
+    --nov-edge:   #6E2233;
+    --nov-main:   #8A8177;
+    --nov-cnki:   #3C6E5A;   /* 中文面未检 */
+
+    --sans: -apple-system, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    --serif-cn: "Songti SC", "STSong", "Songti TC", serif;
+    --serif-en: "New York", "Iowan Old Style", "Palatino", "Baskerville", Georgia, serif;
+    --serif: "Songti SC", "STSong", "New York", "Palatino", "Baskerville", Georgia, serif;
+    --kai: "Kaiti SC", "STKaiti", "Songti SC", serif;
+    --mono: "SF Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    --paper:      #161311;
+    --ink:        #EDE7DB;
+    --ink-soft:   #C4BBAC;
+    --ink-faint:  #8C8474;
+    --rule:       #3A342D;
+    --rule-soft:  #2A2620;
+    --oxblood:    #B5566A;   /* 酒红提亮 */
+    --oxblood-ink:#C46A7D;
+    --gold:       #C6A94E;
+    --field:      #1E1A17;
+    --stamp-bg:   rgba(181,86,106,.10);
+    --quote-tint: #1E1A17;
+    --seal-shadow: rgba(0,0,0,.25);
+    --cat-view:   #B5566A;
+    --cat-theory: #C4BBAC;
+    --cat-method: #C6A94E;
+    --nov-gold:   #C6A94E;
+    --nov-edge:   #B5566A;
+    --nov-main:   #8C8474;
+    --nov-cnki:   #6FB59A;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    line-height: 1.62;
+    font-size: 17px;
+    transition: background .35s ease, color .35s ease;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 64px); }
+
+  /* ============ 报头 masthead ============ */
+  .masthead { padding: 34px 0 0; }
+  .masthead-top {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 20px; flex-wrap: wrap;
+    border-bottom: 3px double var(--oxblood);
+    padding-bottom: 8px;
+  }
+  .masthead-eyebrow {
+    font-family: var(--mono);
+    font-size: 10.5px; letter-spacing: .34em; text-transform: uppercase;
+    color: var(--oxblood); font-weight: 600;
+  }
+  .toggle {
+    font-family: var(--mono);
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--rule); border-radius: 999px;
+    padding: 6px 14px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+    transition: border-color .2s, color .2s, background .2s;
+  }
+  .toggle:hover { border-color: var(--oxblood); color: var(--oxblood); }
+  .toggle:focus-visible { outline: 2px solid var(--oxblood); outline-offset: 2px; }
+  .toggle .glyph { font-size: 13px; }
+
+  .masthead-title {
+    font-family: var(--serif-cn);
+    font-weight: 900;
+    font-size: clamp(42px, 7.4vw, 92px);
+    line-height: .96;
+    letter-spacing: -.02em;
+    margin: 18px 0 6px;
+    color: var(--ink);
+  }
+  .masthead-title .sep { color: var(--oxblood); font-weight: 400; padding: 0 .12em; }
+  .masthead-title .issue { font-size: .42em; letter-spacing: -.01em; font-weight: 700; }
+
+  .masthead-meta {
+    display: flex; flex-wrap: wrap; gap: 6px 26px;
+    font-family: var(--mono);
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-faint);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 9px 0; margin-top: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .masthead-meta b { color: var(--ink-soft); font-weight: 600; }
+
+  /* 两幕切换 tabs */
+  .acts { display: flex; align-items: flex-end; gap: 0; margin-top: 20px; }
+  .act {
+    font-family: var(--serif-cn); font-weight: 700;
+    font-size: 16px; letter-spacing: .08em;
+    padding: 8px 20px 10px; cursor: pointer;
+    background: transparent; border: 0;
+    color: var(--ink-faint);
+    border-bottom: 2px solid transparent;
+    position: relative;
+  }
+  .act[aria-selected="true"] {
+    color: var(--oxblood);
+    border-bottom-color: var(--oxblood);
+  }
+  .act:focus-visible { outline: 2px solid var(--oxblood); outline-offset: -4px; }
+  .act[disabled] { cursor: not-allowed; color: var(--rule); }
+  .act .soon {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--ink-faint);
+    display: block; margin-top: 2px; font-weight: 400;
+  }
+  .acts-rule { border-bottom: 1px solid var(--rule); flex: 1; }
+
+  /* ============ 征稿主题字段 ============ */
+  .callforpapers {
+    margin: 30px 0 8px;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 18px 24px;
+    align-items: end;
+  }
+  @media (max-width: 720px) { .callforpapers { grid-template-columns: 1fr; align-items: stretch; } }
+  .cfp-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .28em;
+    text-transform: uppercase; color: var(--oxblood); padding-bottom: 10px;
+    white-space: nowrap;
+  }
+  .cfp-field { position: relative; }
+  .cfp-input {
+    width: 100%; background: transparent; border: 0;
+    border-bottom: 1.5px solid var(--ink-soft);
+    font-family: var(--serif-cn); font-size: clamp(19px, 2.3vw, 25px);
+    color: var(--ink); padding: 4px 0 8px;
+    line-height: 1.4;
+  }
+  .cfp-input::placeholder { color: var(--ink-faint); }
+  .cfp-input:focus { outline: none; border-bottom-color: var(--oxblood); }
+  .cfp-scan {
+    font-family: var(--serif-cn); font-weight: 700; font-size: 15px;
+    letter-spacing: .18em;
+    background: var(--oxblood); color: #FBFAF7;
+    border: 0; padding: 11px 26px; cursor: pointer;
+    white-space: nowrap;
+    transition: background .2s, transform .05s;
+  }
+  [data-theme="dark"] .cfp-scan { color: #161311; }
+  .cfp-scan:hover { background: var(--oxblood-ink); }
+  .cfp-scan:active { transform: translateY(1px); }
+  .cfp-scan:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* 画像折叠 */
+  .profile { margin: 6px 0 4px; border-top: 1px solid var(--rule-soft); }
+  .profile > summary {
+    list-style: none; cursor: pointer; padding: 12px 0;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--ink-faint);
+    display: flex; align-items: center; gap: 9px;
+  }
+  .profile > summary::-webkit-details-marker { display: none; }
+  .profile > summary::before { content: "▸"; color: var(--oxblood); transition: transform .2s; }
+  .profile[open] > summary::before { transform: rotate(90deg); }
+  .profile:focus-within > summary { color: var(--oxblood); }
+  .profile-body {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 4px 30px; padding: 0 0 16px; font-size: 14.5px; color: var(--ink-soft);
+  }
+  .profile-body dt {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--oxblood); margin-top: 8px;
+  }
+  .profile-body dd { margin: 2px 0 0; font-family: var(--serif); }
+
+  /* ============ 编辑网格 ============ */
+  .grid-rule { border-bottom: 2px solid var(--ink); margin: 4px 0 0; }
+  .grid-caption {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .26em;
+    text-transform: uppercase; color: var(--ink-faint);
+    display: flex; justify-content: space-between; padding: 8px 0 22px;
+    font-variant-numeric: tabular-nums;
+  }
+  .contents {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 46px 52px;
+    padding-bottom: 60px;
+  }
+  @media (max-width: 860px) { .contents { grid-template-columns: 1fr; gap: 40px; } }
+
+  /* 特稿 article */
+  .feature {
+    display: flex; flex-direction: column;
+    border-top: 1px solid var(--rule);
+    padding-top: 20px;
+    opacity: 0;
+  }
+  .feature.lead {
+    grid-column: 1 / -1;
+    border-top: 3px solid var(--oxblood);
+    padding-top: 26px;
+  }
+
+  /* 编号眉题 kicker */
+  .kicker {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; margin-bottom: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .kicker .no { color: var(--oxblood); font-weight: 700; letter-spacing: .06em; }
+  .kicker .cat {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--ink-soft); font-weight: 600;
+  }
+  .kicker .swatch {
+    width: 9px; height: 9px; display: inline-block; flex: none;
+    border: .5px solid rgba(0,0,0,.15);
+  }
+  [data-theme="dark"] .kicker .swatch { border-color: rgba(255,255,255,.18); }
+  .kicker .rule { flex: 1; height: 1px; background: var(--rule); min-width: 20px; }
+
+  /* 标题 */
+  .headline {
+    font-family: var(--serif-cn); font-weight: 800;
+    line-height: 1.08; letter-spacing: -.01em;
+    margin: 0 0 4px; color: var(--ink);
+    font-size: clamp(23px, 2.9vw, 32px);
+  }
+  .lead .headline { font-size: clamp(34px, 5.4vw, 62px); line-height: 1.02; letter-spacing: -.02em; }
+
+  /* standfirst 导语（楷体斜体嗓音） */
+  .standfirst {
+    font-family: var(--kai); font-style: italic;
+    font-size: clamp(16px, 1.9vw, 19px); line-height: 1.55;
+    color: var(--oxblood); margin: 10px 0 16px;
+    padding-left: 14px; border-left: 2px solid var(--oxblood);
+  }
+  .lead .standfirst { font-size: clamp(19px, 2.4vw, 24px); }
+
+  /* 正文（两端对齐栏） */
+  .body-copy {
+    font-family: var(--serif); font-size: 16.5px; line-height: 1.68;
+    color: var(--ink-soft); text-align: justify; hyphens: auto;
+    margin: 0 0 18px;
+  }
+  .body-copy .nonobvious-tag {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--oxblood);
+    display: block; margin-bottom: 4px; font-style: normal;
+  }
+  /* 首字下沉 drop cap（仅首篇；float 不与栏文重叠） */
+  .lead .body-copy.dropcap::first-letter {
+    font-family: var(--serif-cn); font-weight: 900;
+    float: left; font-size: 3.9em; line-height: .78;
+    padding: 6px 12px 0 0; margin: 4px 2px 0 0;
+    color: var(--oxblood);
+  }
+  .lead .body-copy { column-count: 2; column-gap: 42px; column-rule: 1px solid var(--rule-soft); }
+  @media (max-width: 720px) { .lead .body-copy { column-count: 1; } }
+
+  /* 抽言 pull-quote（最强反驳，drama 焦点） */
+  .pullquote {
+    position: relative;
+    background: var(--quote-tint);
+    border-top: 2px solid var(--oxblood);
+    border-bottom: 2px solid var(--oxblood);
+    padding: 26px 24px 20px 30px;
+    margin: 6px 0 20px;
+  }
+  .lead .pullquote {
+    padding: 34px 40px 26px 52px;
+    border-top-width: 3px; border-bottom-width: 3px;
+  }
+  .pullquote::before {
+    content: "\201C";
+    position: absolute; left: 8px; top: -6px;
+    font-family: var(--serif-en); font-weight: 700;
+    font-size: 78px; line-height: 1; color: var(--oxblood);
+    opacity: .5;
+  }
+  .lead .pullquote::before { font-size: 120px; left: 12px; top: -14px; }
+  .pullquote-label {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--oxblood); font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .pullquote q {
+    font-family: var(--serif-cn); font-weight: 600; font-style: normal;
+    font-size: clamp(17px, 2vw, 21px); line-height: 1.5;
+    color: var(--ink); quotes: none; display: block;
+  }
+  .lead .pullquote q { font-size: clamp(21px, 2.7vw, 28px); line-height: 1.42; }
+  .pullquote cite {
+    display: block; margin-top: 12px; font-style: normal;
+    font-family: var(--kai); font-size: 14px; color: var(--ink-faint);
+    text-align: right;
+  }
+  .pullquote cite::before { content: "— "; }
+
+  /* 方法卡专属 feasibility 块 */
+  .feasibility {
+    border: 1px solid var(--gold); background: var(--stamp-bg);
+    padding: 14px 16px; margin: 0 0 18px;
+  }
+  .feasibility .f-label {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--gold); font-weight: 700;
+    display: flex; align-items: center; gap: 7px; margin-bottom: 6px;
+  }
+  .feasibility .f-label::before {
+    content: "⛭"; font-size: 12px;
+  }
+  .feasibility p { margin: 0; font-family: var(--serif); font-size: 14.5px; color: var(--ink-soft); line-height: 1.55; }
+
+  /* 徽标印记 seals（精修，非生 emoji） */
+  .seals { display: inline-flex; gap: 7px; flex-wrap: wrap; vertical-align: middle; }
+  .seal {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
+    text-transform: uppercase; font-weight: 600;
+    padding: 3px 8px 3px 6px; border-radius: 2px;
+    line-height: 1; white-space: nowrap;
+  }
+  .seal .mark {
+    font-family: var(--serif-cn); font-weight: 800; font-size: 11px;
+    line-height: 1; letter-spacing: 0;
+    display: inline-grid; place-items: center;
+    width: 15px; height: 15px; border-radius: 50%;
+  }
+  /* 🥇 英热中冷 = 印金圆章 */
+  .seal.gold { color: var(--gold); border: 1px solid var(--gold); background: var(--stamp-bg); }
+  .seal.gold .mark { background: var(--gold); color: var(--paper); }
+  /* 🔸 独家 = 酒红方戳 */
+  .seal.outlier { color: var(--oxblood); border: 1px dashed var(--oxblood); }
+  .seal.outlier .mark { border: 1px solid var(--oxblood); color: var(--oxblood); border-radius: 2px; width: 14px; height: 14px; font-size: 9px; }
+  /* 📚 藏 = 墨印 */
+  .seal.own { color: var(--ink-soft); border: 1px solid var(--rule); }
+  .seal.own .mark { border: 1px solid var(--ink-soft); color: var(--ink-soft); }
+
+  /* 底部脚注 apparatus */
+  .apparatus {
+    margin-top: auto;
+    border-top: 1px solid var(--rule);
+    padding-top: 14px;
+    font-family: var(--mono); font-size: 11px; color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .app-row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; margin-bottom: 10px; }
+
+  /* 密度对比 */
+  .density { display: inline-flex; align-items: baseline; gap: 10px; }
+  .density .dlabel { letter-spacing: .16em; text-transform: uppercase; font-size: 9px; }
+  .density .pair { display: inline-flex; align-items: baseline; gap: 3px; }
+  .density .en { color: var(--ink-soft); font-weight: 600; }
+  .density .num { font-size: 13px; font-weight: 700; }
+  .density .zh { color: var(--ink-soft); font-weight: 600; }
+  .density.gold-gap .en .num { color: var(--gold); }
+  .density.gold-gap .zh .num { color: var(--oxblood); }
+  .density .vs { color: var(--ink-faint); padding: 0 2px; }
+  .density .cnki-miss { color: var(--nov-cnki); font-weight: 600; letter-spacing: .04em; }
+
+  /* 新颖性 badge */
+  .novelty {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700;
+    padding: 3px 9px; border-radius: 2px; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .novelty::before { content: ""; width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .novelty.n-main  { color: var(--nov-main); border: 1px solid var(--rule); }
+  .novelty.n-main::before  { background: var(--nov-main); }
+  .novelty.n-edge  { color: var(--nov-edge); border: 1px solid var(--nov-edge); }
+  .novelty.n-edge::before  { background: var(--nov-edge); }
+  .novelty.n-gap   { color: var(--paper); background: var(--nov-gold); border: 1px solid var(--nov-gold); box-shadow: 0 0 0 3px var(--stamp-bg); }
+  .novelty.n-gap::before   { background: var(--paper); }
+  .novelty.n-cnki  { color: var(--nov-cnki); border: 1px solid var(--nov-cnki); }
+  .novelty.n-cnki::before  { background: var(--nov-cnki); }
+
+  /* 折叠 apparatus 细目：锚点/拷问/来源 */
+  .app-fold { border-top: 1px dotted var(--rule); }
+  .app-fold > summary {
+    list-style: none; cursor: pointer; padding: 9px 0 8px;
+    letter-spacing: .16em; text-transform: uppercase; font-size: 9.5px;
+    color: var(--ink-faint); display: flex; align-items: center; gap: 7px;
+  }
+  .app-fold > summary::-webkit-details-marker { display: none; }
+  .app-fold > summary::before { content: "＋"; color: var(--oxblood); font-size: 11px; }
+  .app-fold[open] > summary::before { content: "－"; }
+  .app-fold:focus-within > summary { color: var(--oxblood); }
+  .app-fold-body { padding: 0 0 12px; }
+  .app-block-label {
+    letter-spacing: .18em; text-transform: uppercase; font-size: 9px;
+    color: var(--oxblood); margin: 10px 0 5px; font-weight: 600;
+  }
+  .anchors { list-style: none; margin: 0; padding: 0; }
+  .anchors li { margin-bottom: 6px; overflow-x: auto; }
+  .anchors a {
+    color: var(--ink-soft); text-decoration: none;
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--serif); font-size: 13px; line-height: 1.4;
+  }
+  .anchors a:hover { color: var(--oxblood); border-bottom-color: var(--oxblood); }
+  .anchors a:focus-visible { outline: 2px solid var(--oxblood); outline-offset: 2px; }
+  .anchors .a-url { display: block; font-family: var(--mono); font-size: 9px; color: var(--ink-faint); word-break: break-all; margin-top: 1px; }
+  .questions { list-style: none; margin: 0; padding: 0; }
+  .questions li {
+    font-family: var(--kai); font-size: 13.5px; color: var(--ink-soft);
+    line-height: 1.5; margin-bottom: 6px; padding-left: 16px; position: relative;
+  }
+  .questions li::before { content: "？"; position: absolute; left: 0; color: var(--oxblood); }
+  .models { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .model-chip {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-faint);
+    border: 1px solid var(--rule); border-radius: 2px; padding: 2px 7px;
+  }
+  .model-chip.solo { color: var(--oxblood); border-color: var(--oxblood); }
+
+  /* 三键反馈 editorial actions */
+  .actions {
+    display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;
+    border-top: 1px solid var(--rule); padding-top: 14px;
+  }
+  .act-btn {
+    flex: 1; min-width: 92px;
+    font-family: var(--serif-cn); font-weight: 700; font-size: 13.5px;
+    letter-spacing: .05em;
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--rule); padding: 9px 10px; cursor: pointer;
+    transition: all .18s ease; text-align: center; line-height: 1.3;
+  }
+  .act-btn .sub {
+    display: block; font-family: var(--mono); font-size: 8px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-faint); margin-top: 3px; font-weight: 400;
+  }
+  .act-btn:hover { border-color: var(--ink-soft); color: var(--ink); }
+  .act-btn:focus-visible { outline: 2px solid var(--oxblood); outline-offset: 1px; }
+  /* 深挖 = 正向、视觉最重 */
+  .act-btn.dig { border-color: var(--oxblood); color: var(--oxblood); }
+  .act-btn.dig:hover { background: var(--oxblood); color: #FBFAF7; }
+  [data-theme="dark"] .act-btn.dig:hover { color: #161311; }
+  .act-btn.dig .sub { color: var(--oxblood); }
+  .act-btn.dig:hover .sub { color: inherit; }
+  /* 选中态 */
+  .actions[data-chosen] .act-btn:not(.chosen) { opacity: .32; }
+  .act-btn.chosen { border-width: 1.5px; }
+  .act-btn.chosen.known { background: var(--ink-soft); color: var(--paper); border-color: var(--ink-soft); }
+  .act-btn.chosen.known .sub { color: var(--paper); opacity: .7; }
+  .act-btn.chosen.na { background: var(--ink-faint); color: var(--paper); border-color: var(--ink-faint); }
+  .act-btn.chosen.na .sub { color: var(--paper); opacity: .7; }
+  .act-btn.chosen.dig {
+    background: var(--oxblood); color: #FBFAF7; border-color: var(--oxblood);
+    box-shadow: 0 3px 0 var(--gold);
+  }
+  [data-theme="dark"] .act-btn.chosen.dig { color: #161311; }
+  .act-btn.chosen.dig .sub { color: inherit; opacity: .8; }
+
+  /* 对抗幕占位 */
+  .rebuttal-stage {
+    grid-column: 1 / -1; display: none;
+    text-align: center; padding: 90px 20px; border: 1px dashed var(--rule);
+    color: var(--ink-faint);
+  }
+  .rebuttal-stage.show { display: block; }
+  .rebuttal-stage .rs-title { font-family: var(--serif-cn); font-weight: 800; font-size: 30px; color: var(--ink-soft); margin-bottom: 10px; }
+  .rebuttal-stage .rs-soon { font-family: var(--mono); font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--oxblood); }
+
+  /* colophon 页脚 */
+  .colophon {
+    border-top: 3px double var(--oxblood); margin-top: 20px;
+    padding: 18px 0 50px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-faint);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 入场错峰浮现 */
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  .feature.in { animation: rise .6s cubic-bezier(.22,.61,.36,1) forwards; }
+  @media (prefers-reduced-motion: reduce) {
+    .feature { opacity: 1 !important; }
+    .feature.in { animation: none !important; }
+    * { transition: none !important; }
+  }
+
+  ::selection { background: var(--oxblood); color: #FBFAF7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 报头 ============ -->
+  <header class="masthead">
+    <div class="masthead-top">
+      <span class="masthead-eyebrow">盲区扫描 · 三家模型合议</span>
+      <button class="toggle" id="themeToggle" type="button" aria-label="切换明暗主题">
+        <span class="glyph" id="themeGlyph">☾</span><span id="themeText">暗版</span>
+      </button>
+    </div>
+
+    <h1 class="masthead-title">构思者<span class="sep">·</span><span class="issue">本期专题</span></h1>
+
+    <div class="masthead-meta">
+      <span><b>本期</b>&nbsp;№ 2026·07</span>
+      <span><b>专题</b>&nbsp;<span id="metaTopic">平台经济中的数据权力与法律规制</span></span>
+      <span><b>合议</b>&nbsp;DEEPSEEK · GEMINI · OPENAI</span>
+      <span><b>特稿</b>&nbsp;<span id="metaCount">7</span> 篇</span>
+    </div>
+
+    <nav class="acts" role="tablist" aria-label="幕次">
+      <button class="act" role="tab" id="actIdeate" aria-selected="true" type="button">构思幕</button>
+      <button class="act" role="tab" id="actRebuttal" aria-selected="false" type="button" disabled>
+        对抗幕<span class="soon">即将上线</span>
+      </button>
+      <span class="acts-rule" aria-hidden="true"></span>
+    </nav>
+  </header>
+
+  <!-- ============ 征稿主题 ============ -->
+  <section class="callforpapers" aria-label="征稿主题">
+    <label class="cfp-label" for="topicInput">征稿主题 / 困惑</label>
+    <div class="cfp-field">
+      <input class="cfp-input" id="topicInput" type="text"
+             value="平台经济中的数据权力与法律规制"
+             aria-label="研究主题或困惑">
+    </div>
+    <button class="cfp-scan" type="button" id="scanBtn">扫描上墙</button>
+  </section>
+
+  <details class="profile">
+    <summary>研究者画像 · 可展开</summary>
+    <dl class="profile-body" id="profileBody"></dl>
+  </details>
+
+  <!-- ============ 编辑网格 / 目录 ============ -->
+  <div class="grid-rule" aria-hidden="true"></div>
+  <div class="grid-caption">
+    <span>本期特稿目录 · Contents</span>
+    <span>盲区之发现 · 逐篇合议</span>
+  </div>
+
+  <main class="contents" id="contents" aria-label="特稿卡片墙">
+    <!-- feature 由 JS render 循环出 -->
+    <section class="rebuttal-stage" id="rebuttalStage" aria-hidden="true">
+      <div class="rs-title">对抗幕</div>
+      <div class="rs-soon">下一轮开放 · 逐篇拷问</div>
+    </section>
+  </main>
+
+  <footer class="colophon">
+    <span>构思者学报 · 编辑部式跨栏拼版</span>
+    <span>静态视觉稿 · 数据写死 · 离线自包含</span>
+  </footer>
+
+</div>
+
+<script>
+  /* ====== 内联数据（抄自 _shared/cards.js，勿改） ====== */
+  const MUSE_TOPIC = "平台经济中的数据权力与法律规制";
+  const MUSE_PROFILE = {
+    field: "中文法学 · 数据法与反垄断",
+    stance: "权利本位、法教义学训练",
+    familiar: "个人信息保护法、反垄断法、比例原则",
+    puzzle: "想找非显而易见的跨学科切入点，怕落进「数据确权」的红海",
+  };
+  const MUSE_CARDS = [
+    {
+      id: 1, type: "学科视角",
+      name: "热力学熵增与信息不对称的负熵逻辑",
+      mechanism: "把平台对用户数据的聚合视为局部负熵积累，用熵增框架解释信息不对称如何自我强化。",
+      why_nonobvious: "你的框架把数据垄断当作市场结构问题；熵视角把它重述为「信息势差的热力学必然」，绕开了反垄断的静态市场界定。",
+      steelman: "物理隐喻派审稿人会打——「熵在社会科学是修辞不是机制」，要求你给出可测量的熵定义，否则视为伪类比。",
+      feasibility: null,
+      questions: [
+        "如果熵只是隐喻，它比「信息不对称」这个现成概念多解释了什么？",
+        "负熵积累能否落到可观测的平台指标（如数据回流速率）？",
+      ],
+      novelty: "交叉空白", gold: true, outlier: false, own_hits: 2, en_hits: 47, zh_hits: 1,
+      anchors: [
+        { title: "Entropy, Information, and the Economics of Scarcity", url: "https://doi.org/10.1103/entropy.2019.0471" },
+        { title: "负熵、信息与市场秩序：一个跨学科综述", url: "https://kns.cnki.net/kcms/sample-4471" },
+      ],
+      source_models: ["deepseek", "gemini", "openai"],
+    },
+    {
+      id: 2, type: "理论框架",
+      name: "组织社会学的制度同构（DiMaggio & Powell）",
+      mechanism: "用强制/模仿/规范三种同构压力，解释为何各大平台的治理规则趋同——趋同本身即规制失灵的信号。",
+      why_nonobvious: "你默认平台差异来自竞争；制度同构预测它们会趋同，把「规则雷同」从巧合变成可解释的因变量。",
+      steelman: "法教义学审稿人会打——「社会学描述性理论进不了规范分析，法律要的是应然不是实然趋同」。",
+      feasibility: null,
+      questions: ["同构若是事实，规范上我们该纠正它还是利用它？"],
+      novelty: "边缘有人做", gold: false, outlier: false, own_hits: 3, en_hits: 210, zh_hits: 34,
+      anchors: [
+        { title: "The Iron Cage Revisited: Institutional Isomorphism", url: "https://doi.org/10.2307/2095101" },
+        { title: "平台治理规则的制度趋同现象研究", url: "https://kns.cnki.net/kcms/sample-2101" },
+      ],
+      source_models: ["openai", "gemini"],
+    },
+    {
+      id: 3, type: "研究方法",
+      name: "裁判文书大样本量化分析",
+      mechanism: "抓取裁判文书网数据监管相关判决，编码争点与裁量结果，用回归揭示裁判的隐性规制偏好。",
+      why_nonobvious: "你打算做规范推演；量化能证伪或证实「法院实际上如何规制」，把应然论证锚到实然分布上。",
+      steelman: "实证法学审稿人会打——「裁判文书网选择性公开 + 撤诉不上网，样本偏差足以颠覆任何回归结论」。",
+      feasibility: "数据来源：中国裁判文书网（2014–2021 公开判决）+ 北大法宝补全；约 3,000 份数据监管相关文书可编码。",
+      questions: [
+        "选择性公开的样本偏差，能否用断点回归或工具变量部分校正？",
+        "量化结论若与教义学结论冲突，谁让步？",
+      ],
+      novelty: "主流", gold: false, outlier: false, own_hits: 0, en_hits: 156, zh_hits: 289,
+      anchors: [
+        { title: "Judicial Behavior in the Age of Big Data", url: "https://doi.org/10.1093/jla/laz009" },
+        { title: "基于裁判文书大数据的司法裁量实证研究", url: "https://kns.cnki.net/kcms/sample-2890" },
+      ],
+      source_models: ["deepseek", "openai", "gemini"],
+    },
+    {
+      id: 4, type: "理论框架",
+      name: "福柯的规训权力与平台生命政治",
+      mechanism: "平台不靠禁止而靠「可见性架构」规训用户行为，数据垄断是全景敞视的当代形态。",
+      why_nonobvious: "反垄断话语聚焦价格与市场份额；规训视角把权力重定位到「行为塑造」，解释了免费服务为何仍是权力关系。",
+      steelman: "分析法学审稿人会打——「福柯太软，无法生成可操作的裁判规则，只能做批判不能做教义」。",
+      feasibility: null,
+      questions: ["规训视角除了批判，能否产出一条可裁判的规则？"],
+      novelty: "交叉空白", gold: false, outlier: true, own_hits: 1, en_hits: 88, zh_hits: 12,
+      anchors: [
+        { title: "Discipline and Punish: The Birth of the Platform", url: "https://doi.org/10.1177/platform.2021.088" },
+      ],
+      source_models: ["gemini"],
+    },
+    {
+      id: 5, type: "学科视角",
+      name: "科斯交易成本视角下的数据确权",
+      mechanism: "数据权属不清的真问题不是归谁，而是交易成本过高导致的配置失灵；确权应最小化谈判成本而非追求道德归属。",
+      why_nonobvious: "你从人格权/财产权二分入手；科斯把问题从「谁应拥有」转成「怎样分配最省成本」，可能消解确权之争本身。",
+      steelman: "权利本位审稿人会打——「把人格数据还原成成本计算，抹掉了尊严维度，法律不能纯效率导向」。",
+      feasibility: null,
+      questions: [
+        "若确权只看效率，人格尊严的底线由谁守？",
+        "交易成本能在数据场景被真实测量吗？",
+      ],
+      novelty: "边缘有人做", gold: false, outlier: false, own_hits: 0, en_hits: 320, zh_hits: 58,
+      anchors: [
+        { title: "The Problem of Social Cost, Revisited for Data", url: "https://doi.org/10.1086/coase.data" },
+        { title: "交易成本理论下的数据要素配置", url: "https://kns.cnki.net/kcms/sample-5801" },
+      ],
+      source_models: ["deepseek", "openai"],
+    },
+    {
+      id: 6, type: "研究方法",
+      name: "平台间数据流动的社会网络分析",
+      mechanism: "把平台、数据、监管者建成网络图，用中心性与结构洞指标定位真正的数据权力节点。",
+      why_nonobvious: "法律看合同双方；网络分析看整个生态的拓扑，可能发现权力集中在合同之外的「结构洞」上。",
+      steelman: "方法论审稿人会打——「网络指标漂亮但缺因果，结构洞 ≠ 法律责任，你怎么从拓扑跳到归责？」。",
+      feasibility: "数据来源：平台隐私政策披露的数据共享清单 + App SDK 调用图谱（可用 AppInspect 类工具抓取）；样本约 200 个 App。",
+      questions: ["拓扑中心性如何转译成法律上的「控制者」认定？"],
+      novelty: "中文面未检", gold: false, outlier: false, own_hits: 0, en_hits: 64, zh_hits: null,
+      anchors: [
+        { title: "Structural Holes and Information Control in Platform Ecosystems", url: "https://doi.org/10.1016/socnet.2020.064" },
+      ],
+      source_models: ["openai", "gemini"],
+    },
+    {
+      id: 7, type: "学科视角",
+      name: "复杂适应系统与监管的涌现失灵",
+      mechanism: "平台生态是复杂适应系统，事前规则在涌现行为前必然滞后；规制应从「设定规则」转向「调节系统参数」。",
+      why_nonobvious: "你假设好规则能预防危害；复杂系统视角指出涌现不可预测，规制目标应是韧性而非预防。",
+      steelman: "法治主义审稿人会打——「『调参数』式规制违反法的明确性与可预期性，等于给监管者空白授权」。",
+      feasibility: null,
+      questions: [
+        "韧性导向的规制如何与法的可预期性调和？",
+        "「调节系统参数」在法律上如何取得授权正当性？",
+      ],
+      novelty: "交叉空白", gold: true, outlier: false, own_hits: 0, en_hits: 73, zh_hits: 3,
+      anchors: [
+        { title: "Governing Complex Adaptive Systems: Resilience over Prevention", url: "https://doi.org/10.1111/cas.2022.073" },
+        { title: "复杂系统治理与监管韧性的法学转向", url: "https://kns.cnki.net/kcms/sample-7303" },
+      ],
+      source_models: ["deepseek", "gemini"],
+    },
+  ];
+
+  /* ====== 小工具 ====== */
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  const CAT = {
+    "学科视角": { cls: "view",   color: "var(--cat-view)"   },
+    "理论框架": { cls: "theory", color: "var(--cat-theory)" },
+    "研究方法": { cls: "method", color: "var(--cat-method)" },
+  };
+  const NOV = {
+    "主流":       { cls: "n-main", label: "主流" },
+    "边缘有人做":  { cls: "n-edge", label: "边缘有人做" },
+    "交叉空白":    { cls: "n-gap",  label: "交叉空白 · 金矿" },
+    "中文面未检":  { cls: "n-cnki", label: "中文面未检" },
+  };
+
+  // 审稿人署名（从 steelman 抽「某类审稿人」）
+  function reviewerName(steelman) {
+    const m = steelman.match(/^(.+?审稿人)/);
+    return m ? m[1] : "匿名审稿人";
+  }
+  // pull-quote 正文（去掉「某类审稿人会打——」前缀，保留核心反驳）
+  function quoteBody(steelman) {
+    return steelman.replace(/^.+?审稿人会打——/, "").replace(/^[「"]/, "").replace(/[」"]。?$/, "");
+  }
+
+  function sealsHTML(c) {
+    let out = "";
+    if (c.gold) out += `<span class="seal gold" title="英热中冷：英文成熟 × 中文法学空白"><span class="mark">金</span>英热中冷</span>`;
+    if (c.outlier) out += `<span class="seal outlier" title="离群：仅一家模型提出"><span class="mark">独</span>独家一说</span>`;
+    if (c.own_hits > 0 && (c.novelty === "交叉空白" || c.novelty === "边缘有人做"))
+      out += `<span class="seal own" title="已藏未用：自有库命中 ${c.own_hits}，交叉/边缘处待掘"><span class="mark">藏</span>已藏 ${c.own_hits}</span>`;
+    return out ? `<span class="seals">${out}</span>` : "";
+  }
+
+  function densityHTML(c) {
+    const goldGap = c.gold ? " gold-gap" : "";
+    if (c.zh_hits === null) {
+      return `<span class="density"><span class="dlabel">中英密度</span>
+        <span class="pair en">英 <span class="num">${c.en_hits}</span></span>
+        <span class="vs">/</span>
+        <span class="cnki-miss">中文面未检 · 需 CNKI 会话</span></span>`;
+    }
+    return `<span class="density${goldGap}"><span class="dlabel">中英密度</span>
+      <span class="pair en">英 <span class="num">${c.en_hits}</span></span>
+      <span class="vs">/</span>
+      <span class="pair zh">中 <span class="num">${c.zh_hits}</span></span></span>`;
+  }
+
+  function anchorsHTML(c) {
+    return `<ul class="anchors">` + c.anchors.map(a =>
+      `<li><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}<span class="a-url">${esc(a.url)}</span></a></li>`
+    ).join("") + `</ul>`;
+  }
+  function questionsHTML(c) {
+    return `<ul class="questions">` + c.questions.map(q => `<li>${esc(q)}</li>`).join("") + `</ul>`;
+  }
+  function modelsHTML(c) {
+    const solo = c.source_models.length === 1;
+    return `<div class="models">` + c.source_models.map(m =>
+      `<span class="model-chip${solo ? " solo" : ""}">${esc(m)}</span>`
+    ).join("") + `</div>`;
+  }
+
+  function feasibilityHTML(c) {
+    if (!c.feasibility) return "";
+    return `<div class="feasibility">
+      <div class="f-label">可行性 · 数据从哪来</div>
+      <p>${esc(c.feasibility)}</p>
+    </div>`;
+  }
+
+  function featureHTML(c, idx) {
+    const isLead = idx === 0;
+    const cat = CAT[c.type];
+    const nov = NOV[c.novelty];
+    const no = String(c.id).padStart(2, "0");
+
+    return `
+    <article class="feature${isLead ? " lead" : ""}" data-id="${c.id}" style="animation-delay:${idx * 90}ms">
+      <div class="kicker">
+        <span class="no">№ ${no}</span>
+        <span class="cat"><span class="swatch" style="background:${cat.color}"></span>${esc(c.type)}</span>
+        <span class="rule" aria-hidden="true"></span>
+        <span class="novelty ${nov.cls}">${esc(nov.label)}</span>
+      </div>
+
+      <h2 class="headline">${esc(c.name)}</h2>
+
+      <p class="standfirst">${esc(c.mechanism)}</p>
+
+      <div class="body-copy${isLead ? " dropcap" : ""}">
+        <span class="nonobvious-tag">相对于你的未知 · 为何非显而易见</span>${esc(c.why_nonobvious)}
+      </div>
+
+      ${feasibilityHTML(c)}
+
+      <figure class="pullquote">
+        <div class="pullquote-label">最强反驳 · 谁会怎么打</div>
+        <q>${esc(quoteBody(c.steelman))}</q>
+        <cite>${esc(reviewerName(c.steelman))}</cite>
+      </figure>
+
+      <div class="apparatus">
+        <div class="app-row">
+          ${densityHTML(c)}
+          ${sealsHTML(c)}
+        </div>
+
+        <details class="app-fold">
+          <summary>文献锚点 · 拷问 · 来源模型</summary>
+          <div class="app-fold-body">
+            <div class="app-block-label">文献锚点</div>
+            ${anchorsHTML(c)}
+            <div class="app-block-label">拷问句 · grill 弹药</div>
+            ${questionsHTML(c)}
+            <div class="app-block-label">来源模型${c.source_models.length === 1 ? " · 仅一家（离群）" : ""}</div>
+            ${modelsHTML(c)}
+          </div>
+        </details>
+
+        <div class="actions" role="group" aria-label="对本篇的反馈">
+          <button class="act-btn known" type="button" data-v="known">已知<span class="sub">已在射程</span></button>
+          <button class="act-btn na" type="button" data-v="na">新但不适用<span class="sub">存而不取</span></button>
+          <button class="act-btn dig" type="button" data-v="dig">新且值得深挖<span class="sub">立此存照</span></button>
+        </div>
+      </div>
+    </article>`;
+  }
+
+  /* ====== render ====== */
+  function render() {
+    // 画像
+    const pb = document.getElementById("profileBody");
+    const pmap = [
+      ["领域", MUSE_PROFILE.field],
+      ["立场", MUSE_PROFILE.stance],
+      ["熟悉", MUSE_PROFILE.familiar],
+      ["困惑", MUSE_PROFILE.puzzle],
+    ];
+    pb.innerHTML = pmap.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
+
+    document.getElementById("metaTopic").textContent = MUSE_TOPIC;
+    document.getElementById("metaCount").textContent = MUSE_CARDS.length;
+    document.getElementById("topicInput").value = MUSE_TOPIC;
+
+    // 特稿：插在 rebuttal-stage 之前
+    const stage = document.getElementById("rebuttalStage");
+    const html = MUSE_CARDS.map((c, i) => featureHTML(c, i)).join("");
+    stage.insertAdjacentHTML("beforebegin", html);
+
+    wireActions();
+    revealFeatures();
+  }
+
+  // 三键反馈选中态
+  function wireActions() {
+    document.querySelectorAll(".actions").forEach(group => {
+      group.querySelectorAll(".act-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const v = btn.dataset.v;
+          const already = btn.classList.contains("chosen");
+          group.querySelectorAll(".act-btn").forEach(b => b.classList.remove("chosen"));
+          if (already) {
+            group.removeAttribute("data-chosen");
+          } else {
+            btn.classList.add("chosen");
+            group.setAttribute("data-chosen", v);
+          }
+        });
+      });
+    });
+  }
+
+  // 错峰浮现
+  function revealFeatures() {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const feats = document.querySelectorAll(".feature");
+    if (reduce) { feats.forEach(f => f.style.opacity = 1); return; }
+    // 逐篇错峰浮现（呼应流式「逐张上墙」）——入场即全部揭示，不依赖滚动
+    feats.forEach((f, i) => setTimeout(() => f.classList.add("in"), 80 + i * 90));
+  }
+
+  /* ====== 明暗切换 ====== */
+  const root = document.documentElement;
+  function applyTheme(t) {
+    root.setAttribute("data-theme", t);
+    const dark = t === "dark";
+    document.getElementById("themeGlyph").textContent = dark ? "☀" : "☾";
+    document.getElementById("themeText").textContent  = dark ? "明版" : "暗版";
+  }
+  (function initTheme() {
+    const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    applyTheme(prefersDark ? "dark" : "light");
+  })();
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+  });
+
+  /* ====== 两幕切换 ====== */
+  const actIdeate = document.getElementById("actIdeate");
+  const stageEl = document.getElementById("rebuttalStage");
+  actIdeate.addEventListener("click", () => {
+    actIdeate.setAttribute("aria-selected", "true");
+    stageEl.classList.remove("show");
+    document.querySelectorAll(".feature").forEach(f => f.style.display = "");
+  });
+  // 对抗幕 disabled，仅占位，不接内容
+
+  /* ====== 扫描按钮（视觉反馈，不接后端） ====== */
+  document.getElementById("scanBtn").addEventListener("click", function () {
+    const b = this; const orig = b.textContent;
+    b.textContent = "合议中…"; b.disabled = true;
+    setTimeout(() => { b.textContent = orig; b.disabled = false; }, 900);
+  });
+
+  render();
+</script>
+</body>
+</html>

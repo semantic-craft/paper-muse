@@ -1,0 +1,1126 @@
+<!-- 发现墙 · 策展式画廊瀑布：把每个发现当有体积的实物一张张钉上明亮的墙 -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>发现墙 · 论文构思者</title>
+<style>
+  :root {
+    /* 明主题（画廊墙） */
+    --wall: #F2F3F1;
+    --card: #FFFFFF;
+    --card-sub: #FAFAF8;
+    --ink: #20242A;
+    --ink-2: #4A5058;
+    --ink-3: #7A828C;
+    --line: #E3E4E1;
+    --line-soft: #ECEDEA;
+
+    /* 三类卡 hue */
+    --t-view: #2E7D74;   /* 学科视角 · 青 */
+    --t-frame: #3E5CA8;  /* 理论框架 · 靛 */
+    --t-method: #C2721A; /* 研究方法 · 琥珀 */
+    --t-view-wash: #E9F2F0;
+    --t-frame-wash: #ECEFF7;
+    --t-method-wash: #F7EFE4;
+
+    /* 语义色（与类型分开） */
+    --sem-gold: #C9A227;    /* 🥇 英热中冷 */
+    --sem-coral: #E0603D;   /* 🔸 离群 */
+    --sem-olive: #5E7D3A;   /* 📚 已藏未用 */
+
+    /* 最强反驳子面板（微暖底） */
+    --steel-bg: #FBF4EC;
+    --steel-line: #E9D9C4;
+    --steel-ink: #7A5A34;
+
+    /* 阴影：柔和体积，非漂浮 */
+    --shadow-rest: 0 1px 2px rgba(30,36,44,.05), 0 6px 16px rgba(30,36,44,.07);
+    --shadow-lift: 0 2px 6px rgba(30,36,44,.08), 0 18px 40px rgba(30,36,44,.13);
+
+    --radius: 5px;
+
+    --font-zh: "PingFang SC","Heiti SC","Hiragino Sans GB",sans-serif;
+    --font-en: -apple-system,"SF Pro Text","Helvetica Neue",sans-serif;
+    --font-mono: "SF Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+  }
+
+  [data-theme="dark"] {
+    --wall: #17191C;
+    --card: #212429;
+    --card-sub: #1B1E22;
+    --ink: #E6E8EA;
+    --ink-2: #B4B9BF;
+    --ink-3: #838A92;
+    --line: #33373D;
+    --line-soft: #2A2E33;
+
+    --t-view: #4FB3A6;
+    --t-frame: #7C97DC;
+    --t-method: #E29A4E;
+    --t-view-wash: #1D2B29;
+    --t-frame-wash: #1F2632;
+    --t-method-wash: #2C2418;
+
+    --sem-gold: #E3C158;
+    --sem-coral: #F0805F;
+    --sem-olive: #91B061;
+
+    --steel-bg: #2A2318;
+    --steel-line: #4A3D28;
+    --steel-ink: #D6B888;
+
+    --shadow-rest: 0 1px 2px rgba(0,0,0,.30), 0 8px 20px rgba(0,0,0,.34);
+    --shadow-lift: 0 3px 8px rgba(0,0,0,.40), 0 22px 46px rgba(0,0,0,.50);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { max-width: 100%; overflow-x: hidden; }
+
+  body {
+    margin: 0;
+    background: var(--wall);
+    color: var(--ink);
+    font-family: var(--font-zh);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.55;
+    transition: background .35s ease, color .35s ease;
+  }
+
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+  a { color: inherit; }
+
+  :focus-visible {
+    outline: 2.5px solid var(--t-frame);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  /* ============ HEADER ============ */
+  header.top {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--wall) 86%, transparent);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    backdrop-filter: saturate(1.4) blur(14px);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .top-inner {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 20px 32px 18px;
+  }
+  .brand-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .brand .mark {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: .5px;
+  }
+  .brand .sub {
+    font-size: 12.5px;
+    color: var(--ink-3);
+    font-family: var(--font-en);
+    letter-spacing: .3px;
+  }
+
+  /* 两幕 segmented control */
+  .acts {
+    display: inline-flex;
+    background: var(--line-soft);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .acts button {
+    font-family: var(--font-zh);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+    background: transparent;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background .2s, color .2s;
+  }
+  .acts button[aria-selected="true"] {
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 0 1px 2px rgba(30,36,44,.10);
+  }
+  .acts button[disabled] {
+    color: var(--ink-3);
+    cursor: not-allowed;
+    opacity: .75;
+  }
+  .acts .soon {
+    font-family: var(--font-en);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 5px;
+    text-transform: uppercase;
+  }
+
+  .top-tools { display: inline-flex; align-items: center; gap: 10px; }
+
+  .theme-btn {
+    font-family: var(--font-en);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-2);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: background .2s, border-color .2s;
+  }
+  .theme-btn:hover { border-color: var(--ink-3); }
+  .theme-btn .ic { font-size: 14px; }
+
+  /* 主题输入：胶囊式，稍大 */
+  .scan-row {
+    margin-top: 18px;
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+  }
+  .scan-field {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--card);
+    border: 1.5px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 6px 4px 20px;
+    box-shadow: var(--shadow-rest);
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .scan-field:focus-within {
+    border-color: var(--t-view);
+    box-shadow: 0 0 0 4px var(--t-view-wash), var(--shadow-rest);
+  }
+  .scan-field label {
+    font-size: 11px;
+    font-family: var(--font-en);
+    letter-spacing: .5px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .scan-field input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--font-zh);
+    font-size: 16px;
+    font-weight: 500;
+    padding: 12px 0;
+    min-width: 0;
+  }
+  .scan-field input:focus { outline: none; }
+  .scan-field input::placeholder { color: var(--ink-3); }
+  .scan-go {
+    font-family: var(--font-zh);
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--ink);
+    border: none;
+    border-radius: 999px;
+    padding: 0 24px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    transition: transform .12s, opacity .2s;
+  }
+  .scan-go:hover { opacity: .9; }
+  .scan-go:active { transform: scale(.97); }
+  [data-theme="dark"] .scan-go { color: var(--wall); background: var(--ink); }
+
+  /* 画像 chip 行（可折叠） */
+  .profile-bar {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .profile-toggle {
+    font-family: var(--font-zh);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 2px;
+  }
+  .profile-toggle .caret { transition: transform .25s; font-size: 10px; color: var(--ink-3); }
+  .profile-toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
+  .profile-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .profile-chips[hidden] { display: none; }
+  .chip {
+    font-size: 12px;
+    color: var(--ink-2);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 12px;
+    white-space: nowrap;
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+  .chip.warn { border-color: color-mix(in srgb, var(--sem-coral) 40%, var(--line)); }
+  .chip.warn b { color: var(--sem-coral); }
+
+  /* ============ 墙体 ============ */
+  main { max-width: 1360px; margin: 0 auto; padding: 26px 32px 80px; }
+
+  .wall-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 22px;
+  }
+  .wall-head h1 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--ink);
+    letter-spacing: .2px;
+  }
+  .wall-head .count {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 12.5px;
+    color: var(--ink-3);
+  }
+  /* 图例 */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+  .legend .lg {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; color: var(--ink-3);
+  }
+  .legend .swatch {
+    width: 10px; height: 10px; border-radius: 2px; display: inline-block;
+  }
+
+  /* Masonry：CSS columns */
+  .masonry {
+    column-gap: 24px;
+    column-count: 3;
+  }
+  @media (max-width: 1100px) { .masonry { column-count: 2; } }
+  @media (max-width: 720px)  { .masonry { column-count: 1; } }
+
+  /* ============ 卡片 ============ */
+  .card {
+    break-inside: avoid;
+    -webkit-column-break-inside: avoid;
+    display: inline-block;
+    width: 100%;
+    margin-bottom: 24px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-rest);
+    overflow: hidden;
+    transition: box-shadow .25s ease, transform .25s ease, border-color .25s;
+    position: relative;
+  }
+  .card:hover {
+    box-shadow: var(--shadow-lift);
+    transform: translateY(-3px);
+  }
+
+  /* 顶边 hue strip（类型编码，非左侧色条） */
+  .card .strip { height: 4px; width: 100%; }
+  .card.t-view  .strip { background: var(--t-view); }
+  .card.t-frame .strip { background: var(--t-frame); }
+  .card.t-method .strip { background: var(--t-method); }
+
+  /* 交叉空白：金调高亮边——最亮的一档 */
+  .card.nov-gap {
+    border-color: color-mix(in srgb, var(--sem-gold) 55%, var(--line));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sem-gold) 30%, transparent), var(--shadow-rest);
+  }
+  .card.nov-gap:hover {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sem-gold) 40%, transparent), var(--shadow-lift);
+  }
+  /* 中文面未检：整卡略含蓄，虚线质感由 zh 面表达 */
+  .card.nov-unchecked { border-style: dashed; }
+
+  .card-body { padding: 16px 18px 6px; }
+
+  .card-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  /* 类型 chip */
+  .type-chip {
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .3px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .type-chip::before {
+    content: "";
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+  .t-view  .type-chip { color: var(--t-view);  background: var(--t-view-wash); }
+  .t-frame .type-chip { color: var(--t-frame); background: var(--t-frame-wash); }
+  .t-method .type-chip { color: var(--t-method); background: var(--t-method-wash); }
+
+  /* 右上角徽标 pill（精修，非生 emoji） */
+  .badges { display: inline-flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  .badge {
+    font-family: var(--font-en);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .2px;
+    padding: 2.5px 8px 2.5px 7px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid transparent;
+    cursor: default;
+  }
+  .badge .glyph { font-weight: 800; font-size: 11px; }
+  .badge.gold {
+    color: var(--sem-gold);
+    background: color-mix(in srgb, var(--sem-gold) 14%, var(--card));
+    border-color: color-mix(in srgb, var(--sem-gold) 40%, transparent);
+  }
+  .badge.outlier {
+    color: var(--sem-coral);
+    background: color-mix(in srgb, var(--sem-coral) 13%, var(--card));
+    border-color: color-mix(in srgb, var(--sem-coral) 38%, transparent);
+  }
+  .badge.own {
+    color: var(--sem-olive);
+    background: color-mix(in srgb, var(--sem-olive) 14%, var(--card));
+    border-color: color-mix(in srgb, var(--sem-olive) 38%, transparent);
+  }
+
+  .card h2.name {
+    font-family: var(--font-zh);
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: .1px;
+    margin: 2px 0 9px;
+    color: var(--ink);
+  }
+
+  .mechanism {
+    font-size: 13.5px;
+    color: var(--ink-2);
+    margin: 0 0 12px;
+    line-height: 1.6;
+  }
+
+  /* 新颖性 pill */
+  .novelty {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 3px 10px 3px 8px;
+    border-radius: 999px;
+    margin-bottom: 12px;
+  }
+  .novelty .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .nov-gap   .novelty { color: #8a6d10; background: color-mix(in srgb, var(--sem-gold) 20%, var(--card)); }
+  .nov-gap   .novelty .dot { background: var(--sem-gold); box-shadow: 0 0 0 3px color-mix(in srgb,var(--sem-gold) 25%, transparent); }
+  .nov-edge  .novelty { color: var(--ink-2); background: var(--line-soft); }
+  .nov-edge  .novelty .dot { background: var(--ink-3); }
+  .nov-main  .novelty { color: var(--ink-3); background: transparent; border: 1px solid var(--line); }
+  .nov-main  .novelty .dot { background: var(--ink-3); opacity: .5; }
+  .nov-unchecked .novelty { color: var(--ink-3); background: transparent; border: 1px dashed var(--ink-3); }
+  .nov-unchecked .novelty .dot { background: transparent; border: 1.5px dashed var(--ink-3); }
+  [data-theme="dark"] .nov-gap .novelty { color: var(--sem-gold); }
+
+  .why {
+    font-size: 13.5px;
+    color: var(--ink);
+    line-height: 1.62;
+    margin: 0 0 14px;
+  }
+  .why .lede {
+    display: block;
+    font-size: 10.5px;
+    font-family: var(--font-en);
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 3px;
+  }
+
+  /* 最强反驳：卡内独立 tinted 子面板（灵魂区块，不折叠） */
+  .steel {
+    background: var(--steel-bg);
+    border: 1px solid var(--steel-line);
+    border-radius: 5px;
+    padding: 11px 13px;
+    margin: 0 0 14px;
+  }
+  .steel .hd {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .3px;
+    color: var(--steel-ink);
+    margin-bottom: 5px;
+  }
+  .steel .hd .icn {
+    font-family: var(--font-en); font-weight: 800; font-size: 11px;
+    width: 16px; height: 16px; border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--steel-ink) 16%, transparent);
+    color: var(--steel-ink);
+  }
+  .steel p { margin: 0; font-size: 12.8px; color: var(--ink); line-height: 1.6; }
+
+  /* 方法卡：可行性块 */
+  .feasibility {
+    background: var(--t-method-wash);
+    border: 1px solid color-mix(in srgb, var(--t-method) 25%, transparent);
+    border-radius: 5px;
+    padding: 10px 12px;
+    margin: 0 0 14px;
+  }
+  .feasibility .hd {
+    font-size: 11px; font-weight: 700; letter-spacing: .4px;
+    color: var(--t-method); text-transform: uppercase;
+    font-family: var(--font-en);
+    margin-bottom: 4px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .feasibility p { margin: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+
+  /* 中英密度对比：紧凑成对小条 */
+  .density {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 0 0 12px;
+  }
+  .dens-cell {
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 8px 10px;
+    background: var(--card-sub);
+  }
+  .dens-cell .k {
+    font-size: 10px; font-family: var(--font-en); letter-spacing: .5px;
+    text-transform: uppercase; color: var(--ink-3); margin-bottom: 2px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .dens-cell .v {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 20px; font-weight: 600; color: var(--ink); line-height: 1;
+  }
+  .dens-cell .u { font-size: 11px; color: var(--ink-3); font-family: var(--font-en); }
+  /* 英热：gold 卡英文面点亮 */
+  .card.is-gold .dens-en { border-color: color-mix(in srgb, var(--sem-gold) 45%, var(--line)); background: color-mix(in srgb, var(--sem-gold) 8%, var(--card)); }
+  .card.is-gold .dens-en .v { color: #9a7a14; }
+  [data-theme="dark"] .card.is-gold .dens-en .v { color: var(--sem-gold); }
+  /* 中冷：gold 卡中文面显冷 */
+  .card.is-gold .dens-zh .v { color: var(--ink-3); }
+  /* zh 未检：灰虚线质感 */
+  .dens-zh.null {
+    border-style: dashed;
+    border-color: var(--ink-3);
+    background: transparent;
+  }
+  .dens-zh.null .v { font-size: 12px; font-weight: 600; color: var(--ink-3); font-family: var(--font-zh); line-height: 1.35; }
+  .dens-zh.null .hint {
+    font-size: 10.5px; color: var(--sem-coral); margin-top: 3px; font-family: var(--font-zh);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .gold-gap-tag {
+    font-family: var(--font-en); font-size: 9px; font-weight: 800; letter-spacing: .3px;
+    color: var(--sem-gold); border: 1px solid color-mix(in srgb,var(--sem-gold) 45%,transparent);
+    border-radius: 3px; padding: 0 4px; text-transform: uppercase;
+  }
+
+  /* 折叠区：锚点 + 拷问 */
+  .disclosure { border-top: 1px solid var(--line-soft); }
+  details.fold { }
+  details.fold > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 10px 18px;
+    font-size: 12px;
+    color: var(--ink-2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary .caret { font-size: 10px; color: var(--ink-3); transition: transform .2s; }
+  details.fold[open] > summary .caret { transform: rotate(90deg); }
+  details.fold > summary .lbl { font-weight: 600; }
+  details.fold > summary .cnt {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 11px; color: var(--ink-3); margin-left: auto;
+  }
+  .fold-body { padding: 2px 18px 14px; }
+
+  .qs { margin: 0 0 12px; padding: 0; list-style: none; }
+  .qs li {
+    font-size: 12.8px;
+    color: var(--ink-2);
+    line-height: 1.55;
+    padding: 6px 0 6px 18px;
+    position: relative;
+    font-style: italic;
+  }
+  .qs li::before {
+    content: "?";
+    position: absolute; left: 0; top: 6px;
+    font-family: var(--font-en); font-style: normal; font-weight: 800;
+    color: var(--t-frame); font-size: 12px;
+  }
+
+  .anchors { margin: 0; padding: 0; list-style: none; }
+  .anchors li {
+    font-size: 12px;
+    padding: 5px 0;
+    border-bottom: 1px dotted var(--line);
+    line-height: 1.45;
+  }
+  .anchors li:last-child { border-bottom: none; }
+  .anchors a { color: var(--t-frame); text-decoration: none; font-weight: 500; }
+  .anchors a:hover { text-decoration: underline; }
+  .anchors .url {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-top: 1px;
+    word-break: break-all;
+  }
+
+  /* 来源模型 + 三键反馈：卡底 footer */
+  .card-foot {
+    border-top: 1px solid var(--line-soft);
+    padding: 10px 18px 12px;
+    background: var(--card-sub);
+  }
+  .models {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .models .m-lbl {
+    font-size: 10px; font-family: var(--font-en); letter-spacing: .5px;
+    text-transform: uppercase; color: var(--ink-3); margin-right: 2px;
+  }
+  .models .m {
+    font-family: var(--font-mono); font-size: 10.5px;
+    color: var(--ink-2); background: var(--card);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 1.5px 7px;
+  }
+  .models .m.solo {
+    color: var(--sem-coral);
+    border-color: color-mix(in srgb, var(--sem-coral) 40%, var(--line));
+  }
+
+  /* 三键反馈 footer */
+  .feedback {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.35fr;
+    gap: 6px;
+  }
+  .feedback button {
+    font-family: var(--font-zh);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-2);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 6px;
+    cursor: pointer;
+    transition: all .18s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    line-height: 1.2;
+  }
+  .feedback button:hover { border-color: var(--ink-3); }
+  .feedback button .fk {
+    font-family: var(--font-en); font-size: 12px;
+  }
+  /* 正向操作：新且值得深挖——视觉最重 */
+  .feedback button.dig {
+    color: var(--t-view);
+    border-color: color-mix(in srgb, var(--t-view) 45%, var(--line));
+    font-weight: 700;
+  }
+  .feedback button.dig .fk { color: var(--t-view); }
+
+  /* 选中态 */
+  .card.rated .feedback button { opacity: .32; }
+  .card.rated .feedback button.chosen {
+    opacity: 1;
+    color: #fff;
+    transform: translateY(-1px);
+  }
+  .card.rated .feedback button.chosen.known {
+    background: var(--ink-3); border-color: var(--ink-3);
+  }
+  .card.rated .feedback button.chosen.na {
+    background: var(--ink-2); border-color: var(--ink-2);
+  }
+  .card.rated .feedback button.chosen.dig {
+    background: var(--t-view); border-color: var(--t-view);
+    box-shadow: 0 3px 12px color-mix(in srgb, var(--t-view) 40%, transparent);
+    transform: translateY(-2px) scale(1.02);
+  }
+  .card.rated .feedback button.chosen .fk { color: #fff; }
+
+  /* ============ 入场 stagger ============ */
+  .card {
+    opacity: 0;
+    transform: translateY(16px);
+    animation: rise .55s cubic-bezier(.22,.61,.36,1) forwards;
+    animation-delay: var(--d, 0ms);
+  }
+  @keyframes rise {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card { animation: none; opacity: 1; transform: none; }
+    .card:hover { transform: none; }
+    * { transition: none !important; }
+  }
+
+  footer.foot {
+    max-width: 1360px; margin: 0 auto; padding: 0 32px 40px;
+    font-size: 11.5px; color: var(--ink-3); font-family: var(--font-en);
+    text-align: center;
+  }
+</style>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand-row">
+      <div class="brand">
+        <span class="mark">论文构思者</span>
+        <span class="sub">Discovery Wall · 盲区扫描</span>
+      </div>
+      <div class="top-tools">
+        <div class="acts" role="tablist" aria-label="扫描幕次">
+          <button role="tab" aria-selected="true" id="act-ideate">构思幕</button>
+          <button role="tab" aria-selected="false" id="act-adversary" disabled aria-disabled="true">
+            对抗幕 <span class="soon">即将上线</span>
+          </button>
+        </div>
+        <button class="theme-btn" id="themeBtn" aria-label="切换明暗主题">
+          <span class="ic" id="themeIc">☾</span><span id="themeTx">暗</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="scan-row">
+      <div class="scan-field">
+        <label for="topic">主题 / 困惑</label>
+        <input id="topic" type="text" autocomplete="off">
+      </div>
+      <button class="scan-go" id="scanGo">↻ 扫描盲区</button>
+    </div>
+
+    <div class="profile-bar">
+      <button class="profile-toggle" id="profileToggle" aria-expanded="true" aria-controls="profileChips">
+        <span class="caret">▶</span> 研究者画像
+      </button>
+      <div class="profile-chips" id="profileChips"></div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wall-head">
+    <div>
+      <h1>发现墙 · 首批卡已上墙</h1>
+      <span class="count mono" id="wallCount"></span>
+    </div>
+    <div class="legend" aria-label="卡片类型图例">
+      <span class="lg"><span class="swatch" style="background:var(--t-view)"></span>学科视角</span>
+      <span class="lg"><span class="swatch" style="background:var(--t-frame)"></span>理论框架</span>
+      <span class="lg"><span class="swatch" style="background:var(--t-method)"></span>研究方法</span>
+      <span class="lg"><span class="swatch" style="background:var(--sem-gold)"></span>交叉空白·金矿</span>
+    </div>
+  </div>
+
+  <div class="masonry" id="wall"></div>
+</main>
+
+<footer class="foot">三家模型合议 · deepseek × gemini × openai · 静态视觉稿（数据写死，不接后端）</footer>
+
+<script>
+  /* ============ 内联规范假数据（抄自 _shared/cards.js） ============ */
+  const MUSE_TOPIC = "平台经济中的数据权力与法律规制";
+
+  const MUSE_PROFILE = {
+    field: "中文法学 · 数据法与反垄断",
+    stance: "权利本位、法教义学训练",
+    familiar: "个人信息保护法、反垄断法、比例原则",
+    puzzle: "想找非显而易见的跨学科切入点，怕落进「数据确权」的红海",
+  };
+
+  const MUSE_CARDS = [
+    {
+      id: 1, type: "学科视角",
+      name: "热力学熵增与信息不对称的负熵逻辑",
+      mechanism: "把平台对用户数据的聚合视为局部负熵积累，用熵增框架解释信息不对称如何自我强化。",
+      why_nonobvious: "你的框架把数据垄断当作市场结构问题；熵视角把它重述为「信息势差的热力学必然」，绕开了反垄断的静态市场界定。",
+      steelman: "物理隐喻派审稿人会打——「熵在社会科学是修辞不是机制」，要求你给出可测量的熵定义，否则视为伪类比。",
+      feasibility: null,
+      questions: [
+        "如果熵只是隐喻，它比「信息不对称」这个现成概念多解释了什么？",
+        "负熵积累能否落到可观测的平台指标（如数据回流速率）？",
+      ],
+      novelty: "交叉空白", gold: true, outlier: false, own_hits: 2, en_hits: 47, zh_hits: 1,
+      anchors: [
+        { title: "Entropy, Information, and the Economics of Scarcity", url: "https://doi.org/10.1103/entropy.2019.0471" },
+        { title: "负熵、信息与市场秩序：一个跨学科综述", url: "https://kns.cnki.net/kcms/sample-4471" },
+      ],
+      source_models: ["deepseek", "gemini", "openai"],
+    },
+    {
+      id: 2, type: "理论框架",
+      name: "组织社会学的制度同构（DiMaggio & Powell）",
+      mechanism: "用强制/模仿/规范三种同构压力，解释为何各大平台的治理规则趋同——趋同本身即规制失灵的信号。",
+      why_nonobvious: "你默认平台差异来自竞争；制度同构预测它们会趋同，把「规则雷同」从巧合变成可解释的因变量。",
+      steelman: "法教义学审稿人会打——「社会学描述性理论进不了规范分析，法律要的是应然不是实然趋同」。",
+      feasibility: null,
+      questions: [ "同构若是事实，规范上我们该纠正它还是利用它？" ],
+      novelty: "边缘有人做", gold: false, outlier: false, own_hits: 3, en_hits: 210, zh_hits: 34,
+      anchors: [
+        { title: "The Iron Cage Revisited: Institutional Isomorphism", url: "https://doi.org/10.2307/2095101" },
+        { title: "平台治理规则的制度趋同现象研究", url: "https://kns.cnki.net/kcms/sample-2101" },
+      ],
+      source_models: ["openai", "gemini"],
+    },
+    {
+      id: 3, type: "研究方法",
+      name: "裁判文书大样本量化分析",
+      mechanism: "抓取裁判文书网数据监管相关判决，编码争点与裁量结果，用回归揭示裁判的隐性规制偏好。",
+      why_nonobvious: "你打算做规范推演；量化能证伪或证实「法院实际上如何规制」，把应然论证锚到实然分布上。",
+      steelman: "实证法学审稿人会打——「裁判文书网选择性公开 + 撤诉不上网，样本偏差足以颠覆任何回归结论」。",
+      feasibility: "数据来源：中国裁判文书网（2014–2021 公开判决）+ 北大法宝补全；约 3,000 份数据监管相关文书可编码。",
+      questions: [
+        "选择性公开的样本偏差，能否用断点回归或工具变量部分校正？",
+        "量化结论若与教义学结论冲突，谁让步？",
+      ],
+      novelty: "主流", gold: false, outlier: false, own_hits: 0, en_hits: 156, zh_hits: 289,
+      anchors: [
+        { title: "Judicial Behavior in the Age of Big Data", url: "https://doi.org/10.1093/jla/laz009" },
+        { title: "基于裁判文书大数据的司法裁量实证研究", url: "https://kns.cnki.net/kcms/sample-2890" },
+      ],
+      source_models: ["deepseek", "openai", "gemini"],
+    },
+    {
+      id: 4, type: "理论框架",
+      name: "福柯的规训权力与平台生命政治",
+      mechanism: "平台不靠禁止而靠「可见性架构」规训用户行为，数据垄断是全景敞视的当代形态。",
+      why_nonobvious: "反垄断话语聚焦价格与市场份额；规训视角把权力重定位到「行为塑造」，解释了免费服务为何仍是权力关系。",
+      steelman: "分析法学审稿人会打——「福柯太软，无法生成可操作的裁判规则，只能做批判不能做教义」。",
+      feasibility: null,
+      questions: [ "规训视角除了批判，能否产出一条可裁判的规则？" ],
+      novelty: "交叉空白", gold: false, outlier: true, own_hits: 1, en_hits: 88, zh_hits: 12,
+      anchors: [
+        { title: "Discipline and Punish: The Birth of the Platform", url: "https://doi.org/10.1177/platform.2021.088" },
+      ],
+      source_models: ["gemini"],
+    },
+    {
+      id: 5, type: "学科视角",
+      name: "科斯交易成本视角下的数据确权",
+      mechanism: "数据权属不清的真问题不是归谁，而是交易成本过高导致的配置失灵；确权应最小化谈判成本而非追求道德归属。",
+      why_nonobvious: "你从人格权/财产权二分入手；科斯把问题从「谁应拥有」转成「怎样分配最省成本」，可能消解确权之争本身。",
+      steelman: "权利本位审稿人会打——「把人格数据还原成成本计算，抹掉了尊严维度，法律不能纯效率导向」。",
+      feasibility: null,
+      questions: [
+        "若确权只看效率，人格尊严的底线由谁守？",
+        "交易成本能在数据场景被真实测量吗？",
+      ],
+      novelty: "边缘有人做", gold: false, outlier: false, own_hits: 0, en_hits: 320, zh_hits: 58,
+      anchors: [
+        { title: "The Problem of Social Cost, Revisited for Data", url: "https://doi.org/10.1086/coase.data" },
+        { title: "交易成本理论下的数据要素配置", url: "https://kns.cnki.net/kcms/sample-5801" },
+      ],
+      source_models: ["deepseek", "openai"],
+    },
+    {
+      id: 6, type: "研究方法",
+      name: "平台间数据流动的社会网络分析",
+      mechanism: "把平台、数据、监管者建成网络图，用中心性与结构洞指标定位真正的数据权力节点。",
+      why_nonobvious: "法律看合同双方；网络分析看整个生态的拓扑，可能发现权力集中在合同之外的「结构洞」上。",
+      steelman: "方法论审稿人会打——「网络指标漂亮但缺因果，结构洞 ≠ 法律责任，你怎么从拓扑跳到归责？」。",
+      feasibility: "数据来源：平台隐私政策披露的数据共享清单 + App SDK 调用图谱（可用 AppInspect 类工具抓取）；样本约 200 个 App。",
+      questions: [ "拓扑中心性如何转译成法律上的「控制者」认定？" ],
+      novelty: "中文面未检", gold: false, outlier: false, own_hits: 0, en_hits: 64, zh_hits: null,
+      anchors: [
+        { title: "Structural Holes and Information Control in Platform Ecosystems", url: "https://doi.org/10.1016/socnet.2020.064" },
+      ],
+      source_models: ["openai", "gemini"],
+    },
+    {
+      id: 7, type: "学科视角",
+      name: "复杂适应系统与监管的涌现失灵",
+      mechanism: "平台生态是复杂适应系统，事前规则在涌现行为前必然滞后；规制应从「设定规则」转向「调节系统参数」。",
+      why_nonobvious: "你假设好规则能预防危害；复杂系统视角指出涌现不可预测，规制目标应是韧性而非预防。",
+      steelman: "法治主义审稿人会打——「『调参数』式规制违反法的明确性与可预期性，等于给监管者空白授权」。",
+      feasibility: null,
+      questions: [
+        "韧性导向的规制如何与法的可预期性调和？",
+        "「调节系统参数」在法律上如何取得授权正当性？",
+      ],
+      novelty: "交叉空白", gold: true, outlier: false, own_hits: 0, en_hits: 73, zh_hits: 3,
+      anchors: [
+        { title: "Governing Complex Adaptive Systems: Resilience over Prevention", url: "https://doi.org/10.1111/cas.2022.073" },
+        { title: "复杂系统治理与监管韧性的法学转向", url: "https://kns.cnki.net/kcms/sample-7303" },
+      ],
+      source_models: ["deepseek", "gemini"],
+    },
+  ];
+
+  /* ============ 映射表 ============ */
+  const TYPE_CLASS = { "学科视角": "t-view", "理论框架": "t-frame", "研究方法": "t-method" };
+  const NOV_CLASS = { "交叉空白": "nov-gap", "边缘有人做": "nov-edge", "主流": "nov-main", "中文面未检": "nov-unchecked" };
+  const OWN_TYPES = new Set(["交叉空白", "边缘有人做"]);
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+  /* ============ 渲染画像 ============ */
+  function renderProfile() {
+    const p = MUSE_PROFILE;
+    const chips = [
+      `<span class="chip"><b>领域</b> ${esc(p.field)}</span>`,
+      `<span class="chip"><b>立场</b> ${esc(p.stance)}</span>`,
+      `<span class="chip"><b>已熟悉</b> ${esc(p.familiar)}</span>`,
+      `<span class="chip warn"><b>困惑</b> ${esc(p.puzzle)}</span>`,
+    ];
+    document.getElementById("profileChips").innerHTML = chips.join("");
+  }
+
+  /* ============ 单卡模板 ============ */
+  function cardHTML(c, idx) {
+    const tcls = TYPE_CLASS[c.type];
+    const ncls = NOV_CLASS[c.novelty];
+    const showOwn = c.own_hits > 0 && OWN_TYPES.has(c.novelty);
+
+    // 徽标 pill
+    let badges = "";
+    if (c.gold) badges += `<span class="badge gold" title="🥇 英热中冷：英文成熟 × 中文法学空白"><span class="glyph">◆</span>英热中冷</span>`;
+    if (c.outlier) badges += `<span class="badge outlier" title="🔸 离群：仅一家模型提出"><span class="glyph">◇</span>离群</span>`;
+    if (showOwn) badges += `<span class="badge own" title="📚 已藏未用：自有库命中 ${c.own_hits}"><span class="glyph">▣</span>藏 ${c.own_hits}</span>`;
+
+    // 可行性（方法卡专属）
+    const feas = c.feasibility
+      ? `<div class="feasibility">
+           <div class="hd">▤ 可行性 · 数据从哪来</div>
+           <p>${esc(c.feasibility)}</p>
+         </div>`
+      : "";
+
+    // 中英密度对比
+    const enGold = c.gold;
+    const zhNull = c.zh_hits === null;
+    const density = `
+      <div class="density">
+        <div class="dens-cell dens-en">
+          <div class="k"><span>英文面</span>${enGold ? '<span class="gold-gap-tag">热</span>' : ''}</div>
+          <div class="v">${c.en_hits}<span class="u"> hits</span></div>
+        </div>
+        <div class="dens-cell dens-zh ${zhNull ? "null" : ""}">
+          <div class="k"><span>中文学界面</span>${enGold && !zhNull ? '<span class="gold-gap-tag">冷</span>' : ''}</div>
+          ${zhNull
+            ? `<div class="v">中文面未检</div><div class="hint">◈ 需 CNKI 会话</div>`
+            : `<div class="v">${c.zh_hits}<span class="u"> hits</span></div>`}
+        </div>
+      </div>`;
+
+    // 拷问句
+    const qs = c.questions.map((q) => `<li>${esc(q)}</li>`).join("");
+
+    // 锚点
+    const anchors = c.anchors.map((a) =>
+      `<li><a href="${esc(a.url)}" onclick="return false;">${esc(a.title)}</a><span class="url">${esc(a.url)}</span></li>`
+    ).join("");
+
+    // 来源模型
+    const solo = c.source_models.length === 1;
+    const models = c.source_models.map((m) =>
+      `<span class="m ${solo ? "solo" : ""}">${esc(m)}</span>`
+    ).join("");
+
+    return `
+    <article class="card ${tcls} ${ncls} ${c.gold ? "is-gold" : ""}" style="--d:${idx * 90}ms" data-id="${c.id}" tabindex="-1">
+      <div class="strip" aria-hidden="true"></div>
+      <div class="card-body">
+        <div class="card-topline">
+          <span class="type-chip">${esc(c.type)}</span>
+          <span class="badges">${badges}</span>
+        </div>
+        <h2 class="name">${esc(c.name)}</h2>
+        <p class="mechanism">${esc(c.mechanism)}</p>
+        <span class="novelty"><span class="dot" aria-hidden="true"></span>${esc(c.novelty)}</span>
+        <p class="why"><span class="lede">相对于你的未知</span>${esc(c.why_nonobvious)}</p>
+
+        <div class="steel">
+          <div class="hd"><span class="icn">⚔</span>最强反驳</div>
+          <p>${esc(c.steelman)}</p>
+        </div>
+
+        ${feas}
+        ${density}
+      </div>
+
+      <div class="disclosure">
+        <details class="fold">
+          <summary>
+            <span class="caret">▶</span><span class="lbl">拷问句</span>
+            <span class="cnt">${c.questions.length} 问</span>
+          </summary>
+          <div class="fold-body">
+            <ul class="qs">${qs}</ul>
+          </div>
+        </details>
+        <details class="fold" style="border-top:1px solid var(--line-soft)">
+          <summary>
+            <span class="caret">▶</span><span class="lbl">文献锚点</span>
+            <span class="cnt">${c.anchors.length} 篇</span>
+          </summary>
+          <div class="fold-body">
+            <ul class="anchors">${anchors}</ul>
+          </div>
+        </details>
+      </div>
+
+      <div class="card-foot">
+        <div class="models">
+          <span class="m-lbl">来源</span>${models}
+        </div>
+        <div class="feedback" role="group" aria-label="对这张卡的反馈">
+          <button class="known" data-v="known"><span class="fk">✓</span> 已知</button>
+          <button class="na" data-v="na"><span class="fk">≈</span> 新但不适用</button>
+          <button class="dig" data-v="dig"><span class="fk">★</span> 新且值得深挖</button>
+        </div>
+      </div>
+    </article>`;
+  }
+
+  /* ============ 挂载 ============ */
+  function renderWall() {
+    document.getElementById("wall").innerHTML = MUSE_CARDS.map((c, i) => cardHTML(c, i)).join("");
+    document.getElementById("wallCount").textContent =
+      `${MUSE_CARDS.length} 张 · 3 类 · ${MUSE_CARDS.filter(c => c.novelty === "交叉空白").length} 处交叉空白`;
+  }
+
+  /* ============ 三键反馈交互 ============ */
+  function wireFeedback() {
+    document.getElementById("wall").addEventListener("click", (e) => {
+      const btn = e.target.closest(".feedback button");
+      if (!btn) return;
+      const card = btn.closest(".card");
+      const already = card.classList.contains("rated") && btn.classList.contains("chosen");
+      // 清旧态
+      card.querySelectorAll(".feedback button").forEach((b) => b.classList.remove("chosen"));
+      if (already) {
+        card.classList.remove("rated"); // 再点一次取消
+      } else {
+        card.classList.add("rated");
+        btn.classList.add("chosen");
+      }
+    });
+  }
+
+  /* ============ 画像折叠 ============ */
+  function wireProfile() {
+    const t = document.getElementById("profileToggle");
+    const box = document.getElementById("profileChips");
+    t.addEventListener("click", () => {
+      const open = t.getAttribute("aria-expanded") === "true";
+      t.setAttribute("aria-expanded", String(!open));
+      box.hidden = open;
+    });
+  }
+
+  /* ============ 明暗切换 ============ */
+  function wireTheme() {
+    const btn = document.getElementById("themeBtn");
+    const ic = document.getElementById("themeIc");
+    const tx = document.getElementById("themeTx");
+    btn.addEventListener("click", () => {
+      const dark = document.documentElement.getAttribute("data-theme") === "dark";
+      if (dark) {
+        document.documentElement.removeAttribute("data-theme");
+        ic.textContent = "☾"; tx.textContent = "暗";
+      } else {
+        document.documentElement.setAttribute("data-theme", "dark");
+        ic.textContent = "☀"; tx.textContent = "明";
+      }
+    });
+  }
+
+  /* ============ init ============ */
+  document.getElementById("topic").value = MUSE_TOPIC;
+  renderProfile();
+  renderWall();
+  wireFeedback();
+  wireProfile();
+  wireTheme();
+</script>

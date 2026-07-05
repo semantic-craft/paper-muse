@@ -1,0 +1,1056 @@
+<!-- 合议台 · 发现的任务控制中心 -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>合议台 · muse</title>
+<style>
+  /* ============ 色板 token（暗=主） ============ */
+  :root {
+    --bg:        #12151A;   /* 蓝偏石墨底，非纯黑 */
+    --panel:     #1A1E25;   /* 面板 */
+    --row:       #171B21;   /* 行 */
+    --row-hi:    #1C212A;   /* 行悬停 */
+    --hair:      #262B33;   /* 发丝线 */
+    --fg:        #D5DAE0;   /* 文字 */
+    --dim:       #8A929C;   /* 暗字 */
+    --dimmer:    #5A626C;   /* 更暗 */
+
+    --accent:    #4C9DD6;   /* 克制青蓝 = en_hits */
+    --amber:     #D68C3A;   /* 暖琥珀 = zh_hits */
+    --gold:      #E0B341;   /* 交叉空白 / 🥇金 */
+    --rose:      #D95B6A;   /* 🔸离群 = 警示玫瑰 */
+    --teal:      #5FB08A;   /* 📚已藏 / own_hits = 青绿 */
+    --warn:      #C77B4A;   /* 最强反驳警示 */
+
+    --mono: "SF Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+    --sans: -apple-system,"SF Pro Text","Helvetica Neue","PingFang SC","Heiti SC",sans-serif;
+
+    /* 类型色码 */
+    --t-view:  #7FB2D9;  /* 学科视角 */
+    --t-theory:#B79BD6;  /* 理论框架 */
+    --t-method:#6FC0A0;  /* 研究方法 */
+
+    --radius: 3px;
+    --stagger: 60ms;
+  }
+  /* ============ 明主题 ============ */
+  html[data-theme="light"] {
+    --bg:        #F4F6F8;
+    --panel:     #FFFFFF;
+    --row:       #FFFFFF;
+    --row-hi:    #EEF2F6;
+    --hair:      #D9DFE6;
+    --fg:        #232A31;
+    --dim:       #636B75;
+    --dimmer:    #97A0AA;
+
+    --accent:    #2E7CB8;
+    --amber:     #C0762A;
+    --gold:      #B98A15;
+    --rose:      #C3384A;
+    --teal:      #3C8A66;
+    --warn:      #B15E2C;
+
+    --t-view:  #2E7CB8;
+    --t-theory:#7A54B0;
+    --t-method:#2E8A64;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+    overflow-x: hidden;
+  }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* 焦点可见态 */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 0 20px 64px; }
+
+  /* ============ 顶部命令条 ============ */
+  .cmdbar {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .cmdbar-inner {
+    max-width: 1360px; margin: 0 auto; padding: 12px 20px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .brand {
+    display: flex; align-items: baseline; gap: 8px;
+    font-family: var(--mono); font-size: 13px; letter-spacing: .04em;
+    color: var(--dim); white-space: nowrap; user-select: none;
+  }
+  .brand b { color: var(--fg); font-weight: 600; letter-spacing: .12em; }
+  .brand .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--teal); box-shadow: 0 0 8px var(--teal);
+    align-self: center; animation: pulse 2.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:.55} 50%{opacity:1} }
+
+  /* 主题输入 = query 字段 */
+  .query {
+    flex: 1 1 340px; min-width: 240px;
+    display: flex; align-items: stretch;
+    border: 1px solid var(--hair); border-radius: var(--radius);
+    background: var(--panel); overflow: hidden;
+  }
+  .query .prompt {
+    display: flex; align-items: center; padding: 0 10px;
+    font-family: var(--mono); font-size: 13px; color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+    border-right: 1px solid var(--hair); user-select: none;
+  }
+  .query input {
+    flex: 1; border: 0; background: transparent; color: var(--fg);
+    font-family: var(--mono); font-size: 13px; padding: 9px 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .query input::placeholder { color: var(--dimmer); }
+  .query .run {
+    border: 0; border-left: 1px solid var(--hair);
+    background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+    color: var(--accent); font-family: var(--mono); font-size: 12px;
+    letter-spacing: .06em; padding: 0 14px; cursor: pointer; white-space: nowrap;
+  }
+  .query .run:hover { background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+
+  /* 两幕切换 = console tab */
+  .acts {
+    display: flex; border: 1px solid var(--hair); border-radius: var(--radius);
+    overflow: hidden; background: var(--panel); font-family: var(--mono);
+    font-size: 12px; letter-spacing: .04em;
+  }
+  .acts button {
+    border: 0; background: transparent; color: var(--dim);
+    padding: 8px 14px; cursor: pointer; white-space: nowrap;
+    border-right: 1px solid var(--hair); position: relative;
+  }
+  .acts button:last-child { border-right: 0; }
+  .acts button[aria-selected="true"] {
+    background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+    color: var(--fg);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .acts button[disabled] { color: var(--dimmer); cursor: not-allowed; }
+  .acts button[disabled] .soon {
+    display: inline-block; margin-left: 6px; font-size: 10px;
+    color: var(--dimmer); border: 1px solid var(--hair);
+    border-radius: 2px; padding: 0 4px; letter-spacing: 0;
+  }
+
+  /* 明暗切换 */
+  .themebtn {
+    border: 1px solid var(--hair); background: var(--panel); color: var(--fg);
+    width: 36px; height: 36px; border-radius: var(--radius); cursor: pointer;
+    font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  }
+  .themebtn:hover { border-color: var(--accent); }
+
+  /* ============ 研究者画像（可折叠） ============ */
+  .profile { margin-top: 14px; }
+  .profile > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 12px; color: var(--dim);
+    padding: 4px 0;
+  }
+  .profile > summary::-webkit-details-marker { display: none; }
+  .profile > summary .chev { transition: transform .15s ease; color: var(--dimmer); }
+  .profile[open] > summary .chev { transform: rotate(90deg); }
+  .profile .pbody {
+    margin-top: 8px; border: 1px solid var(--hair); border-radius: var(--radius);
+    background: var(--panel); padding: 12px 14px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 22px;
+  }
+  .profile .pcell .k {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+    color: var(--dimmer); text-transform: uppercase; margin-bottom: 3px;
+  }
+  .profile .pcell .v { font-size: 13px; color: var(--fg); }
+  .profile .pcell.warn .v { color: var(--warn); }
+
+  /* ============ SIGNAL STRIP ============ */
+  .strip {
+    margin-top: 16px;
+    border: 1px solid var(--hair); border-radius: var(--radius);
+    background: linear-gradient(180deg, var(--panel), color-mix(in srgb, var(--panel) 88%, var(--bg)));
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px; background-color: var(--hair);
+    overflow: hidden;
+  }
+  .tile {
+    background: var(--panel); padding: 11px 14px;
+    display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  }
+  .tile .lab {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .07em;
+    color: var(--dimmer); text-transform: uppercase; white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .tile .big {
+    font-family: var(--mono); font-size: 26px; line-height: 1; font-weight: 600;
+    color: var(--fg); letter-spacing: -.01em;
+  }
+  .tile .big.sm { font-size: 20px; }
+  .tile .sub { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
+  /* 配额进度条组 */
+  .quota { display: flex; flex-direction: column; gap: 5px; }
+  .qrow { display: flex; align-items: center; gap: 8px; }
+  .qrow .qn {
+    font-family: var(--mono); font-size: 10px; color: var(--dim);
+    width: 58px; white-space: nowrap;
+  }
+  .qbar { flex: 1; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--fg) 8%, var(--panel)); overflow: hidden; }
+  .qbar > i { display: block; height: 100%; border-radius: 3px; }
+  .qrow .qv { font-family: var(--mono); font-size: 10px; color: var(--dim); width: 30px; text-align: right; }
+
+  /* 顶部计数强调色 */
+  .tile.gold  .big { color: var(--gold); }
+  .tile.rose  .big { color: var(--rose); }
+  .tile.blank .big { color: var(--gold); }
+
+  /* 新颖性分布堆叠条 */
+  .noveltybar-tile { grid-column: 1 / -1; }
+  html[data-theme="light"] .noveltybar-tile { background: var(--panel); }
+  .noveltybar-wrap { display: flex; flex-direction: column; gap: 8px; }
+  .noveltybar {
+    display: flex; height: 16px; border-radius: 3px; overflow: hidden;
+    border: 1px solid var(--hair);
+  }
+  .noveltybar > span {
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 10px; color: #12151A;
+    min-width: 0; overflow: hidden; white-space: nowrap;
+  }
+  html[data-theme="light"] .noveltybar > span { color: #fff; }
+  html[data-theme="light"] .noveltybar > span.nb-blank { color:#3a2c00; }
+  .nb-main   { background: color-mix(in srgb, var(--dim) 55%, var(--panel)); color: var(--fg)!important; }
+  .nb-edge   { background: color-mix(in srgb, var(--accent) 55%, var(--panel)); }
+  .nb-blank  { background: var(--gold); }
+  .nb-uncn   { background: repeating-linear-gradient(45deg, var(--amber), var(--amber) 4px, color-mix(in srgb,var(--amber) 40%, var(--panel)) 4px, color-mix(in srgb,var(--amber) 40%, var(--panel)) 8px); }
+  .novelty-legend {
+    display: flex; flex-wrap: wrap; gap: 4px 16px;
+    font-family: var(--mono); font-size: 10px; color: var(--dim);
+  }
+  .novelty-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .novelty-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+  /* ============ 卡表头 ============ */
+  .tablehead {
+    margin-top: 22px; display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; padding: 0 2px 8px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .tablehead h2 {
+    margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: .1em;
+    color: var(--dim); text-transform: uppercase; font-weight: 600;
+  }
+  .tablehead .colhint {
+    font-family: var(--mono); font-size: 10px; color: var(--dimmer);
+    display: flex; gap: 18px; letter-spacing: .04em;
+  }
+
+  /* ============ 密排卡行 ============ */
+  .rows { display: flex; flex-direction: column; }
+  .cardrow {
+    border-bottom: 1px solid var(--hair);
+    background: var(--row);
+    display: grid;
+    grid-template-columns: 260px minmax(0,1fr) 300px;
+    gap: 0;
+    position: relative;
+    transition: background .12s ease;
+  }
+  .cardrow:hover { background: var(--row-hi); }
+  /* 类型色码：左边极细的 inset 标记（非左侧粗色条俗套，只 3px inset 线） */
+  .cardrow::before {
+    content:""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+    background: var(--rowtype, var(--hair)); opacity: .8;
+  }
+
+  /* 入场错峰 */
+  .cardrow.enter { opacity: 0; transform: translateY(8px); }
+  .cardrow.enter.in {
+    opacity: 1; transform: none;
+    transition: opacity .5s ease, transform .5s cubic-bezier(.2,.7,.2,1);
+  }
+
+  /* --- 左列：类型 + 卡名 --- */
+  .c-left { padding: 14px 16px 14px 18px; min-width: 0; }
+  .typetag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .06em;
+    color: var(--rowtype); text-transform: uppercase;
+    border: 1px solid color-mix(in srgb, var(--rowtype) 40%, transparent);
+    background: color-mix(in srgb, var(--rowtype) 12%, transparent);
+    border-radius: 2px; padding: 2px 6px; margin-bottom: 8px; white-space: nowrap;
+  }
+  .typetag::before {
+    content:""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--rowtype);
+  }
+  .cardname {
+    font-size: 15.5px; font-weight: 600; line-height: 1.32; color: var(--fg);
+    letter-spacing: .005em;
+  }
+  .cardidx {
+    font-family: var(--mono); font-size: 10px; color: var(--dimmer);
+    margin-bottom: 4px; display: block;
+  }
+  .modelchips { margin-top: 9px; display: flex; gap: 4px; flex-wrap: wrap; }
+  .mchip {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em;
+    color: var(--dim); border: 1px solid var(--hair); border-radius: 2px;
+    padding: 1px 5px; background: color-mix(in srgb, var(--fg) 4%, transparent);
+    text-transform: uppercase;
+  }
+  .mchip.single { color: var(--rose); border-color: color-mix(in srgb, var(--rose) 45%, transparent); }
+
+  /* --- 中列：机制 / why / steelman / 展开 --- */
+  .c-mid {
+    padding: 14px 18px; min-width: 0;
+    border-left: 1px solid var(--hair); border-right: 1px solid var(--hair);
+  }
+  .mech {
+    font-size: 12.5px; color: var(--dim); line-height: 1.5; margin: 0 0 8px;
+  }
+  .why {
+    font-size: 13.5px; color: var(--fg); line-height: 1.55; margin: 0 0 10px;
+  }
+  .why .tag {
+    font-family: var(--mono); font-size: 10px; color: var(--accent);
+    letter-spacing: .05em; margin-right: 6px;
+  }
+
+  /* 最强反驳：始终可见警示行 */
+  .steel {
+    display: flex; gap: 9px; align-items: flex-start;
+    border: 1px solid color-mix(in srgb, var(--warn) 42%, transparent);
+    background: color-mix(in srgb, var(--warn) 9%, transparent);
+    border-left: 3px solid var(--warn);
+    border-radius: var(--radius);
+    padding: 8px 11px; margin: 0 0 4px;
+  }
+  .steel .mark {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    color: var(--warn); letter-spacing: .04em; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 5px; padding-top: 1px;
+  }
+  .steel .mark::before {
+    content:"⚠"; font-size: 12px;
+  }
+  .steel .txt { font-size: 12.5px; color: var(--fg); line-height: 1.5; }
+
+  /* 展开区（方法可行性 / 拷问句 / 锚点） */
+  details.more { margin-top: 10px; }
+  details.more > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    font-family: var(--mono); font-size: 11px; color: var(--dim);
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 0;
+  }
+  details.more > summary::-webkit-details-marker { display:none; }
+  details.more > summary .chev { color: var(--dimmer); transition: transform .15s ease; }
+  details.more[open] > summary .chev { transform: rotate(90deg); }
+  .morebody { margin-top: 9px; display: flex; flex-direction: column; gap: 11px; }
+  .block .blab {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .07em;
+    color: var(--dimmer); text-transform: uppercase; margin-bottom: 4px;
+  }
+  .feas {
+    border: 1px dashed color-mix(in srgb, var(--teal) 42%, transparent);
+    background: color-mix(in srgb, var(--teal) 8%, transparent);
+    border-radius: var(--radius); padding: 8px 10px;
+  }
+  .feas .blab { color: var(--teal); }
+  .feas .txt { font-size: 12.5px; color: var(--fg); }
+  .qlist { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .qlist li {
+    font-size: 12.5px; color: var(--fg); line-height: 1.45;
+    padding-left: 16px; position: relative;
+  }
+  .qlist li::before {
+    content:"?"; position: absolute; left: 0; top: 0;
+    font-family: var(--mono); font-weight: 700; color: var(--accent);
+  }
+  .anchors { display: flex; flex-direction: column; gap: 5px; }
+  .anchor {
+    display: flex; gap: 8px; align-items: baseline;
+    font-size: 12px; overflow-x: auto;
+  }
+  .anchor .doi {
+    font-family: var(--mono); font-size: 10px; color: var(--dimmer);
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .anchor a { line-height: 1.4; }
+
+  /* --- 右列：指标簇 --- */
+  .c-right {
+    padding: 14px 16px; min-width: 0;
+    display: flex; flex-direction: column; gap: 11px;
+  }
+
+  /* 徽标角标（克制印记，非生 emoji） */
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; min-height: 20px; }
+  .badge {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .03em;
+    display: inline-flex; align-items: center; gap: 5px;
+    border-radius: 2px; padding: 2px 7px; white-space: nowrap;
+    border: 1px solid transparent;
+  }
+  .badge .g { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .badge.gold {
+    color: var(--gold); border-color: color-mix(in srgb, var(--gold) 50%, transparent);
+    background: color-mix(in srgb, var(--gold) 12%, transparent);
+  }
+  .badge.gold .g { background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+  .badge.rose {
+    color: var(--rose); border-color: color-mix(in srgb, var(--rose) 50%, transparent);
+    background: color-mix(in srgb, var(--rose) 12%, transparent);
+  }
+  .badge.rose .g { background: var(--rose); }
+  .badge.teal {
+    color: var(--teal); border-color: color-mix(in srgb, var(--teal) 50%, transparent);
+    background: color-mix(in srgb, var(--teal) 12%, transparent);
+  }
+  .badge.teal .g { background: var(--teal); }
+
+  /* 新颖性 chip */
+  .novchip {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em;
+    display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+    border-radius: 2px; padding: 3px 8px; border: 1px solid var(--hair);
+  }
+  .novchip .g { width: 8px; height: 8px; border-radius: 2px; }
+  .novchip.n-main  { color: var(--dim); }
+  .novchip.n-main .g  { background: color-mix(in srgb, var(--dim) 55%, var(--panel)); }
+  .novchip.n-edge  { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .novchip.n-edge .g  { background: var(--accent); }
+  .novchip.n-blank {
+    color: var(--gold); border-color: var(--gold);
+    background: color-mix(in srgb, var(--gold) 14%, transparent);
+    font-weight: 600;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 22%, transparent);
+  }
+  .novchip.n-blank .g { background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+  .novchip.n-uncn  { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, transparent); }
+  .novchip.n-uncn .g  { background: repeating-linear-gradient(45deg,var(--amber),var(--amber) 2px,transparent 2px,transparent 4px); }
+
+  /* 中英分叉对峙条 —— 以基线为中心 */
+  .diverge { }
+  .dv-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .04em; margin-bottom: 5px;
+  }
+  .dv-head .zh { color: var(--amber); }
+  .dv-head .en { color: var(--accent); }
+  .dv-head .mid { color: var(--dimmer); }
+  .dv-track {
+    display: grid; grid-template-columns: 1fr 1px 1fr; align-items: center;
+    height: 22px; position: relative;
+  }
+  .dv-baseline { width: 1px; height: 100%; background: var(--dimmer); }
+  .dv-side { height: 12px; display: flex; align-items: center; position: relative; }
+  .dv-side.left  { justify-content: flex-end; }
+  .dv-side.right { justify-content: flex-start; }
+  .dv-fill { height: 100%; border-radius: 2px; min-width: 2px; }
+  .dv-fill.zh { background: var(--amber); }
+  .dv-fill.en { background: var(--accent); }
+  .dv-num {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    position: absolute; top: 50%; transform: translateY(-50%);
+  }
+  .dv-side.left  .dv-num { left: 4px;  color: #12151A; }
+  .dv-side.right .dv-num { right: 4px; color: #12151A; }
+  html[data-theme="light"] .dv-side .dv-num { color:#fff; }
+  /* 数字放不下时移到条外侧 */
+  .dv-num.out { color: var(--dim)!important; }
+  .dv-side.left  .dv-num.out { left: auto; right: calc(100% + 4px); }
+  .dv-side.right .dv-num.out { right: auto; left: calc(100% + 4px); }
+
+  /* 英热中冷金标：金描边尖叫 */
+  .diverge.goldcry .dv-fill.en {
+    box-shadow: 0 0 0 1.5px var(--gold), 0 0 10px color-mix(in srgb,var(--gold) 60%, transparent);
+  }
+  .diverge.goldcry .dv-head .en::after {
+    content:" ▲英热中冷"; color: var(--gold); font-size: 9px; letter-spacing: 0;
+  }
+
+  /* 未检斜纹条 */
+  .dv-fill.uncn {
+    background: repeating-linear-gradient(45deg, color-mix(in srgb,var(--amber) 60%,transparent), color-mix(in srgb,var(--amber) 60%,transparent) 4px, transparent 4px, transparent 8px);
+    border: 1px dashed color-mix(in srgb,var(--amber) 55%, transparent);
+    width: 100%;
+  }
+  .dv-uncn-note {
+    font-family: var(--mono); font-size: 9.5px; color: var(--amber);
+    margin-top: 4px; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .dv-uncn-note::before { content:"⟳"; }
+
+  /* own_hits gauge */
+  .gauge { display: flex; align-items: center; gap: 9px; }
+  .gauge .glab {
+    font-family: var(--mono); font-size: 10px; color: var(--dimmer);
+    letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+  }
+  .gauge-track {
+    flex: 1; height: 5px; border-radius: 3px;
+    background: color-mix(in srgb, var(--fg) 8%, var(--panel)); overflow: hidden;
+  }
+  .gauge-track > i { display: block; height: 100%; background: var(--teal); border-radius: 3px; }
+  .gauge .gval { font-family: var(--mono); font-size: 11px; color: var(--teal); font-weight: 600; }
+  .gauge.zero .gval { color: var(--dimmer); }
+  .gauge.zero .gauge-track > i { background: var(--dimmer); }
+
+  /* 三键反馈 */
+  .feedback {
+    display: flex; gap: 5px; margin-top: 2px;
+    border-top: 1px solid var(--hair); padding-top: 10px;
+  }
+  .fbtn {
+    flex: 1; border: 1px solid var(--hair); background: transparent;
+    color: var(--dim); font-family: var(--mono); font-size: 10px; letter-spacing: .01em;
+    padding: 6px 4px; border-radius: 2px; cursor: pointer; white-space: nowrap;
+    transition: all .13s ease; line-height: 1.2;
+  }
+  .fbtn:hover { border-color: var(--dim); color: var(--fg); }
+  /* 正向操作视觉最重 */
+  .fbtn.dig {
+    border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+    color: var(--gold);
+  }
+  .fbtn.dig:hover { background: color-mix(in srgb, var(--gold) 12%, transparent); }
+  /* 选中态：其余淡出 */
+  .feedback[data-picked] .fbtn:not(.on) { opacity: .32; }
+  .fbtn.on.known  { background: color-mix(in srgb,var(--dim) 22%, transparent); color: var(--fg); border-color: var(--dim); }
+  .fbtn.on.na     { background: color-mix(in srgb,var(--rose) 18%, transparent); color: var(--rose); border-color: var(--rose); }
+  .fbtn.on.dig {
+    background: var(--gold); color: #12151A; border-color: var(--gold); opacity: 1;
+    font-weight: 700; box-shadow: 0 0 10px color-mix(in srgb,var(--gold) 45%, transparent);
+    transform: translateY(-1px);
+  }
+  .fbtn.on::before { content:"✓ "; }
+  .fbtn.on.na::before { content:"× "; }
+
+  /* ============ 对抗幕占位 ============ */
+  .grill-placeholder {
+    display: none;
+    margin-top: 40px; padding: 60px 20px; text-align: center;
+    border: 1px dashed var(--hair); border-radius: var(--radius);
+    background: repeating-linear-gradient(45deg, transparent, transparent 12px, color-mix(in srgb,var(--fg) 2%,transparent) 12px, color-mix(in srgb,var(--fg) 2%,transparent) 24px);
+  }
+  body[data-act="grill"] .grill-placeholder { display: block; }
+  body[data-act="grill"] .ideation { display: none; }
+  .grill-placeholder .gp-title {
+    font-family: var(--mono); font-size: 15px; color: var(--dim); letter-spacing: .08em;
+    margin-bottom: 10px;
+  }
+  .grill-placeholder .gp-sub { font-size: 13px; color: var(--dimmer); }
+  .grill-placeholder .gp-soon {
+    display: inline-block; margin-top: 16px; font-family: var(--mono); font-size: 11px;
+    color: var(--warn); border: 1px solid color-mix(in srgb,var(--warn) 40%,transparent);
+    border-radius: 2px; padding: 3px 10px; letter-spacing: .06em;
+  }
+
+  /* 响应式 */
+  @media (max-width: 1080px) {
+    .cardrow { grid-template-columns: 220px 1fr; }
+    .c-right { grid-column: 1 / -1; border-top: 1px solid var(--hair);
+               flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+    .c-right > * { flex: 1 1 240px; }
+    .c-mid { border-right: 0; }
+  }
+  @media (max-width: 720px) {
+    .cardrow { grid-template-columns: 1fr; }
+    .c-mid { border-left: 0; }
+    .c-left { border-bottom: 1px solid var(--hair); }
+    .tablehead .colhint { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cardrow.enter, .cardrow.enter.in { opacity: 1 !important; transform: none !important; transition: none !important; }
+    .brand .dot { animation: none; }
+    * { scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body data-act="ideation">
+
+  <!-- ============ 命令条 ============ -->
+  <header class="cmdbar">
+    <div class="cmdbar-inner">
+      <div class="brand"><span class="dot"></span> <b>MUSE</b> <span>合议台</span></div>
+
+      <div class="query" role="search">
+        <span class="prompt">muse&nbsp;❯</span>
+        <input id="q" type="text" aria-label="研究主题或困惑" spellcheck="false" />
+        <button class="run" id="runbtn" type="button">SCAN ↵</button>
+      </div>
+
+      <div class="acts" role="tablist" aria-label="幕切换">
+        <button role="tab" aria-selected="true" id="tab-ideation" data-act="ideation">构思幕</button>
+        <button role="tab" aria-selected="false" id="tab-grill" data-act="grill" disabled>
+          对抗幕<span class="soon">即将上线</span>
+        </button>
+      </div>
+
+      <button class="themebtn" id="themebtn" type="button" aria-label="切换明暗主题" title="切换明暗">☾</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+
+    <!-- 研究者画像 -->
+    <details class="profile">
+      <summary><span class="chev">▸</span> 研究者画像 <span class="mono" style="color:var(--dimmer)">// 影响卡片相对性判定</span></summary>
+      <div class="pbody" id="profile-body"><!-- render --></div>
+    </details>
+
+    <!-- ============ SIGNAL STRIP ============ -->
+    <section class="strip ideation" aria-label="信号概览">
+      <div class="tile">
+        <div class="lab">卡片总数</div>
+        <div class="big" id="s-total">—</div>
+        <div class="sub" id="s-total-sub">本批已上墙</div>
+      </div>
+
+      <div class="tile" style="grid-column: span 2;">
+        <div class="lab">三类配额</div>
+        <div class="quota" id="s-quota"><!-- render --></div>
+      </div>
+
+      <div class="tile blank">
+        <div class="lab">交叉空白 · 金矿</div>
+        <div class="big" id="s-blank">—</div>
+        <div class="sub">novelty = 交叉空白</div>
+      </div>
+
+      <div class="tile gold">
+        <div class="lab"><span class="mono">🥇</span> 英热中冷</div>
+        <div class="big sm" id="s-gold">—</div>
+        <div class="sub">gold = true</div>
+      </div>
+
+      <div class="tile rose">
+        <div class="lab"><span class="mono">🔸</span> 离群单家</div>
+        <div class="big sm" id="s-outlier">—</div>
+        <div class="sub">仅一家模型</div>
+      </div>
+
+      <div class="tile">
+        <div class="lab">三家合议率</div>
+        <div class="big sm" id="s-consensus">—</div>
+        <div class="sub" id="s-consensus-sub">deepseek·gemini·openai</div>
+      </div>
+
+      <div class="tile noveltybar-tile">
+        <div class="lab" style="margin-bottom:8px">新颖性分布</div>
+        <div class="noveltybar-wrap">
+          <div class="noveltybar" id="s-noveltybar"><!-- render --></div>
+          <div class="novelty-legend">
+            <span><i class="nb-main"></i>主流</span>
+            <span><i class="nb-edge"></i>边缘有人做</span>
+            <span><i class="nb-blank"></i>交叉空白</span>
+            <span><i class="nb-uncn"></i>中文面未检</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 卡表 ============ -->
+    <div class="ideation">
+      <div class="tablehead">
+        <h2>盲区卡 · 密排</h2>
+        <div class="colhint">
+          <span>视角 / 名称</span>
+          <span>机制 · 相对性 · 最强反驳</span>
+          <span>指标簇 · 反馈</span>
+        </div>
+      </div>
+      <div class="rows" id="rows"><!-- render --></div>
+    </div>
+
+    <!-- 对抗幕占位 -->
+    <section class="grill-placeholder" aria-label="对抗幕">
+      <div class="gp-title">⟨ 对抗幕 · GRILL ⟩</div>
+      <div class="gp-sub">选定卡片后，三家模型将轮流拷问你的论证 —— 本轮留位</div>
+      <div class="gp-soon">即将上线</div>
+    </section>
+
+  </div>
+
+<script>
+/* ============ 内联规范假数据（抄自 _shared/cards.js，禁改） ============ */
+const MUSE_TOPIC = "平台经济中的数据权力与法律规制";
+const MUSE_PROFILE = {
+  field: "中文法学 · 数据法与反垄断",
+  stance: "权利本位、法教义学训练",
+  familiar: "个人信息保护法、反垄断法、比例原则",
+  puzzle: "想找非显而易见的跨学科切入点，怕落进「数据确权」的红海",
+};
+const MUSE_CARDS = [
+  { id:1, type:"学科视角", name:"热力学熵增与信息不对称的负熵逻辑",
+    mechanism:"把平台对用户数据的聚合视为局部负熵积累，用熵增框架解释信息不对称如何自我强化。",
+    why_nonobvious:"你的框架把数据垄断当作市场结构问题；熵视角把它重述为「信息势差的热力学必然」，绕开了反垄断的静态市场界定。",
+    steelman:"物理隐喻派审稿人会打——「熵在社会科学是修辞不是机制」，要求你给出可测量的熵定义，否则视为伪类比。",
+    feasibility:null,
+    questions:["如果熵只是隐喻，它比「信息不对称」这个现成概念多解释了什么？","负熵积累能否落到可观测的平台指标（如数据回流速率）？"],
+    novelty:"交叉空白", gold:true, outlier:false, own_hits:2, en_hits:47, zh_hits:1,
+    anchors:[{title:"Entropy, Information, and the Economics of Scarcity", url:"https://doi.org/10.1103/entropy.2019.0471"},{title:"负熵、信息与市场秩序：一个跨学科综述", url:"https://kns.cnki.net/kcms/sample-4471"}],
+    source_models:["deepseek","gemini","openai"] },
+  { id:2, type:"理论框架", name:"组织社会学的制度同构（DiMaggio & Powell）",
+    mechanism:"用强制/模仿/规范三种同构压力，解释为何各大平台的治理规则趋同——趋同本身即规制失灵的信号。",
+    why_nonobvious:"你默认平台差异来自竞争；制度同构预测它们会趋同，把「规则雷同」从巧合变成可解释的因变量。",
+    steelman:"法教义学审稿人会打——「社会学描述性理论进不了规范分析，法律要的是应然不是实然趋同」。",
+    feasibility:null,
+    questions:["同构若是事实，规范上我们该纠正它还是利用它？"],
+    novelty:"边缘有人做", gold:false, outlier:false, own_hits:3, en_hits:210, zh_hits:34,
+    anchors:[{title:"The Iron Cage Revisited: Institutional Isomorphism", url:"https://doi.org/10.2307/2095101"},{title:"平台治理规则的制度趋同现象研究", url:"https://kns.cnki.net/kcms/sample-2101"}],
+    source_models:["openai","gemini"] },
+  { id:3, type:"研究方法", name:"裁判文书大样本量化分析",
+    mechanism:"抓取裁判文书网数据监管相关判决，编码争点与裁量结果，用回归揭示裁判的隐性规制偏好。",
+    why_nonobvious:"你打算做规范推演；量化能证伪或证实「法院实际上如何规制」，把应然论证锚到实然分布上。",
+    steelman:"实证法学审稿人会打——「裁判文书网选择性公开 + 撤诉不上网，样本偏差足以颠覆任何回归结论」。",
+    feasibility:"数据来源：中国裁判文书网（2014–2021 公开判决）+ 北大法宝补全；约 3,000 份数据监管相关文书可编码。",
+    questions:["选择性公开的样本偏差，能否用断点回归或工具变量部分校正？","量化结论若与教义学结论冲突，谁让步？"],
+    novelty:"主流", gold:false, outlier:false, own_hits:0, en_hits:156, zh_hits:289,
+    anchors:[{title:"Judicial Behavior in the Age of Big Data", url:"https://doi.org/10.1093/jla/laz009"},{title:"基于裁判文书大数据的司法裁量实证研究", url:"https://kns.cnki.net/kcms/sample-2890"}],
+    source_models:["deepseek","openai","gemini"] },
+  { id:4, type:"理论框架", name:"福柯的规训权力与平台生命政治",
+    mechanism:"平台不靠禁止而靠「可见性架构」规训用户行为，数据垄断是全景敞视的当代形态。",
+    why_nonobvious:"反垄断话语聚焦价格与市场份额；规训视角把权力重定位到「行为塑造」，解释了免费服务为何仍是权力关系。",
+    steelman:"分析法学审稿人会打——「福柯太软，无法生成可操作的裁判规则，只能做批判不能做教义」。",
+    feasibility:null,
+    questions:["规训视角除了批判，能否产出一条可裁判的规则？"],
+    novelty:"交叉空白", gold:false, outlier:true, own_hits:1, en_hits:88, zh_hits:12,
+    anchors:[{title:"Discipline and Punish: The Birth of the Platform", url:"https://doi.org/10.1177/platform.2021.088"}],
+    source_models:["gemini"] },
+  { id:5, type:"学科视角", name:"科斯交易成本视角下的数据确权",
+    mechanism:"数据权属不清的真问题不是归谁，而是交易成本过高导致的配置失灵；确权应最小化谈判成本而非追求道德归属。",
+    why_nonobvious:"你从人格权/财产权二分入手；科斯把问题从「谁应拥有」转成「怎样分配最省成本」，可能消解确权之争本身。",
+    steelman:"权利本位审稿人会打——「把人格数据还原成成本计算，抹掉了尊严维度，法律不能纯效率导向」。",
+    feasibility:null,
+    questions:["若确权只看效率，人格尊严的底线由谁守？","交易成本能在数据场景被真实测量吗？"],
+    novelty:"边缘有人做", gold:false, outlier:false, own_hits:0, en_hits:320, zh_hits:58,
+    anchors:[{title:"The Problem of Social Cost, Revisited for Data", url:"https://doi.org/10.1086/coase.data"},{title:"交易成本理论下的数据要素配置", url:"https://kns.cnki.net/kcms/sample-5801"}],
+    source_models:["deepseek","openai"] },
+  { id:6, type:"研究方法", name:"平台间数据流动的社会网络分析",
+    mechanism:"把平台、数据、监管者建成网络图，用中心性与结构洞指标定位真正的数据权力节点。",
+    why_nonobvious:"法律看合同双方；网络分析看整个生态的拓扑，可能发现权力集中在合同之外的「结构洞」上。",
+    steelman:"方法论审稿人会打——「网络指标漂亮但缺因果，结构洞 ≠ 法律责任，你怎么从拓扑跳到归责？」。",
+    feasibility:"数据来源：平台隐私政策披露的数据共享清单 + App SDK 调用图谱（可用 AppInspect 类工具抓取）；样本约 200 个 App。",
+    questions:["拓扑中心性如何转译成法律上的「控制者」认定？"],
+    novelty:"中文面未检", gold:false, outlier:false, own_hits:0, en_hits:64, zh_hits:null,
+    anchors:[{title:"Structural Holes and Information Control in Platform Ecosystems", url:"https://doi.org/10.1016/socnet.2020.064"}],
+    source_models:["openai","gemini"] },
+  { id:7, type:"学科视角", name:"复杂适应系统与监管的涌现失灵",
+    mechanism:"平台生态是复杂适应系统，事前规则在涌现行为前必然滞后；规制应从「设定规则」转向「调节系统参数」。",
+    why_nonobvious:"你假设好规则能预防危害；复杂系统视角指出涌现不可预测，规制目标应是韧性而非预防。",
+    steelman:"法治主义审稿人会打——「『调参数』式规制违反法的明确性与可预期性，等于给监管者空白授权」。",
+    feasibility:null,
+    questions:["韧性导向的规制如何与法的可预期性调和？","「调节系统参数」在法律上如何取得授权正当性？"],
+    novelty:"交叉空白", gold:true, outlier:false, own_hits:0, en_hits:73, zh_hits:3,
+    anchors:[{title:"Governing Complex Adaptive Systems: Resilience over Prevention", url:"https://doi.org/10.1111/cas.2022.073"},{title:"复杂系统治理与监管韧性的法学转向", url:"https://kns.cnki.net/kcms/sample-7303"}],
+    source_models:["deepseek","gemini"] },
+];
+
+/* ============ 工具 ============ */
+const $  = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* 类型 → css 变量 / 短码 */
+const TYPE_META = {
+  "学科视角": { v:"var(--t-view)",   code:"VIEW"   },
+  "理论框架": { v:"var(--t-theory)", code:"THEORY" },
+  "研究方法": { v:"var(--t-method)", code:"METHOD" },
+};
+const NOV_META = {
+  "主流":       { cls:"n-main"  },
+  "边缘有人做": { cls:"n-edge"  },
+  "交叉空白":   { cls:"n-blank" },
+  "中文面未检": { cls:"n-uncn"  },
+};
+
+/* doi/url 显示短标签（只显示，不加载） */
+function urlLabel(u){
+  try {
+    if (u.includes("doi.org")) return "DOI " + u.split("doi.org/")[1];
+    if (u.includes("cnki"))    return "CNKI " + (u.split("/").pop()||"");
+    return u.replace(/^https?:\/\//,"");
+  } catch(e){ return u; }
+}
+
+/* ============ 预填 topic ============ */
+$("#q").value = MUSE_TOPIC;
+
+/* ============ 画像 ============ */
+(function renderProfile(){
+  const cells = [
+    ["领域",   MUSE_PROFILE.field,    ""],
+    ["立场",   MUSE_PROFILE.stance,   ""],
+    ["熟悉",   MUSE_PROFILE.familiar, ""],
+    ["困惑",   MUSE_PROFILE.puzzle,   "warn"],
+  ];
+  $("#profile-body").innerHTML = cells.map(([k,v,cls])=>
+    `<div class="pcell ${cls}"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`
+  ).join("");
+})();
+
+/* ============ SIGNAL STRIP 计算 ============ */
+(function renderStrip(){
+  const total = MUSE_CARDS.length;
+  $("#s-total").textContent = String(total).padStart(2,"0");
+
+  // 三类配额（假定各类目标 3）
+  const TARGET = 3;
+  const byType = {"学科视角":0,"理论框架":0,"研究方法":0};
+  MUSE_CARDS.forEach(c => byType[c.type]++);
+  $("#s-quota").innerHTML = Object.entries(byType).map(([t,n])=>{
+    const meta = TYPE_META[t];
+    const pct = Math.min(100, Math.round(n/TARGET*100));
+    return `<div class="qrow">
+      <span class="qn" style="color:${meta.v}">${esc(meta.code)}</span>
+      <span class="qbar"><i style="width:${pct}%;background:${meta.v}"></i></span>
+      <span class="qv">${n}/${TARGET}</span>
+    </div>`;
+  }).join("");
+
+  const blank    = MUSE_CARDS.filter(c=>c.novelty==="交叉空白").length;
+  const golds    = MUSE_CARDS.filter(c=>c.gold).length;
+  const outliers = MUSE_CARDS.filter(c=>c.outlier).length;
+  const tri      = MUSE_CARDS.filter(c=>c.source_models.length>=3).length;
+
+  $("#s-blank").textContent    = String(blank).padStart(2,"0");
+  $("#s-gold").textContent     = "×"+golds;
+  $("#s-outlier").textContent  = "×"+outliers;
+  $("#s-consensus").textContent= Math.round(tri/total*100)+"%";
+  $("#s-consensus-sub").textContent = tri+"/"+total+" 张三家合议";
+
+  // 新颖性堆叠条
+  const order = ["主流","边缘有人做","交叉空白","中文面未检"];
+  const clsMap = {"主流":"nb-main","边缘有人做":"nb-edge","交叉空白":"nb-blank","中文面未检":"nb-uncn"};
+  const counts = {}; order.forEach(o=>counts[o]=0);
+  MUSE_CARDS.forEach(c=>counts[c.novelty]++);
+  $("#s-noveltybar").innerHTML = order.map(o=>{
+    const n = counts[o]; if(!n) return "";
+    const w = (n/total*100).toFixed(1);
+    return `<span class="${clsMap[o]}" style="flex:0 0 ${w}%" title="${esc(o)} · ${n}">${n}</span>`;
+  }).join("");
+})();
+
+/* ============ 分叉对峙条渲染 ============ */
+function renderDiverge(card){
+  const en = card.en_hits, zh = card.zh_hits;
+  const uncn = (zh === null);
+  // 对数刻度让大差别不至于溢出（en 可达 320）
+  const scale = v => v<=0 ? 0 : Math.min(100, Math.log10(v+1)/Math.log10(360)*100);
+  const enW = scale(en);
+  const goldcry = card.gold ? "goldcry" : "";
+
+  let zhSide;
+  if (uncn){
+    zhSide = `<div class="dv-side left">
+        <span class="dv-fill uncn" title="中文面未检"></span>
+      </div>`;
+  } else {
+    const zhW = scale(zh);
+    const zhOut = zhW < 22 ? "out" : "";
+    zhSide = `<div class="dv-side left">
+        <span class="dv-fill zh" style="width:${zhW}%"></span>
+        <span class="dv-num ${zhOut}">${zh}</span>
+      </div>`;
+  }
+  const enOut = enW < 22 ? "out" : "";
+
+  return `
+   <div class="diverge ${goldcry}">
+     <div class="dv-head">
+       <span class="zh">中 · zh_hits</span>
+       <span class="mid">▏0▕</span>
+       <span class="en">en_hits · 英</span>
+     </div>
+     <div class="dv-track">
+       ${zhSide}
+       <div class="dv-baseline"></div>
+       <div class="dv-side right">
+         <span class="dv-fill en" style="width:${enW}%"></span>
+         <span class="dv-num ${enOut}">${en}</span>
+       </div>
+     </div>
+     ${uncn ? `<div class="dv-uncn-note">未检 · 需 CNKI 会话</div>` : ""}
+   </div>`;
+}
+
+/* ============ 徽标 ============ */
+function renderBadges(card){
+  const b = [];
+  if (card.gold)
+    b.push(`<span class="badge gold" title="英热中冷：英文成熟 × 中文空白"><span class="g"></span>英热中冷</span>`);
+  if (card.outlier)
+    b.push(`<span class="badge rose" title="离群：仅一家模型提出"><span class="g"></span>离群·单家</span>`);
+  if (card.own_hits>0 && (card.novelty==="交叉空白"||card.novelty==="边缘有人做"))
+    b.push(`<span class="badge teal" title="自有库已藏未用 ${card.own_hits} 条"><span class="g"></span>已藏 ${card.own_hits}</span>`);
+  return b.length ? b.join("") : `<span class="mono" style="font-size:10px;color:var(--dimmer)">— 无角标</span>`;
+}
+
+/* ============ 单卡行 ============ */
+function renderCard(card){
+  const tm = TYPE_META[card.type];
+  const nm = NOV_META[card.novelty];
+  const single = card.source_models.length === 1;
+
+  const models = card.source_models.map(m =>
+    `<span class="mchip ${single?'single':''}">${esc(m)}</span>`).join("");
+
+  const questions = card.questions.map(q=>`<li>${esc(q)}</li>`).join("");
+  const anchors = card.anchors.map(a=>
+    `<div class="anchor"><span class="doi">${esc(urlLabel(a.url))}</span><a href="${esc(a.url)}" onclick="return false" title="示例锚点（mock 不加载）">${esc(a.title)}</a></div>`
+  ).join("");
+
+  const feasBlock = card.feasibility
+    ? `<div class="block feas"><div class="blab">可行性 · 数据来源</div><div class="txt">${esc(card.feasibility)}</div></div>`
+    : "";
+
+  // own_hits gauge（相对 max own_hits=3 刻度）
+  const gW = Math.min(100, card.own_hits/3*100);
+  const gaugeZero = card.own_hits===0 ? "zero" : "";
+
+  return `
+  <article class="cardrow enter" style="--rowtype:${tm.v}">
+    <div class="c-left">
+      <span class="cardidx mono">CARD-${String(card.id).padStart(2,"0")}</span>
+      <span class="typetag">${esc(card.type)}</span>
+      <div class="cardname">${esc(card.name)}</div>
+      <div class="modelchips" aria-label="来源模型">${models}</div>
+    </div>
+
+    <div class="c-mid">
+      <p class="mech">${esc(card.mechanism)}</p>
+      <p class="why"><span class="tag mono">相对你的未知 ▷</span>${esc(card.why_nonobvious)}</p>
+
+      <div class="steel">
+        <span class="mark">最强反驳</span>
+        <span class="txt">${esc(card.steelman)}</span>
+      </div>
+
+      <details class="more">
+        <summary><span class="chev">▸</span> 展开 · 拷问句 / 锚点${card.feasibility?" / 可行性":""}</summary>
+        <div class="morebody">
+          ${feasBlock}
+          <div class="block">
+            <div class="blab">拷问句 · grill 弹药</div>
+            <ul class="qlist">${questions}</ul>
+          </div>
+          <div class="block">
+            <div class="blab">文献锚点</div>
+            <div class="anchors">${anchors}</div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="c-right">
+      <div class="badges">${renderBadges(card)}</div>
+
+      <span class="novchip ${nm.cls}"><span class="g"></span>${esc(card.novelty)}</span>
+
+      ${renderDiverge(card)}
+
+      <div class="gauge ${gaugeZero}" title="自有库命中 own_hits">
+        <span class="glab">自有库</span>
+        <span class="gauge-track"><i style="width:${gW}%"></i></span>
+        <span class="gval">${card.own_hits}</span>
+      </div>
+
+      <div class="feedback" role="group" aria-label="卡片反馈">
+        <button class="fbtn known" type="button" data-fb="known">已知</button>
+        <button class="fbtn na"    type="button" data-fb="na">新但不适用</button>
+        <button class="fbtn dig"   type="button" data-fb="dig">新且值得深挖</button>
+      </div>
+    </div>
+  </article>`;
+}
+
+/* ============ 出卡 ============ */
+$("#rows").innerHTML = MUSE_CARDS.map(renderCard).join("");
+
+/* ============ 三键反馈交互 ============ */
+$("#rows").addEventListener("click", e=>{
+  const btn = e.target.closest(".fbtn");
+  if(!btn) return;
+  const group = btn.closest(".feedback");
+  const already = btn.classList.contains("on");
+  $$(".fbtn", group).forEach(b=>b.classList.remove("on"));
+  if(already){
+    group.removeAttribute("data-picked");
+  } else {
+    btn.classList.add("on");
+    group.setAttribute("data-picked", btn.dataset.fb);
+  }
+});
+
+/* ============ 错峰入场 ============ */
+(function stagger(){
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const rows = $$(".cardrow.enter");
+  if(reduce){ rows.forEach(r=>r.classList.add("in")); return; }
+  rows.forEach((r,i)=> setTimeout(()=> r.classList.add("in"), 120 + i*90));
+})();
+
+/* ============ 幕切换 ============ */
+$$(".acts button[role=tab]").forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    if(tab.disabled) return;
+    $$(".acts button[role=tab]").forEach(t=>t.setAttribute("aria-selected", t===tab));
+    document.body.dataset.act = tab.dataset.act;
+  });
+});
+
+/* ============ 明暗切换 ============ */
+(function theme(){
+  const btn = $("#themebtn");
+  const root = document.documentElement;
+  function set(mode){
+    root.setAttribute("data-theme", mode);
+    btn.textContent = mode==="dark" ? "☾" : "☀";
+    btn.setAttribute("aria-label", mode==="dark" ? "切换到明主题" : "切换到暗主题");
+  }
+  set("dark"); // 主基调=暗
+  btn.addEventListener("click", ()=> set(root.getAttribute("data-theme")==="dark" ? "light" : "dark"));
+})();
+
+/* SCAN 按钮（mock：仅重放错峰动画） */
+$("#runbtn").addEventListener("click", ()=>{
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(reduce) return;
+  const rows = $$(".cardrow");
+  rows.forEach((r,i)=>{ r.classList.remove("in"); setTimeout(()=>r.classList.add("in"), 60+i*70); });
+});
+$("#q").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); $("#runbtn").click(); }});
+</script>
+</body>
+</html>
