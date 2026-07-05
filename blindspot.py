@@ -233,3 +233,116 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
 
     _write_outputs(output_dir, topic, profile, all_cards)
     return all_cards
+
+
+# ---- 真实接线（引擎之外的薄层）----
+
+def _litellm_call(model, api_key=None, api_base=None):
+    import litellm
+
+    def call(prompt):
+        kw = {}
+        if api_key:
+            kw["api_key"] = api_key
+        if api_base:
+            kw["api_base"] = api_base
+        resp = litellm.completion(
+            model=model, messages=[{"role": "user", "content": prompt}],
+            temperature=0.9, timeout=60, **kw)
+        return resp.choices[0].message.content
+
+    return call
+
+
+def real_providers():
+    """有 key 的都上（spec：可用几家发几家）。模型名与 README 顶部一致。"""
+    out = {}
+    if os.getenv("DEEPSEEK_API_KEY"):
+        out["deepseek"] = _litellm_call(
+            "deepseek/deepseek-v4-flash",
+            api_key=os.getenv("DEEPSEEK_API_KEY"),
+            api_base=os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com"))
+    if os.getenv("OPENAI_API_KEY"):
+        out["openai"] = _litellm_call("openai/chat-latest", api_key=os.getenv("OPENAI_API_KEY"))
+    if os.getenv("GOOGLE_API_KEY"):
+        out["gemini"] = _litellm_call("gemini/gemini-3.1-flash-lite", api_key=os.getenv("GOOGLE_API_KEY"))
+    return out
+
+
+def real_en_search(k: int = 5):
+    from knowledge_storm.rm import PerplexitySearchRM
+
+    rm = PerplexitySearchRM(k=k)
+
+    def search(query):
+        return rm.forward(query)
+
+    return search
+
+
+def real_cnki_search(limit: int = 5):
+    """中文学界面（新颖性判据）：opencli cnki search，CSSCI 过滤。
+    需 Chrome 会话（`opencli browser open <url>` 一次）；无会话/风控抛错 → 上层降级「中文面未检」。
+    实测：无会话时 `-f json` 仍输出 YAML 风格错误文本（`ok: false` 块），非合法 JSON——
+    json.loads 会直接抛 JSONDecodeError，被这里的调用方（_novelty_for）当普通异常吞掉，
+    无需额外分支识别该文本形态。"""
+
+    def search(query):
+        r = subprocess.run(
+            ["opencli", "cnki", "search", query, "--source_category", "CSSCI",
+             "--limit", str(limit), "-f", "json"],
+            capture_output=True, text=True, timeout=90)
+        data = json.loads(r.stdout)
+        if isinstance(data, dict) and not data.get("ok", True):
+            raise RuntimeError(data.get("error", {}).get("message", "cnki search failed"))
+        rows = data.get("data") if isinstance(data, dict) else data
+        return rows or []
+
+    return search
+
+
+def real_own_search(limit: int = 8):
+    """自有语料面（unknown-knowns 信号）：zsearch 本地 Zotero 语义检索。
+    实测：无 `zsearch "<query>"` 顶层用法；真实子命令是 `zsearch query <text> -k N --json`，
+    输出干净 JSON 数组（元素含 title/url 等字段），故直接 json.loads 取 title/url，
+    不走 spec 基准里假设的「行文本、每行一条」解析。"""
+
+    def search(query):
+        r = subprocess.run(
+            ["zsearch", "query", query, "-k", str(limit), "--json"],
+            capture_output=True, text=True, timeout=30)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr[:200])
+        rows = json.loads(r.stdout)
+        return [{"title": row.get("title", ""), "url": row.get("url", "")} for row in rows[:limit]]
+
+    return search
+
+
+if __name__ == "__main__":
+    import argparse
+    import time
+
+    from knowledge_storm.utils import load_api_key
+
+    load_api_key(toml_file_path=str(Path(__file__).parent / "secrets.toml"))
+    ap = argparse.ArgumentParser()
+    ap.add_argument("topic")
+    ap.add_argument("--profile", default="")
+    ap.add_argument("--output-dir", default=None)
+    a = ap.parse_args()
+    out = a.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or f"./results/muse/{a.topic[:20]}"
+    t0 = time.time()
+    provs = real_providers()
+    print(f"providers: {list(provs)}")
+
+    def show(c):
+        print(f"[{time.time()-t0:6.1f}s] {c['type']}｜{c['name']}｜{c.get('novelty')}"
+              f"{'｜🥇' if c.get('gold') else ''}{'｜🔸离群' if c.get('outlier') else ''}"
+              f"｜own={c.get('own_hits')}")
+
+    cards = run_scan(a.topic, a.profile, out, provs,
+                     decompose_llm=next(iter(provs.values())),
+                     en_search=real_en_search(), zh_search=real_cnki_search(),
+                     own_search=real_own_search(), on_card=show)
+    print(f"共 {len(cards)} 张卡，产物在 {out}/docs/agents/muse/")
