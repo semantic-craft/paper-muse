@@ -331,6 +331,11 @@ git commit -m "feat: 加 JinaFullTextRM 全文增强装饰器（r.jina.ai）"
 
 ---
 
+> **评审修订（2026-07-05，Task 1-2 质量评审后并入 Task 3 执行）：**
+> 1. `JinaFullTextRM.max_tokens` 默认 4000 → **1200**（抓取预算应对齐保留预算 `SNIPPET_CHUNK×MAX_CHUNKS=3000` 字符，默认 4000 token≈16k 字符属静默浪费）；
+> 2. 测试文件中部的 `from knowledge_storm.rm import JinaFullTextRM` 提升到文件顶部 import 区；
+> 3. 增补离线降级测试：monkeypatch `knowledge_storm.rm.requests.get` 抛 ConnectionError，断言 JinaFullTextRM 包着 stub base 时 snippets 原样保留、`usage["JinaFullTextRM"]==0`——锁死「只增强、永不劣化」保证。
+
 ### Task 3: MixedRM（多源并联）
 
 **Files:**
