@@ -194,7 +194,8 @@ class WarmStartConversation(dspy.Module):
 
         # hierarchical chat: chat with one expert. Generate question, get answer
         def process_expert(expert):
-            expert_name, expert_descriptoin = expert.split(":")
+            # 同 engine._parse_expert_names_to_agent：兼容全角冒号/缺冒号的中文专家描述
+            expert_name, _, expert_descriptoin = expert.replace("：", ":").partition(":")
             for idx in range(self.max_turn_per_experts):
                 with self.logging_wrapper.log_event(
                     f"warm start, perspective guided QA: expert {expert_name}; turn {idx + 1}"
