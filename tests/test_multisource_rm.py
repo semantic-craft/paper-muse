@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from knowledge_storm.rm import JinaFullTextRM, PerplexitySearchRM
+from knowledge_storm.rm import JinaFullTextRM, MixedRM, PerplexitySearchRM
 
 needs_pplx = pytest.mark.skipif(
     not os.environ.get("PERPLEXITY_API_KEY"), reason="需要 PERPLEXITY_API_KEY"
@@ -73,3 +73,29 @@ def test_jina_fulltext_preserves_snippets_on_fetch_failure(monkeypatch):
     assert results[0]["snippets"] == ["原始摘要"]
     usage = rm.get_usage_and_reset()
     assert usage["JinaFullTextRM"] == 0
+
+
+class _StubRM:
+    def __init__(self, name, urls):
+        self.k = len(urls)
+        self._name = name
+        self._urls = urls
+
+    def get_usage_and_reset(self):
+        return {self._name: 1}
+
+    def forward(self, query_or_queries, exclude_urls=[]):
+        return [
+            {"description": u, "snippets": [u], "title": u, "url": u}
+            for u in self._urls
+        ]
+
+
+def test_mixed_rm_interleaves_and_dedups():
+    a = _StubRM("A", ["u1", "u2", "u3"])
+    b = _StubRM("B", ["u2", "u4"])
+    rm = MixedRM([a, b])
+    urls = [r["url"] for r in rm.forward("任意查询")]
+    # 逐位交错：i=0 取 a=u1, b=u2；i=1 取 a=u2(重复丢弃), b=u4；i=2 取 a=u3
+    assert urls == ["u1", "u2", "u4", "u3"]
+    assert rm.get_usage_and_reset() == {"A": 1, "B": 1}
