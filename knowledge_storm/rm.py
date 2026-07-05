@@ -1362,3 +1362,40 @@ class JinaFullTextRM(dspy.Retrieve):
             except Exception as e:
                 logging.warning(f"JinaFullTextRM read failed for {r.get('url')}: {e}")
         return results
+
+
+class MixedRM(dspy.Retrieve):
+    """并联多个 RM：逐源检索，按 URL 去重、逐位交错合并，保证来源多样性。
+    ponytail: 顺序请求 + 简单交错，不做语义精排；要精排时在合并后接
+    Jina reranker（https://jina.ai/reranker）升级。
+    """
+
+    def __init__(self, rms: List[dspy.Retrieve]):
+        if not rms:
+            raise ValueError("MixedRM 至少需要一个子检索器")
+        super().__init__(k=max(rm.k for rm in rms))
+        self.rms = rms
+
+    def get_usage_and_reset(self):
+        merged = {}
+        for rm in self.rms:
+            merged.update(rm.get_usage_and_reset())
+        return merged
+
+    def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []):
+        per_source = []
+        for rm in self.rms:
+            try:
+                per_source.append(rm.forward(query_or_queries, exclude_urls))
+            except Exception as e:
+                logging.error(f"MixedRM sub-retriever {type(rm).__name__} failed: {e}")
+                per_source.append([])
+        seen, merged = set(), []
+        for i in range(max((len(r) for r in per_source), default=0)):
+            for results in per_source:
+                if i < len(results):
+                    url = results[i]["url"]
+                    if url not in seen:
+                        seen.add(url)
+                        merged.append(results[i])
+        return merged
