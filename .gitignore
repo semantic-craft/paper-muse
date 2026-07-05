@@ -25,3 +25,6 @@ secrets.toml
 */assertion.log
 *results/
 .venv/
+# PaperMuse.app 生成产物（xcodegen/xcodebuild）
+app/build/
+app/PaperMuse.xcodeproj/
