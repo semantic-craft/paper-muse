@@ -21,7 +21,7 @@ def my_articles_page():
 
     # sync my articles
     if "page2_user_articles_file_path_dict" not in st.session_state:
-        local_dir = os.path.join(demo_util.get_demo_dir(), "DEMO_WORKING_DIR")
+        local_dir = demo_util.get_demo_working_dir()
         os.makedirs(local_dir, exist_ok=True)
         st.session_state["page2_user_articles_file_path_dict"] = (
             DemoFileIOHelper.read_structure_to_dict(local_dir)

@@ -561,6 +561,12 @@ def get_demo_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def get_demo_working_dir():
+    return os.environ.get("PAPER_MUSE_OUTPUT_DIR") or os.path.join(
+        get_demo_dir(), "DEMO_WORKING_DIR"
+    )
+
+
 def clear_other_page_session_state(page_index: Optional[int]):
     if page_index is None:
         keys_to_delete = [key for key in st.session_state if key.startswith("page")]
@@ -576,9 +582,7 @@ def clear_other_page_session_state(page_index: Optional[int]):
 
 def set_storm_runner():
     # PAPER_MUSE_OUTPUT_DIR 由 anamra「论文工具」启动器设置，指向选定的论文目录；未设则用默认
-    current_working_dir = os.environ.get("PAPER_MUSE_OUTPUT_DIR") or os.path.join(
-        get_demo_dir(), "DEMO_WORKING_DIR"
-    )
+    current_working_dir = get_demo_working_dir()
     if not os.path.exists(current_working_dir):
         os.makedirs(current_working_dir)
 
