@@ -12,6 +12,9 @@
     GET  /status   → {phase: idle|warming|ready|stepping|error, progress: [...], turns: [...], topic, output_dir, error?}
     POST /step     {utterance?: ""} 空=让圆桌自行推进一轮；非空=先插话再让圆桌回应。阻塞到本轮完成，返回新增 turns
     POST /report   生成报告并落盘 report.md / conversation.md / instance_dump.json / log.json
+    POST /scan          {topic, profile?, output_dir?} 起盲区扫描（后台），轮询 /scan/status
+    GET  /scan/status   → {phase: idle|scanning|done|error, cards: [...], output_dir, error?}
+    POST /scan/feedback {name, verdict: 已知|新但不适用|新且值得深挖} 三键反馈（喂抑制表）
 """
 
 import json
@@ -43,6 +46,8 @@ from knowledge_storm.rm import (
     MixedRM,
 )
 from knowledge_storm.utils import load_api_key
+
+import blindspot
 
 
 def sanitize_topic(topic):
@@ -83,6 +88,9 @@ SESSION = {
 }
 RUNNER_LOCK = threading.Lock()
 
+SCAN = {"phase": "idle", "topic": None, "cards": [], "output_dir": None, "error": None}
+SCAN_LOCK = threading.Lock()
+
 app = FastAPI()
 
 
@@ -99,6 +107,17 @@ class SessionReq(BaseModel):
 
 class StepReq(BaseModel):
     utterance: str = ""
+
+
+class ScanReq(BaseModel):
+    topic: str
+    profile: str = ""
+    output_dir: str | None = None
+
+
+class FeedbackReq(BaseModel):
+    name: str
+    verdict: str  # 已知 | 新但不适用 | 新且值得深挖
 
 
 def turn_to_dict(turn):
@@ -285,6 +304,59 @@ def report():
             SESSION["phase"] = "ready"
     finally:
         RUNNER_LOCK.release()
+
+
+def scan_bg(req: ScanReq):
+    try:
+        load_api_key(toml_file_path=str(ROOT / "secrets.toml"))
+        provs = blindspot.real_providers()
+        if not provs:
+            raise RuntimeError("没有任何可用的 LLM key（DEEPSEEK/OPENAI/GOOGLE）")
+
+        def on_card(card):
+            with SCAN_LOCK:
+                SCAN["cards"].append(card)
+
+        blindspot.run_scan(
+            topic=req.topic, profile=req.profile, output_dir=SCAN["output_dir"],
+            providers=provs, decompose_llm=next(iter(provs.values())),
+            en_search=blindspot.real_en_search(), zh_search=blindspot.real_cnki_search(),
+            own_search=blindspot.real_own_search(), on_card=on_card)
+        SCAN["phase"] = "done"
+    except Exception:
+        SCAN["error"] = traceback.format_exc()
+        SCAN["phase"] = "error"
+
+
+@app.post("/scan")
+def start_scan(req: ScanReq):
+    if SCAN["phase"] == "scanning":
+        raise HTTPException(409, "扫描进行中")
+    topic = req.topic.strip()
+    if not topic:
+        raise HTTPException(400, "主题不能为空")
+    base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(ROOT / "results" / "muse" / sanitize_topic(topic))
+    SCAN.update(phase="scanning", topic=topic, cards=[], error=None, output_dir=base)
+    threading.Thread(target=scan_bg, args=(req,), daemon=True).start()
+    return {"ok": True, "output_dir": base}
+
+
+@app.get("/scan/status")
+def scan_status():
+    with SCAN_LOCK:
+        cards = list(SCAN["cards"])
+    return {"phase": SCAN["phase"], "topic": SCAN["topic"], "cards": cards,
+            "output_dir": SCAN["output_dir"], "error": SCAN["error"]}
+
+
+@app.post("/scan/feedback")
+def scan_feedback(req: FeedbackReq):
+    if not SCAN["output_dir"]:
+        raise HTTPException(409, "尚无扫描会话")
+    if req.verdict not in ("已知", "新但不适用", "新且值得深挖"):
+        raise HTTPException(400, "verdict 必须是 已知/新但不适用/新且值得深挖")
+    blindspot.record_feedback(SCAN["output_dir"], req.name, req.verdict)
+    return {"ok": True}
 
 
 if __name__ == "__main__":
