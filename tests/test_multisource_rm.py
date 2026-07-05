@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from knowledge_storm.rm import PerplexitySearchRM
+from knowledge_storm.rm import JinaFullTextRM, PerplexitySearchRM
 
 needs_pplx = pytest.mark.skipif(
     not os.environ.get("PERPLEXITY_API_KEY"), reason="需要 PERPLEXITY_API_KEY"
@@ -26,8 +26,6 @@ def test_perplexity_rm_skips_blank_query():
     assert rm.forward(["", "  "]) == []
 
 
-from knowledge_storm.rm import JinaFullTextRM
-
 needs_jina = pytest.mark.skipif(
     not (os.environ.get("JINA_API_KEY") and os.environ.get("PERPLEXITY_API_KEY")),
     reason="需要 JINA_API_KEY + PERPLEXITY_API_KEY",
@@ -45,3 +43,33 @@ def test_jina_fulltext_enriches_top_results():
     assert sum(len(s) for s in top["snippets"]) > 600
     usage = rm.get_usage_and_reset()
     assert "JinaFullTextRM" in usage and "PerplexitySearchRM" in usage
+
+
+def test_jina_fulltext_preserves_snippets_on_fetch_failure(monkeypatch):
+    class _OneResultRM:
+        k = 1
+
+        def get_usage_and_reset(self):
+            return {"_OneResultRM": 1}
+
+        def forward(self, query_or_queries, exclude_urls=[]):
+            return [
+                {
+                    "description": "原始摘要",
+                    "snippets": ["原始摘要"],
+                    "title": "t",
+                    "url": "https://example.com/x",
+                }
+            ]
+
+    import knowledge_storm.rm as rm_mod
+
+    def _boom(*args, **kwargs):
+        raise ConnectionError("offline")
+
+    monkeypatch.setattr(rm_mod.requests, "get", _boom)
+    rm = rm_mod.JinaFullTextRM(base_rm=_OneResultRM(), top_n=1, jina_api_key="test-key")
+    results = rm.forward("任意查询")
+    assert results[0]["snippets"] == ["原始摘要"]
+    usage = rm.get_usage_and_reset()
+    assert usage["JinaFullTextRM"] == 0

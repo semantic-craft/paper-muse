@@ -1316,7 +1316,7 @@ class JinaFullTextRM(dspy.Retrieve):
     SNIPPET_CHUNK = 1000
     MAX_CHUNKS = 3
 
-    def __init__(self, base_rm, top_n: int = 3, max_tokens: int = 4000, jina_api_key=None):
+    def __init__(self, base_rm, top_n: int = 3, max_tokens: int = 1200, jina_api_key=None):  # 对齐保留预算 SNIPPET_CHUNK*MAX_CHUNKS≈3000 字符
         super().__init__(k=base_rm.k)
         self.base_rm = base_rm
         self.top_n = top_n
