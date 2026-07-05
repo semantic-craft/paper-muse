@@ -63,7 +63,10 @@ class ConvSimulator(dspy.Module):
             ).question
             if user_utterance == "":
                 logging.error("Simulated Wikipedia writer utterance is empty.")
-                break
+                if dlg_history:
+                    break
+                # ponytail: seed the first empty turn with the topic; richer question retry if this proves too broad.
+                user_utterance = topic
             if user_utterance.startswith("Thank you so much for your help!"):
                 break
             expert_output = self.topic_expert(

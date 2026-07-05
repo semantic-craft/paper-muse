@@ -59,7 +59,7 @@ def handle_not_started():
 
 def handle_initiated():
     if st.session_state["page3_write_article_state"] == "initiated":
-        current_working_dir = os.path.join(demo_util.get_demo_dir(), "DEMO_WORKING_DIR")
+        current_working_dir = demo_util.get_demo_working_dir()
         if not os.path.exists(current_working_dir):
             os.makedirs(current_working_dir)
 

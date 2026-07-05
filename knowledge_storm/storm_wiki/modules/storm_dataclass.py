@@ -119,6 +119,8 @@ class StormInformationTable(InformationTable):
     def retrieve_information(
         self, queries: Union[List[str], str], search_top_k
     ) -> List[Information]:
+        if not self.collected_snippets:
+            return []
         selected_urls = []
         selected_snippets = []
         if type(queries) is str:
