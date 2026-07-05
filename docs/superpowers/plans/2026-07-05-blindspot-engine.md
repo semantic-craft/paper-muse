@@ -12,6 +12,10 @@
 
 **分支：** 在 main 上新建 `feat/blindspot-engine`（第一个任务里做）。
 
+> **修订记录（2026-07-05 晚）：**
+> 1. **normalize_name 修正**（B1 实施中发现规格 bug）：括号注记须连内容整体剔除（`交易成本理论（TCE）`≡`交易成本理论`），Task 1 Step 4 代码已更新；
+> 2. **CNKI 并入本期**（用户裁决）：中文学界面改用 `opencli cnki search`（CSSCI 过滤、`-f json`、需 Chrome 会话，无会话降级「中文面未检」）；`zsearch` 重定位为**自有语料面**（独立字段 `own_hits`，学界空白/边缘 × 自有库有藏 → 📚已藏未用徽标）。Task 3/4/5 代码已按此更新；`classify_novelty` 的 zh_hits 语义 = CNKI 学界命中，函数签名与标签不变。
+
 **File Structure：**
 - Create: `blindspot.py` — 引擎：数据模型、prompts、拆解/枚举/合并/新颖性、落盘、`run_scan()`、`__main__` CLI
 - Modify: `muse_server.py` — `/scan` `/scan/status` `/scan/feedback` + SCAN 状态
@@ -139,7 +143,8 @@ CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 # ---- 纯函数层 ----
 
 def normalize_name(name: str) -> str:
-    s = re.sub(r"[\s（）()【】\[\]\-—·]", "", name.strip().lower())
+    s = re.sub(r"[（(][^）)]*[）)]", "", name)  # 括号注记（缩写/译名）整体剔除
+    s = re.sub(r"[\s【】\[\]\-—·]", "", s.strip().lower())
     return s
 
 
@@ -383,12 +388,15 @@ def test_run_scan_end_to_end_offline(tmp_path):
         decompose_llm=llm_for("decompose"),
         en_search=lambda q: [{"title": "T", "url": "https://e.com/1"}] * 4,
         zh_search=lambda q: [],
+        own_search=lambda q: [1, 2] if "交易成本" in q else [],
         on_card=emitted.append,
     )
     # 去重后 5 张；交易成本双模型共识、其余离群
     assert len(cards) == 5 and len(emitted) == 5
     byname = {c["name"]: c for c in cards}
     assert byname["交易成本"]["outlier"] is False and byname["STS"]["outlier"] is True
+    # 自有语料面独立于新颖性判据：own_hits 记数，学界空白×自有有藏 → 已藏未用
+    assert byname["交易成本"]["own_hits"] == 2 and byname["STS"]["own_hits"] == 0
     # 新颖性：en=4, zh=0 → 交叉空白 + 金标
     assert byname["交易成本"]["novelty"] == "交叉空白" and byname["交易成本"]["gold"] is True
     assert byname["交易成本"]["anchors"][0]["url"] == "https://e.com/1"
@@ -454,17 +462,24 @@ def record_feedback(output_dir: str, name: str, verdict: str):
     f.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _novelty_for(card, topic, en_search, zh_search):
+def _novelty_for(card, topic, en_search, zh_search, own_search=None):
     query = f"{card['name']} {topic}"
     try:
         en = en_search(query) or []
     except Exception:
         en = []
     try:
-        zh = zh_search(query)
+        zh = zh_search(query)  # 中文学界面 = CNKI（新颖性判据）
         zh_hits = len(zh or [])
     except Exception:
         zh_hits = None  # 中文面未检，明示不装懂
+    if own_search is None:
+        card["own_hits"] = None
+    else:
+        try:
+            card["own_hits"] = len(own_search(query) or [])  # 自有语料面 = zsearch（unknown-knowns 信号）
+        except Exception:
+            card["own_hits"] = None
     card["novelty"], card["gold"] = classify_novelty(len(en), zh_hits)
     card["zh_hits"] = zh_hits
     card["en_hits"] = len(en)
@@ -480,7 +495,14 @@ def _write_outputs(output_dir, topic, profile, cards):
     qlines = [f"# 拷问弹药（grill-with-docs 用）：{topic}\n"]
     slines = [f"# 文献锚点：{topic}\n"]
     for c in sorted(cards, key=lambda x: (not x.get("gold", False), not x.get("outlier", False))):
-        badge = "🥇英热中冷" if c.get("gold") else ("🔸离群" if c.get("outlier") else "共识")
+        badges = []
+        if c.get("gold"):
+            badges.append("🥇英热中冷")
+        if c.get("outlier"):
+            badges.append("🔸离群")
+        if c.get("own_hits") and c.get("novelty") in ("交叉空白", "边缘有人做"):
+            badges.append("📚已藏未用")
+        badge = "｜".join(badges) or "共识"
         lines += [
             f"\n## {c['name']}（{c['type']}｜{c.get('novelty','?')}｜{badge}）",
             f"- 机制：{c['mechanism']}",
@@ -489,7 +511,7 @@ def _write_outputs(output_dir, topic, profile, cards):
         ]
         if c.get("feasibility"):
             lines.append(f"- 可行性/数据：{c['feasibility']}")
-        lines.append(f"- 提出方：{'、'.join(c['source_models'])}；英文命中 {c.get('en_hits')}，中文命中 {c.get('zh_hits')}")
+        lines.append(f"- 提出方：{'、'.join(c['source_models'])}；英文命中 {c.get('en_hits')}，中文学界命中 {c.get('zh_hits')}，自有库命中 {c.get('own_hits')}")
         qlines += [f"\n## {c['name']}"] + [f"- {q}" for q in c.get("questions", [])]
         for a in c.get("anchors", []):
             slines.append(f"- [{c['name']}] {a['title']} — {a['url']}")
@@ -499,7 +521,7 @@ def _write_outputs(output_dir, topic, profile, cards):
 
 
 def run_scan(topic, profile, output_dir, providers, decompose_llm,
-             en_search, zh_search, on_card):
+             en_search, zh_search, on_card, own_search=None):
     """providers: {model_tag: llm_call}；on_card(card) 在每张卡出炉（含新颖性）时回调。"""
     fundamentals = decompose_topic(topic, profile, decompose_llm)
     suppressed = load_suppressed(output_dir)
@@ -525,7 +547,7 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
     merged = apply_suppression(merged, suppressed)
 
     for card in merged:
-        _novelty_for(card, topic, en_search, zh_search)
+        _novelty_for(card, topic, en_search, zh_search, own_search)
         with lock:
             all_cards.append(card)
         on_card(card)
@@ -554,14 +576,16 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `blindspot.py`
 
-- [ ] **Step 1: zsearch CLI 探察（先看真实接口再写包装）**
+- [ ] **Step 1: 两个 CLI 探察（先看真实接口再写包装）**
 
 ```bash
 zsearch --help 2>&1 | head -30
 zsearch "平台责任" 2>&1 | head -10
+opencli cnki search --help 2>&1 | head -20
+opencli cnki search "平台责任" --source_category CSSCI --limit 3 -f json 2>&1 | head -30
 ```
 
-记录：输出格式（JSON？行文本？）、条数旗标。**按实际输出调整 Step 2 里 `real_zh_search` 的参数与解析**（默认假设：位置参数 query、行文本输出、每行一条；若有 `--json`/`--limit` 更好，用之）。
+记录两者输出格式并**按实际输出调整 Step 2 的解析**。已知事实（协调者已探）：cnki search 旗标含 `--source_category CSSCI / --limit / -f json`，无 Chrome 会话时返回 `{"ok": false, "error": {"message": "Browser session is required."}}`——若遇到，先跑 `opencli browser open` 建会话重试一次；仍不可用则接受降级路径（zh_hits=None「中文面未检」）为本任务的已验证行为，如实记录。zsearch 默认假设行文本输出、每行一条。
 
 - [ ] **Step 2: 实现真实接线**（`blindspot.py` 追加）
 
@@ -611,8 +635,28 @@ def real_en_search(k: int = 5):
     return search
 
 
-def real_zh_search(limit: int = 8):
-    # ponytail: 行文本解析，Step 1 探察后按实际旗标修正此处
+def real_cnki_search(limit: int = 5):
+    """中文学界面（新颖性判据）：opencli cnki search，CSSCI 过滤。
+    需 Chrome 会话（`opencli browser open` 一次）；无会话/风控抛错 → 上层降级「中文面未检」。"""
+
+    def search(query):
+        r = subprocess.run(
+            ["opencli", "cnki", "search", query, "--source_category", "CSSCI",
+             "--limit", str(limit), "-f", "json"],
+            capture_output=True, text=True, timeout=90)
+        data = json.loads(r.stdout)
+        if isinstance(data, dict) and not data.get("ok", True):
+            raise RuntimeError(data.get("error", {}).get("message", "cnki search failed"))
+        rows = data.get("data") if isinstance(data, dict) else data
+        return rows or []
+
+    return search
+
+
+def real_own_search(limit: int = 8):
+    """自有语料面（unknown-knowns 信号）：zsearch 本地 Zotero 语义检索。
+    ponytail: 行文本解析，Step 1 探察后按实际旗标修正此处。"""
+
     def search(query):
         r = subprocess.run(["zsearch", query], capture_output=True, text=True, timeout=20)
         if r.returncode != 0:
@@ -646,7 +690,8 @@ if __name__ == "__main__":
 
     cards = run_scan(a.topic, a.profile, out, provs,
                      decompose_llm=next(iter(provs.values())),
-                     en_search=real_en_search(), zh_search=real_zh_search(), on_card=show)
+                     en_search=real_en_search(), zh_search=real_cnki_search(),
+                     own_search=real_own_search(), on_card=show)
     print(f"共 {len(cards)} 张卡，产物在 {out}/docs/agents/muse/")
 ```
 
@@ -705,8 +750,8 @@ def scan_bg(req: ScanReq):
         blindspot.run_scan(
             topic=req.topic, profile=req.profile, output_dir=SCAN["output_dir"],
             providers=provs, decompose_llm=next(iter(provs.values())),
-            en_search=blindspot.real_en_search(), zh_search=blindspot.real_zh_search(),
-            on_card=on_card)
+            en_search=blindspot.real_en_search(), zh_search=blindspot.real_cnki_search(),
+            own_search=blindspot.real_own_search(), on_card=on_card)
         SCAN["phase"] = "done"
     except Exception:
         SCAN["error"] = traceback.format_exc()
