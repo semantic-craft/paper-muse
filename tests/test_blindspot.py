@@ -61,3 +61,65 @@ def test_classify_novelty_quadrants():
 def test_extract_json_from_noisy_output():
     noisy = '好的，以下是结果：\n```json\n{"cards": [{"name": "X"}]}\n```\n希望有帮助'
     assert extract_json(noisy) == {"cards": [{"name": "X"}]}
+
+
+from blindspot import decompose_topic, enumerate_cards, ENUM_SCHEMA_HINT
+
+
+class FakeLLM:
+    """记录 prompt、按队列吐回复。"""
+
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.prompts = []
+
+    def __call__(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.replies.pop(0)
+
+
+def test_decompose_returns_fundamentals_and_uses_persona():
+    llm = FakeLLM([json.dumps({"fundamentals": ["根1", "根2", "根3"]})])
+    out = decompose_topic("平台责任", profile="我熟悉法教义学", llm_call=llm)
+    assert out == ["根1", "根2", "根3"]
+    assert "第一性原理" in llm.prompts[0] and "我熟悉法教义学" in llm.prompts[0]
+
+
+def test_enumerate_cards_parses_and_tags_model():
+    reply = json.dumps(
+        {
+            "cards": [
+                {
+                    "type": "研究方法",
+                    "name": "裁判文书量化",
+                    "mechanism": "m",
+                    "why_nonobvious": "w",
+                    "steelman": "s",
+                    "feasibility": "裁判文书网",
+                    "questions": ["q1", "q2"],
+                }
+            ]
+        }
+    )
+    llm = FakeLLM([reply])
+    cards = enumerate_cards(
+        topic="平台责任",
+        fundamentals=["根1"],
+        profile="",
+        model_tag="deepseek",
+        llm_call=llm,
+    )
+    assert cards[0]["source_models"] == ["deepseek"]
+    assert cards[0]["type"] == "研究方法" and cards[0]["feasibility"] == "裁判文书网"
+    # 提示词必须包含三类配额与 schema 约定
+    assert all(t in llm.prompts[0] for t in ("学科视角", "理论框架", "研究方法"))
+    assert ENUM_SCHEMA_HINT in llm.prompts[0]
+
+
+def test_enumerate_cards_drops_malformed_entries():
+    reply = json.dumps({"cards": [{"type": "理论框架", "name": "X", "mechanism": "m",
+                                    "why_nonobvious": "w", "steelman": "s", "questions": ["q"]},
+                                   {"name": "缺字段"}]})
+    llm = FakeLLM([reply])
+    cards = enumerate_cards("t", ["f"], "", "gemini", llm)
+    assert len(cards) == 1 and cards[0]["name"] == "X"
