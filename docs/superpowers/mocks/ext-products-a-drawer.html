@@ -1,0 +1,546 @@
+<!-- 产物面板 · 方向A 右侧抽屉 -->
+<!doctype html>
+<html lang="zh-Hans" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>产物面板 · 方向A 右侧抽屉 — 文稿台</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   tokens.css —— 整段内联（文稿台设计令牌 + 基座 + 顶栏）
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  /* 明主题 */
+  --paper: #F5F4F1;
+  --ink: #1A1A17;
+  --ink-2: #57534A;
+  --hair: #E2E0DA;
+  --hair-strong: #D3D0C8;
+  --vermilion: #A83232;   /* 朱批 / 强调 / 主操作 hover */
+  --gold: #9A7B2E;        /* 🥇英热中冷 */
+  --own: #4F6B3A;         /* 📚已藏未用 */
+  --pt-view: #3A6B6E;     /* 视角=青 */
+  --pt-theory: #6B4E7A;   /* 理论=紫褐 */
+  --pt-method: #9A7B2E;   /* 方法=赭 */
+  --sel-wash: rgba(168,50,50,0.06);
+  /* 字族 */
+  --serif-zh: "Songti SC","STSong",serif;
+  --serif-en: "New York","Iowan Old Style","Palatino",Georgia,serif;
+  --kai: "Kaiti SC","STKaiti",serif;      /* 朱批 / 你的声音 / 编辑嗓音 */
+  --mono: "SF Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+  --sans: -apple-system,"SF Pro Text","Helvetica Neue",sans-serif;
+}
+html[data-theme="dark"] {
+  --paper: #1C1B18;
+  --ink: #E8E5DD;
+  --ink-2: #A8A498;
+  --hair: #33312B;
+  --hair-strong: #45423A;
+  --vermilion: #D8695C;
+  --gold: #C6A94E;
+  --own: #8FB06A;
+  --pt-view: #6FA9AC;
+  --pt-theory: #A88CB8;
+  --pt-method: #C6A94E;
+  --sel-wash: rgba(216,105,92,0.08);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif-zh);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: var(--sel-wash); }
+:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; border-radius: 1px; }
+
+/* ── 顶部细 bar（框住扩展面，保持在世界里） ── */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: baseline; gap: 24px;
+  padding: 12px 28px;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: saturate(1.1) blur(6px);
+  border-bottom: 1px solid var(--hair);
+}
+.wordmark { font-family: var(--serif-en); font-size: 15px; letter-spacing: .02em; color: var(--ink-2); white-space: nowrap; font-style: italic; }
+.wordmark b { font-style: normal; color: var(--ink); font-weight: 600; }
+.topic-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.topic-field label { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.topic-input { flex: 1 1 auto; min-width: 0; font-family: var(--serif-zh); font-size: 17px; color: var(--ink); background: transparent; border: none; border-bottom: 1px solid var(--hair-strong); padding: 2px 2px 4px; line-height: 1.4; }
+.topic-input:focus { border-bottom-color: var(--vermilion); outline: none; }
+.scan-btn { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--paper); background: var(--ink); border: none; padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+.scan-btn:hover { background: var(--vermilion); }
+.acts { display: flex; gap: 2px; white-space: nowrap; }
+.act-tab { font-family: var(--serif-zh); font-size: 15px; color: var(--ink-2); background: none; border: none; padding: 4px 4px 8px; cursor: pointer; border-bottom: 2px solid transparent; position: relative; }
+.act-tab.active { color: var(--ink); border-bottom-color: var(--vermilion); }
+.act-tab[disabled] { color: var(--ink-2); opacity: .5; cursor: not-allowed; }
+.act-tab .soon { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; vertical-align: super; color: var(--vermilion); margin-left: 3px; }
+.act-sep { color: var(--hair-strong); align-self: center; padding-bottom: 4px; }
+.theme-btn { font-family: var(--mono); font-size: 13px; color: var(--ink-2); background: none; border: 1px solid var(--hair-strong); border-radius: 50%; width: 30px; height: 30px; cursor: pointer; line-height: 1; flex: 0 0 auto; }
+.theme-btn:hover { border-color: var(--vermilion); color: var(--vermilion); }
+
+/* ═══════════════════════════════════════════════════════════════
+   扩展面 · 产物抽屉（方向 A）—— 只用上面的变量与字族
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 顶栏入口：产物 · 5（一枚安静的版记扣，非按钮堆） */
+.products-tab {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+  color: var(--ink-2); background: none;
+  border: 1px solid var(--hair-strong); border-radius: 0;
+  padding: 5px 12px; cursor: pointer; white-space: nowrap;
+  flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: 7px;
+  transition: color .15s, border-color .15s;
+}
+.products-tab:hover { border-color: var(--vermilion); color: var(--ink); }
+.products-tab .cnt {
+  font-family: var(--serif-en); font-size: 12px; font-style: normal;
+  color: var(--vermilion); letter-spacing: 0;
+}
+.products-tab[aria-expanded="true"] { border-color: var(--vermilion); color: var(--ink); }
+
+/* ── 背后压暗的手稿残影（不还原真卡片，两三条 dim entry 即可） ── */
+.desk-ghost {
+  padding: 40px 56px 96px;
+  max-width: 940px;
+}
+.desk-ghost .ghost-hd {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--ink-2);
+  border-bottom: 1px solid var(--hair); padding-bottom: 8px; margin-bottom: 30px;
+}
+.entry-ghost {
+  border-top: 1px solid var(--hair);
+  padding: 22px 0 26px;
+  opacity: .5;
+}
+.entry-ghost:first-of-type { border-top: none; }
+.eg-marks {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+  color: var(--ink-2); margin-bottom: 10px;
+  display: flex; gap: 14px; align-items: baseline;
+}
+.eg-marks .dot { color: var(--pt-view); }
+.eg-marks .dot.t { color: var(--pt-theory); }
+.eg-marks .dot.m { color: var(--pt-method); }
+.eg-title {
+  font-family: var(--serif-zh); font-size: 21px; line-height: 1.4;
+  color: var(--ink); margin: 0 0 12px; font-weight: 400;
+}
+.eg-line {
+  height: 10px; border-radius: 1px;
+  background: var(--hair-strong); margin: 9px 0; opacity: .7;
+}
+.eg-line.a { width: 92%; } .eg-line.b { width: 80%; } .eg-line.c { width: 60%; }
+.eg-redink {
+  font-family: var(--kai); font-size: 15px; color: var(--vermilion);
+  margin-top: 14px; opacity: .85;
+}
+
+/* ── 遮罩：半透明压暗背后手稿（翻到附录时的暗页感） ── */
+.scrim {
+  position: fixed; inset: 0; z-index: 30;
+  background: color-mix(in srgb, var(--ink) 34%, transparent);
+  opacity: 0; visibility: hidden;
+  transition: opacity .32s ease, visibility 0s linear .32s;
+}
+.scrim.open { opacity: 1; visibility: visible; transition: opacity .32s ease; }
+
+/* ── 抽屉：从右侧滑出的附录 / 版记 ── */
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 40;
+  width: min(480px, 92vw);
+  background: var(--paper);
+  border-left: 1px solid var(--hair-strong);
+  box-shadow: -1px 0 0 var(--hair), -18px 0 40px -30px rgba(0,0,0,.4);
+  transform: translateX(100%);
+  transition: transform .34s cubic-bezier(.22,.61,.36,1);
+  display: flex; flex-direction: column;
+  will-change: transform;
+}
+.drawer.open { transform: translateX(0); }
+
+/* 抽屉版头：版记标题 + 落盘路径 + 关钮 */
+.drawer-head {
+  flex: 0 0 auto;
+  padding: 20px 26px 16px;
+  border-bottom: 1px solid var(--hair);
+  display: flex; align-items: flex-start; gap: 16px;
+}
+.dh-text { flex: 1 1 auto; min-width: 0; }
+.dh-kicker {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--vermilion); margin-bottom: 6px;
+}
+.dh-title {
+  font-family: var(--serif-zh); font-size: 20px; font-weight: 600;
+  color: var(--ink); margin: 0 0 8px; line-height: 1.3;
+}
+.dh-path {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+  letter-spacing: .02em; word-break: break-all;
+}
+.dh-path b { color: var(--ink); font-weight: 400; }
+.drawer-close {
+  flex: 0 0 auto;
+  font-family: var(--mono); font-size: 15px; line-height: 1;
+  color: var(--ink-2); background: none;
+  border: 1px solid var(--hair-strong); border-radius: 50%;
+  width: 30px; height: 30px; cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.drawer-close:hover { color: var(--vermilion); border-color: var(--vermilion); }
+
+/* 抽屉正文：可滚动的产物列 */
+.drawer-body { flex: 1 1 auto; overflow-y: auto; padding: 4px 0 26px; }
+
+/* 分组小标（已生成 / 待生成） */
+.grp-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-2);
+  padding: 20px 26px 8px; margin: 0;
+  display: flex; align-items: baseline; gap: 8px;
+}
+.grp-label .n { font-family: var(--serif-en); color: var(--ink-2); font-size: 11px; }
+
+/* ── 手稿式产物条目：发丝线分隔 ── */
+.product {
+  border-top: 1px solid var(--hair);
+  padding: 16px 26px 18px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "name   status"
+    "meta   status"
+    "acts   acts";
+  gap: 4px 12px;
+  align-items: baseline;
+}
+.product.pending { opacity: .82; }
+
+.p-name {
+  grid-area: name;
+  font-family: var(--mono); font-size: 13.5px; letter-spacing: .01em;
+  color: var(--ink); word-break: break-all;
+}
+.product.pending .p-name { color: var(--ink-2); }
+
+/* 朱批色状态标 */
+.p-status {
+  grid-area: status;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  text-transform: uppercase; white-space: nowrap;
+  align-self: start; padding-top: 3px;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.p-status::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  display: inline-block; flex: 0 0 auto;
+}
+.p-status.done { color: var(--own); }
+.p-status.done::before { background: var(--own); }
+.p-status.wait { color: var(--vermilion); }
+.p-status.wait::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--vermilion);
+}
+
+/* 「是什么」+「喂给谁」 */
+.p-meta { grid-area: meta; padding-top: 2px; }
+.p-what {
+  font-family: var(--serif-zh); font-size: 14px; line-height: 1.55;
+  color: var(--ink-2); margin: 0;
+}
+.p-feed {
+  font-family: var(--kai); font-size: 13px; line-height: 1.5;
+  color: var(--vermilion); margin: 5px 0 0; opacity: .92;
+}
+.p-feed .arrow { font-family: var(--mono); font-style: normal; margin-right: 4px; opacity: .7; }
+.p-feed code {
+  font-family: var(--mono); font-size: 11.5px;
+  color: var(--vermilion); background: var(--sel-wash);
+  padding: 0 3px; border-radius: 1px;
+}
+.p-note {
+  font-family: var(--serif-zh); font-size: 12.5px;
+  color: var(--ink-2); margin: 5px 0 0; font-style: italic;
+}
+
+/* 每条操作：打开 · 在访达 */
+.p-acts {
+  grid-area: acts;
+  display: flex; gap: 4px; margin-top: 12px;
+  align-items: center;
+}
+.p-act {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+  color: var(--ink); background: none;
+  border: 1px solid var(--hair-strong); border-radius: 0;
+  padding: 4px 11px; cursor: pointer; white-space: nowrap;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.p-act:hover { border-color: var(--vermilion); color: var(--vermilion); }
+.p-act.primary { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+.p-act.primary:hover { background: var(--vermilion); border-color: var(--vermilion); color: var(--paper); }
+/* 待生成：操作降级为不可用的暗态提示 */
+.product.pending .p-act {
+  color: var(--ink-2); border-color: var(--hair);
+  cursor: not-allowed; opacity: .6;
+}
+.product.pending .p-act:hover { border-color: var(--hair); color: var(--ink-2); }
+.p-acts .when {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .06em;
+  color: var(--ink-2); margin-left: 6px; opacity: .8;
+}
+
+/* 抽屉页脚：一句版记注脚 */
+.drawer-foot {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--hair);
+  padding: 13px 26px 15px;
+  font-family: var(--kai); font-size: 12.5px; line-height: 1.5;
+  color: var(--ink-2);
+}
+.drawer-foot code { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+
+/* 减少动画偏好：关掉滑动与淡入 */
+@media (prefers-reduced-motion: reduce) {
+  .drawer, .scrim { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── 顶栏（tokens 的 .topbar 一套；加「产物」入口） ── -->
+<header class="topbar">
+  <span class="wordmark"><b>论文构思者</b> · 文稿台</span>
+  <div class="topic-field">
+    <label for="topic">研究主题</label>
+    <input id="topic" class="topic-input" type="text"
+           value="平台经济中的数据权力与法律规制"
+           aria-label="研究主题输入框">
+  </div>
+  <button class="scan-btn" type="button">扫描</button>
+  <nav class="acts" aria-label="幕次切换">
+    <button class="act-tab active" type="button" aria-current="page">构思幕</button>
+    <span class="act-sep">·</span>
+    <button class="act-tab" type="button" disabled aria-disabled="true">对抗幕<span class="soon">即将上线</span></button>
+  </nav>
+  <button id="productsTab" class="products-tab" type="button"
+          aria-haspopup="dialog" aria-controls="drawer" aria-expanded="true"
+          title="查看产物文件">产物<span class="cnt">· 5</span></button>
+  <button id="themeBtn" class="theme-btn" type="button"
+          aria-label="切换明暗主题" title="切换明暗主题">☾</button>
+</header>
+
+<!-- ── 背后压暗的手稿残影（让抽屉读起来在世界里） ── -->
+<main class="desk-ghost" aria-hidden="true">
+  <p class="ghost-hd">盲区扫描 · 卡片墙 · 14 张切入点</p>
+
+  <article class="entry-ghost">
+    <div class="eg-marks"><span class="dot">● 视角</span><span>交叉空白 · 金矿</span><span>🥇 英热中冷</span></div>
+    <h3 class="eg-title">把数据可携权重构为反垄断的结构性救济</h3>
+    <div class="eg-line a"></div><div class="eg-line b"></div><div class="eg-line c"></div>
+    <p class="eg-redink">朱批：这条在中文面完全没人碰——先占。</p>
+  </article>
+
+  <article class="entry-ghost">
+    <div class="eg-marks"><span class="dot t">● 理论</span><span>边缘有人做</span><span>🔸 仅一家</span></div>
+    <h3 class="eg-title">平台作为准公共设施的信义义务来源</h3>
+    <div class="eg-line a"></div><div class="eg-line b"></div>
+    <p class="eg-redink">朱批：借信托法的忠实义务，绕过合同法困境。</p>
+  </article>
+
+  <article class="entry-ghost">
+    <div class="eg-marks"><span class="dot m">● 方法</span><span>主流</span></div>
+    <h3 class="eg-title">用算法审计证据链量化"数据权力"的可诉性</h3>
+    <div class="eg-line a"></div><div class="eg-line c"></div>
+  </article>
+</main>
+
+<!-- ── 遮罩 ── -->
+<div id="scrim" class="scrim open" tabindex="-1"></div>
+
+<!-- ── 抽屉：产物版记 ── -->
+<aside id="drawer" class="drawer open" role="dialog" aria-modal="true"
+       aria-labelledby="drawerTitle" tabindex="-1">
+
+  <div class="drawer-head">
+    <div class="dh-text">
+      <div class="dh-kicker">附录 · 版记</div>
+      <h2 id="drawerTitle" class="dh-title">产物</h2>
+      <p class="dh-path">落盘 · <b>docs/agents/muse/</b></p>
+    </div>
+    <button id="drawerClose" class="drawer-close" type="button"
+            aria-label="关闭产物抽屉" title="关闭（Esc）">✕</button>
+  </div>
+
+  <div class="drawer-body">
+
+    <!-- 已生成 -->
+    <h3 class="grp-label">已生成 <span class="n">· 5</span></h3>
+
+    <article class="product">
+      <span class="p-name">perspectives.md</span>
+      <span class="p-status done">已生成</span>
+      <div class="p-meta">
+        <p class="p-what">全部切入点卡，含三键反馈状态。</p>
+        <p class="p-feed"><span class="arrow">→</span>喂 <code>paper-annotator</code> / 任何 agent</p>
+      </div>
+      <div class="p-acts">
+        <button class="p-act primary" type="button">打开</button>
+        <button class="p-act" type="button">在访达</button>
+      </div>
+    </article>
+
+    <article class="product">
+      <span class="p-name">questions.md</span>
+      <span class="p-status done">已生成</span>
+      <div class="p-meta">
+        <p class="p-what">每卡 1–2 句拷问，grill 弹药；不开圆桌也留下种子。</p>
+        <p class="p-feed"><span class="arrow">→</span>喂 <code>grill-with-docs</code></p>
+      </div>
+      <div class="p-acts">
+        <button class="p-act primary" type="button">打开</button>
+        <button class="p-act" type="button">在访达</button>
+      </div>
+    </article>
+
+    <article class="product">
+      <span class="p-name">sources.md</span>
+      <span class="p-status done">已生成</span>
+      <div class="p-meta">
+        <p class="p-what">文献锚点。</p>
+        <p class="p-feed"><span class="arrow">→</span>喂 引用核查</p>
+      </div>
+      <div class="p-acts">
+        <button class="p-act primary" type="button">打开</button>
+        <button class="p-act" type="button">在访达</button>
+      </div>
+    </article>
+
+    <article class="product">
+      <span class="p-name">profile.md</span>
+      <span class="p-status done">已生成</span>
+      <div class="p-meta">
+        <p class="p-what">研究者画像。</p>
+      </div>
+      <div class="p-acts">
+        <button class="p-act primary" type="button">打开</button>
+        <button class="p-act" type="button">在访达</button>
+      </div>
+    </article>
+
+    <article class="product">
+      <span class="p-name">angle-feedback.json</span>
+      <span class="p-status done">已生成</span>
+      <div class="p-meta">
+        <p class="p-what">已知角度抑制表，随三键反馈更新。</p>
+      </div>
+      <div class="p-acts">
+        <button class="p-act primary" type="button">打开</button>
+        <button class="p-act" type="button">在访达</button>
+      </div>
+    </article>
+
+    <!-- 待生成 -->
+    <h3 class="grp-label">待生成 <span class="n">· 2</span></h3>
+
+    <article class="product pending">
+      <span class="p-name">mindmap.md</span>
+      <span class="p-status wait">待生成</span>
+      <div class="p-meta">
+        <p class="p-what">圆桌思维导图。</p>
+        <p class="p-note">深挖圆桌后产出。</p>
+      </div>
+      <div class="p-acts">
+        <button class="p-act" type="button" disabled aria-disabled="true">打开</button>
+        <button class="p-act" type="button" disabled aria-disabled="true">在访达</button>
+        <span class="when">深挖圆桌 →</span>
+      </div>
+    </article>
+
+    <article class="product pending">
+      <span class="p-name">failure-points.md</span>
+      <span class="p-status wait">待生成</span>
+      <div class="p-meta">
+        <p class="p-what">对抗幕失败点，每条带证据或标「未决」。</p>
+        <p class="p-feed"><span class="arrow">→</span>喂 <code>to-prove</code> / <code>diagnose</code></p>
+        <p class="p-note">对抗幕后产出。</p>
+      </div>
+      <div class="p-acts">
+        <button class="p-act" type="button" disabled aria-disabled="true">打开</button>
+        <button class="p-act" type="button" disabled aria-disabled="true">在访达</button>
+        <span class="when">对抗幕 →</span>
+      </div>
+    </article>
+
+  </div>
+
+  <footer class="drawer-foot">
+    这 7 件是本工具联动写作流水线的唯一接口——按需取用，用完退回 <code>docs/agents/muse/</code>。
+  </footer>
+</aside>
+
+<script>
+(function () {
+  var root      = document.documentElement;
+  var themeBtn  = document.getElementById('themeBtn');
+  var tab       = document.getElementById('productsTab');
+  var drawer    = document.getElementById('drawer');
+  var scrim     = document.getElementById('scrim');
+  var closeBtn  = document.getElementById('drawerClose');
+
+  /* 明暗切换：切 html[data-theme]，字形随之换（☾/☀︎） */
+  themeBtn.addEventListener('click', function () {
+    var dark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    themeBtn.textContent = dark ? '☾' : '☀︎';
+  });
+
+  /* 抽屉开合 */
+  var lastFocus = null;
+  function openDrawer() {
+    lastFocus = document.activeElement;
+    drawer.classList.add('open');
+    scrim.classList.add('open');
+    tab.setAttribute('aria-expanded', 'true');
+    closeBtn.focus();
+  }
+  function closeDrawer() {
+    drawer.classList.remove('open');
+    scrim.classList.remove('open');
+    tab.setAttribute('aria-expanded', 'false');
+    (lastFocus || tab).focus();
+  }
+
+  tab.addEventListener('click', function () {
+    drawer.classList.contains('open') ? closeDrawer() : openDrawer();
+  });
+  closeBtn.addEventListener('click', closeDrawer);
+  scrim.addEventListener('click', closeDrawer);
+
+  /* Esc 关抽屉 */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
+  });
+
+  /* 焦点圈在抽屉内（简易 focus trap） */
+  drawer.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    var f = drawer.querySelectorAll('button:not([disabled])');
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+})();
+</script>
+</body>
+</html>

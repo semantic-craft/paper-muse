@@ -1,0 +1,594 @@
+<!-- 研究者画像 · 方向A 首次开幕画像卡 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>研究者画像 · 首次开笔 · 论文构思者</title>
+<style>
+  /* ══════════════════════════════════════════════════════════
+     以下整段内联自 _shared/tokens.css —— 与真界面同一套语言。
+     别引入新色系 / 新字体。
+     ══════════════════════════════════════════════════════════ */
+  :root {
+    /* 明主题 */
+    --paper: #F5F4F1;
+    --ink: #1A1A17;
+    --ink-2: #57534A;
+    --hair: #E2E0DA;
+    --hair-strong: #D3D0C8;
+    --vermilion: #A83232;   /* 朱批 / 强调 / 主操作 hover */
+    --gold: #9A7B2E;        /* 🥇英热中冷 */
+    --own: #4F6B3A;         /* 📚已藏未用 */
+    --pt-view: #3A6B6E;     /* 视角=青 */
+    --pt-theory: #6B4E7A;   /* 理论=紫褐 */
+    --pt-method: #9A7B2E;   /* 方法=赭 */
+    --sel-wash: rgba(168,50,50,0.06);
+    /* 字族 */
+    --serif-zh: "Songti SC","STSong",serif;
+    --serif-en: "New York","Iowan Old Style","Palatino",Georgia,serif;
+    --kai: "Kaiti SC","STKaiti",serif;      /* 朱批 / 你的声音 / 编辑嗓音 */
+    --mono: "SF Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+    --sans: -apple-system,"SF Pro Text","Helvetica Neue",sans-serif;
+  }
+  html[data-theme="dark"] {
+    --paper: #1C1B18;
+    --ink: #E8E5DD;
+    --ink-2: #A8A498;
+    --hair: #33312B;
+    --hair-strong: #45423A;
+    --vermilion: #D8695C;
+    --gold: #C6A94E;
+    --own: #8FB06A;
+    --pt-view: #6FA9AC;
+    --pt-theory: #A88CB8;
+    --pt-method: #C6A94E;
+    --sel-wash: rgba(216,105,92,0.08);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif-zh);
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: var(--sel-wash); }
+  :focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; border-radius: 1px; }
+
+  /* ── 顶部细 bar（框住扩展面，保持在世界里） ── */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: baseline; gap: 24px;
+    padding: 12px 28px;
+    background: color-mix(in srgb, var(--paper) 94%, transparent);
+    backdrop-filter: saturate(1.1) blur(6px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .wordmark { font-family: var(--serif-en); font-size: 15px; letter-spacing: .02em; color: var(--ink-2); white-space: nowrap; font-style: italic; }
+  .wordmark b { font-style: normal; color: var(--ink); font-weight: 600; }
+  .topic-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+  .topic-field label { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+  .topic-input { flex: 1 1 auto; min-width: 0; font-family: var(--serif-zh); font-size: 17px; color: var(--ink); background: transparent; border: none; border-bottom: 1px solid var(--hair-strong); padding: 2px 2px 4px; line-height: 1.4; }
+  .topic-input:focus { border-bottom-color: var(--vermilion); outline: none; }
+  .scan-btn { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--paper); background: var(--ink); border: none; padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+  .scan-btn:hover { background: var(--vermilion); }
+  .scan-btn[disabled] { opacity: .4; cursor: not-allowed; background: var(--ink-2); }
+  .acts { display: flex; gap: 2px; white-space: nowrap; }
+  .act-tab { font-family: var(--serif-zh); font-size: 15px; color: var(--ink-2); background: none; border: none; padding: 4px 4px 8px; cursor: pointer; border-bottom: 2px solid transparent; position: relative; }
+  .act-tab.active { color: var(--ink); border-bottom-color: var(--vermilion); }
+  .act-tab[disabled] { color: var(--ink-2); opacity: .5; cursor: not-allowed; }
+  .act-tab .soon { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; vertical-align: super; color: var(--vermilion); margin-left: 3px; }
+  .act-sep { color: var(--hair-strong); align-self: center; padding-bottom: 4px; }
+  .theme-btn { font-family: var(--mono); font-size: 13px; color: var(--ink-2); background: none; border: 1px solid var(--hair-strong); border-radius: 50%; width: 30px; height: 30px; cursor: pointer; line-height: 1; flex: 0 0 auto; }
+  .theme-btn:hover { border-color: var(--vermilion); color: var(--vermilion); }
+
+  /* ══════════════════════════════════════════════════════════
+     扩展面：研究者画像 · 首次开幕
+     ══════════════════════════════════════════════════════════ */
+
+  /* 两栏骨架，与文稿台同宽同居中；左栏预留（收起后画像落此） */
+  .desk {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 700px);
+    justify-content: center;
+    gap: 0;
+    max-width: 1000px;
+    margin: 0 auto;
+    align-items: start;
+  }
+
+  /* ── 左栏：目次占位 + 收起后的精简画像落点 ── */
+  .rail {
+    position: sticky; top: 57px;
+    align-self: start;
+    padding: 34px 22px 40px 28px;
+    border-right: 1px solid var(--hair);
+    font-family: var(--sans);
+  }
+  .rail h2 {
+    font-family: var(--mono); font-size: 10px; font-weight: 400;
+    letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink-2); margin: 0 0 12px;
+  }
+  .rail h2:not(:first-child) { margin-top: 26px; }
+
+  /* 收起态：左栏精简画像（默认藏，填完仪式后浮现） */
+  .rail-profile {
+    margin: 0 0 6px;
+    opacity: 0; max-height: 0; overflow: hidden;
+    transition: opacity .5s ease, max-height .55s ease;
+  }
+  .rail-profile.shown { opacity: 1; max-height: 460px; }
+  .rail-profile .rp-head {
+    display: flex; align-items: baseline; gap: 6px;
+    border-bottom: 1px dotted var(--hair-strong); padding-bottom: 4px;
+  }
+  .rail-profile .rp-head .caret { color: var(--vermilion); font-size: 11px; }
+  .rail-profile .rp-title { font-family: var(--serif-zh); font-size: 13px; color: var(--ink); }
+  .rail-profile .rp-edit {
+    margin-left: auto; font-family: var(--kai); font-size: 12px;
+    color: var(--vermilion); background: none; border: none;
+    cursor: pointer; padding: 0; letter-spacing: .06em;
+    border-bottom: 1px solid transparent;
+  }
+  .rail-profile .rp-edit::before {
+    content: "朱"; font-family: var(--serif-zh); font-size: 9px;
+    border: 1px solid var(--vermilion); color: var(--vermilion);
+    width: 14px; height: 14px; line-height: 12px; text-align: center;
+    display: inline-block; margin-right: 4px; vertical-align: 1px;
+  }
+  .rail-profile .rp-edit:hover { border-bottom-color: var(--vermilion); }
+  .rail-profile dl { margin: 10px 0 0; font-size: 12px; line-height: 1.6; }
+  .rail-profile dt {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-2); margin-top: 8px;
+  }
+  .rail-profile dd { margin: 0; color: var(--ink); font-family: var(--serif-zh); }
+  .rail-profile .rp-foot {
+    margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--hair);
+    font-family: var(--mono); font-size: 9px; letter-spacing: .04em;
+    color: var(--ink-2); line-height: 1.6;
+  }
+  .rail-profile .rp-foot .dot { color: var(--own); }
+
+  /* 左栏目次：未扫描 → 灰占位 */
+  .rail-toc { list-style: none; margin: 0; padding: 0; }
+  .rail-toc li {
+    font-family: var(--serif-zh); font-size: 13px; color: var(--ink-2);
+    padding: 5px 0; border-bottom: 1px solid var(--hair);
+    display: flex; align-items: baseline; gap: 7px; opacity: .5;
+  }
+  .rail-toc .num { font-family: var(--mono); font-size: 10px; color: var(--ink-2); }
+  .rail-toc .ghost {
+    height: 8px; border-radius: 1px; background: var(--hair-strong);
+    flex: 1 1 auto; opacity: .7;
+  }
+
+  /* ── 中栏：文稿流（背后是未扫描的空墙） ── */
+  .flow {
+    position: relative;
+    padding: 30px 40px 120px;
+    min-width: 0;
+  }
+
+  /* 空墙：未扫描的手稿流底衬（画像卡浮于其上） */
+  .empty-wall {
+    position: absolute; inset: 30px 40px 120px;
+    pointer-events: none; z-index: 0;
+    display: flex; flex-direction: column; gap: 0;
+    opacity: .55;
+  }
+  .empty-wall .wall-head {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-2);
+    padding-bottom: 10px; border-bottom: 2px solid var(--hair-strong);
+    margin-bottom: 28px;
+  }
+  .ghost-entry { border-top: 1px solid var(--hair); padding: 26px 0; }
+  .ghost-entry:first-child { border-top: none; }
+  .ghost-line { height: 9px; border-radius: 1px; background: var(--hair-strong); margin-bottom: 12px; }
+  .ghost-line.w1 { width: 30%; height: 7px; opacity: .8; }
+  .ghost-line.w2 { width: 72%; height: 13px; }
+  .ghost-line.w3 { width: 90%; }
+  .ghost-line.w4 { width: 64%; }
+
+  /* ── 画像卡：主角，居中浮于空墙之上 ── */
+  .flow-inner { position: relative; z-index: 1; }
+
+  .portrait {
+    background: var(--paper);
+    border: 1px solid var(--hair-strong);
+    border-top: 3px solid var(--ink);
+    box-shadow: 0 1px 0 var(--hair), 0 18px 44px -30px rgba(0,0,0,.32);
+    padding: 34px 38px 30px;
+    margin: 12px 0 0;
+  }
+
+  /* 卡眉：仪式感开场标题 */
+  .portrait .eyebrow {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-2);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .portrait .eyebrow .brush {
+    font-family: var(--serif-zh); font-size: 11px;
+    border: 1px solid var(--vermilion); color: var(--vermilion);
+    width: 18px; height: 18px; line-height: 16px; text-align: center;
+    flex: 0 0 auto;
+  }
+  .portrait h1 {
+    font-family: var(--serif-zh); font-weight: 600;
+    font-size: 25px; line-height: 1.3; letter-spacing: .01em;
+    margin: 12px 0 0; color: var(--ink);
+  }
+
+  /* 引导语：楷体朱色，点明参照系 */
+  .portrait .ded {
+    font-family: var(--kai); font-size: 15px; color: var(--vermilion);
+    line-height: 1.7; letter-spacing: .04em;
+    margin: 12px 0 4px; padding-left: 16px;
+    border-left: 2px solid var(--vermilion);
+  }
+  .portrait .ded b { color: var(--vermilion); font-weight: 600; }
+
+  hr.portrait-rule { border: 0; border-top: 1px solid var(--hair); margin: 22px 0 6px; }
+
+  /* 5 行表单 —— mono 眉标 + 下划线衬线字段 */
+  .p-form { margin: 0; }
+  .field { padding: 12px 0 4px; border-bottom: 1px solid var(--hair); }
+  .field:last-of-type { border-bottom: none; }
+  .field > label {
+    display: block;
+    font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-2);
+    margin-bottom: 5px;
+  }
+  .field .ff {
+    width: 100%; display: block;
+    font-family: var(--serif-zh); font-size: 17px; color: var(--ink);
+    background: transparent; border: none;
+    border-bottom: 1px solid var(--hair-strong);
+    padding: 2px 2px 6px; line-height: 1.45;
+    resize: none; overflow: hidden;
+  }
+  .field .ff::placeholder { color: var(--ink-2); opacity: .7; font-style: italic; }
+  .field .ff:focus { border-bottom-color: var(--vermilion); outline: none; }
+  .field .ff:focus + .hint { color: var(--vermilion); }
+  .field .hint {
+    display: block; margin-top: 5px;
+    font-family: var(--kai); font-size: 12px; color: var(--ink-2);
+    letter-spacing: .03em; line-height: 1.5; transition: color .2s;
+  }
+  /* 「本篇困惑」略重，用 kai 输入（这是与工具对话的一句） */
+  .field.puzzle .ff { font-family: var(--kai); font-size: 16px; letter-spacing: .02em; }
+
+  /* 卡脚：主操作 + 落盘说明 */
+  .portrait-foot {
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: 14px 18px; margin-top: 24px;
+  }
+  .save-btn {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--paper); background: var(--ink);
+    border: none; padding: 10px 20px; cursor: pointer; line-height: 1.3;
+    display: inline-flex; align-items: baseline; gap: 8px;
+  }
+  .save-btn:hover { background: var(--vermilion); }
+  .save-btn .sep { opacity: .5; }
+  .save-btn .go { font-family: var(--serif-zh); text-transform: none; letter-spacing: .04em; }
+
+  .foot-note {
+    font-family: var(--sans); font-size: 12px; color: var(--ink-2);
+    line-height: 1.55; flex: 1 1 200px; min-width: 0;
+  }
+  .foot-note code {
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+    background: var(--sel-wash); padding: 1px 5px; border-radius: 2px;
+  }
+  .foot-note .reuse {
+    display: inline-flex; align-items: baseline; gap: 5px;
+    font-family: var(--kai); color: var(--own); letter-spacing: .04em;
+    cursor: pointer; border-bottom: 1px solid transparent;
+  }
+  .foot-note .reuse::before { content: "📚"; font-size: 11px; }
+  .foot-note .reuse:hover { border-bottom-color: var(--own); }
+
+  /* 落盘后的收拢确认（点主操作后短暂浮现，视觉稿即演示） */
+  .stow-note {
+    margin-top: 18px; padding: 10px 14px;
+    border: 1px dashed var(--own);
+    font-family: var(--kai); font-size: 13px; color: var(--own);
+    letter-spacing: .04em; line-height: 1.6;
+    display: none;
+  }
+  .stow-note.shown { display: block; }
+  .stow-note b { color: var(--own); font-weight: 600; }
+
+  /* ── 收起后：中栏画像卡淡出、缩为一行「已存」提示（演示态） ── */
+  .portrait.stowed { display: none; }
+  .stowed-hero {
+    display: none;
+    padding: 30px 0 0;
+  }
+  .stowed-hero.shown { display: block; }
+  .stowed-hero .sh-eyebrow {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-2);
+  }
+  .stowed-hero .sh-line {
+    font-family: var(--kai); font-size: 16px; color: var(--ink);
+    letter-spacing: .03em; margin: 10px 0 2px; line-height: 1.7;
+  }
+  .stowed-hero .sh-line b { color: var(--vermilion); }
+  .stowed-hero .sh-sub { font-family: var(--sans); font-size: 12px; color: var(--ink-2); }
+  .stowed-hero .sh-reopen {
+    font-family: var(--kai); color: var(--vermilion);
+    background: none; border: none; cursor: pointer; padding: 0;
+    font-size: 13px; letter-spacing: .04em;
+    border-bottom: 1px solid var(--hair-strong);
+  }
+  .stowed-hero .sh-reopen:hover { border-bottom-color: var(--vermilion); }
+
+  /* ── 入场：郑重的开笔（非弹窗打扰） ── */
+  @keyframes settle {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .settle { opacity: 0; animation: settle .6s ease-out .1s forwards; }
+  @media (prefers-reduced-motion: reduce) {
+    .settle { animation: none; opacity: 1; transform: none; }
+    .rail-profile, .portrait, .stow-note { transition: none; }
+  }
+
+  /* ── 窄窗：左栏降为顶部条 ── */
+  @media (max-width: 860px) {
+    .desk { grid-template-columns: minmax(0, 720px); justify-content: center; }
+    .rail {
+      position: static; border-right: none; border-bottom: 1px solid var(--hair);
+      padding: 18px 28px;
+    }
+    .rail .rail-toc { display: none; }
+    .rail h2.toc-h { display: none; }
+    .empty-wall { opacity: .35; }
+  }
+  @media (max-width: 560px) {
+    .topbar { flex-wrap: wrap; gap: 10px 16px; }
+    .topic-field { order: 3; flex-basis: 100%; }
+    .flow { padding: 24px 20px 100px; }
+    .empty-wall { inset: 24px 20px 100px; }
+    .portrait { padding: 26px 22px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="wordmark"><b>论文构思者</b> · 文稿台</span>
+  <div class="topic-field">
+    <label for="topic">研究主题</label>
+    <input id="topic" class="topic-input" type="text"
+           value="平台经济中的数据权力与法律规制"
+           aria-label="研究主题输入框">
+  </div>
+  <button id="scanBtn" class="scan-btn" type="button" disabled
+          title="先存这版画像，再开始扫描">扫描</button>
+  <nav class="acts" aria-label="幕次切换">
+    <button class="act-tab active" type="button" aria-current="page">构思幕</button>
+    <span class="act-sep">·</span>
+    <button class="act-tab" type="button" disabled aria-disabled="true">对抗幕<span class="soon">即将上线</span></button>
+  </nav>
+  <button id="themeBtn" class="theme-btn" type="button"
+          aria-label="切换明暗主题" title="切换明暗主题">☾</button>
+</header>
+
+<main class="desk">
+
+  <!-- 左栏：未扫描的目次占位 + 收起后画像落点 -->
+  <aside class="rail" aria-label="目录与画像">
+
+    <!-- 收起态精简画像：默认藏，仪式完成后浮现 -->
+    <section class="rail-profile" id="railProfile" aria-label="研究者画像（已收起）">
+      <div class="rp-head">
+        <span class="caret">▾</span>
+        <span class="rp-title">研究者画像</span>
+        <button class="rp-edit" type="button" id="railEdit">改</button>
+      </div>
+      <dl>
+        <dt>领域</dt><dd>中文法学 · 数据法与反垄断</dd>
+        <dt>立场</dt><dd>权利本位、法教义学训练</dd>
+        <dt>熟悉</dt><dd>个人信息保护法、反垄断法、比例原则</dd>
+        <dt>本篇困惑</dt><dd>非显而易见的跨学科切入点，避开「数据确权」红海</dd>
+      </dl>
+      <div class="rp-foot">
+        <span class="dot">●</span> 已落盘 · 本论文自动复用<br>
+        离群与新颖性以此为参照系
+      </div>
+    </section>
+
+    <h2 class="toc-h">手稿目次</h2>
+    <ul class="rail-toc" aria-label="手稿目次（尚未扫描）">
+      <li><span class="num">01</span><span class="ghost"></span></li>
+      <li><span class="num">02</span><span class="ghost"></span></li>
+      <li><span class="num">03</span><span class="ghost"></span></li>
+      <li><span class="num">04</span><span class="ghost"></span></li>
+    </ul>
+  </aside>
+
+  <!-- 中栏：文稿流。背后空墙（未扫描），画像卡浮于其上 -->
+  <div class="flow">
+
+    <!-- 空墙：将来出卡的位置，此刻只是虚影 -->
+    <div class="empty-wall" aria-hidden="true">
+      <div class="wall-head">盲区扫描 · 构思幕 · 尚未开始</div>
+      <div class="ghost-entry">
+        <div class="ghost-line w1"></div>
+        <div class="ghost-line w2"></div>
+        <div class="ghost-line w3"></div>
+        <div class="ghost-line w4"></div>
+      </div>
+      <div class="ghost-entry">
+        <div class="ghost-line w1"></div>
+        <div class="ghost-line w2"></div>
+        <div class="ghost-line w3"></div>
+      </div>
+    </div>
+
+    <div class="flow-inner">
+
+      <!-- ★ 画像卡：主角 -->
+      <section class="portrait settle" id="portrait" aria-labelledby="p-title">
+        <div class="eyebrow"><span class="brush">笔</span>开笔之前 · 研究者画像</div>
+        <h1 id="p-title">先落一笔你是谁</h1>
+
+        <p class="ded">
+          这一版画像，是本工具丈量「新颖」的<b>参照系</b>——
+          发掘的是相对于<b>你</b>的未知，不是相对于模型语料的。
+          离群与惊喜，都以此为原点。
+        </p>
+
+        <hr class="portrait-rule">
+
+        <form class="p-form" id="pForm" autocomplete="off"
+              onsubmit="return false;" aria-label="研究者画像表单">
+
+          <div class="field">
+            <label for="f-field">领域</label>
+            <input id="f-field" class="ff" type="text"
+                   value="中文法学 · 数据法与反垄断"
+                   placeholder="你的学科落点，越具体越好">
+            <span class="hint">扫描据此校准语料与检索面。</span>
+          </div>
+
+          <div class="field">
+            <label for="f-stance">立场 / 方法训练</label>
+            <input id="f-stance" class="ff" type="text"
+                   value="权利本位、法教义学训练"
+                   placeholder="你惯用的分析立场或范式">
+            <span class="hint">与你立场相左的切入点，会被标为「离群」。</span>
+          </div>
+
+          <div class="field">
+            <label for="f-familiar">熟悉的理论 / 概念</label>
+            <input id="f-familiar" class="ff" type="text"
+                   value="个人信息保护法、反垄断法、比例原则"
+                   placeholder="你已经会的，逗号分隔">
+            <span class="hint">这些不会再当新知端上来——只报你没见过的。</span>
+          </div>
+
+          <div class="field puzzle">
+            <label for="f-puzzle">本篇困惑</label>
+            <textarea id="f-puzzle" class="ff" rows="1"
+                      placeholder="这一篇，你到底卡在哪里？">想找非显而易见的跨学科切入点，怕落进「数据确权」的红海</textarea>
+            <span class="hint">这句最重要——扫描朝你的困惑发力。</span>
+          </div>
+
+        </form>
+
+        <div class="portrait-foot">
+          <button class="save-btn" type="button" id="saveBtn">
+            存这版画像<span class="sep">·</span><span class="go">开始扫描</span>
+          </button>
+          <p class="foot-note">
+            落盘 <code>docs/agents/muse/profile.md</code>。
+            <span class="reuse" role="button" tabindex="0" id="reuseNote">该论文后续自动复用这版画像</span>——可随时点「改」。
+          </p>
+        </div>
+
+        <!-- 落盘确认（点主操作后演示浮现） -->
+        <div class="stow-note" id="stowNote" role="status" aria-live="polite">
+          已存入 <b>profile.md</b>，画像收进左栏。扫描随即开笔——
+          发掘将以这版画像为参照系。
+        </div>
+      </section>
+
+      <!-- 收起后中栏留下的极简提示（演示态） -->
+      <section class="stowed-hero" id="stowedHero" aria-label="画像已收起">
+        <div class="sh-eyebrow">研究者画像 · 已就位</div>
+        <p class="sh-line">画像已收进<b>左栏</b>，作为本篇扫描的参照系。</p>
+        <p class="sh-sub">
+          随时可
+          <button class="sh-reopen" type="button" id="reopenBtn">重新展开这张卡</button>
+          修订，或在左栏点「改」。
+        </p>
+      </section>
+
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const $ = (s, el = document) => el.querySelector(s);
+
+  /* ── 明暗切换（切 html[data-theme]） ── */
+  (function wireTheme(){
+    const btn = $("#themeBtn");
+    const root = document.documentElement;
+    btn.addEventListener("click", () => {
+      const dark = root.getAttribute("data-theme") === "dark";
+      root.setAttribute("data-theme", dark ? "light" : "dark");
+      btn.textContent = dark ? "☾" : "☀";
+      btn.setAttribute("aria-label", dark ? "切换到暗色主题" : "切换到亮色主题");
+    });
+  })();
+
+  /* ── textarea 随内容自适应高度（保持「本篇困惑」≤ 数行不出滚动条） ── */
+  (function autoGrow(){
+    const ta = $("#f-puzzle");
+    const fit = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
+    ta.addEventListener("input", fit);
+    window.addEventListener("load", fit);
+    fit();
+  })();
+
+  /* ── 主操作：存这版画像 · 开始扫描
+        视觉稿无后端 —— 演示「落盘确认 → 画像收进左栏」这一收拢动作 ── */
+  (function wireSave(){
+    const saveBtn  = $("#saveBtn");
+    const stowNote = $("#stowNote");
+    const railP    = $("#railProfile");
+    const portrait = $("#portrait");
+    const stowed   = $("#stowedHero");
+    const scanBtn  = $("#scanBtn");
+
+    function collapseIntoRail(){
+      // 1) 先亮落盘确认（郑重，不弹窗）
+      stowNote.classList.add("shown");
+      scanBtn.disabled = false;
+      scanBtn.removeAttribute("title");
+      // 2) 稍候把中栏卡收起、左栏精简画像浮现
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const delay = reduce ? 0 : 900;
+      setTimeout(() => {
+        railP.classList.add("shown");
+        portrait.classList.add("stowed");
+        stowed.classList.add("shown");
+      }, delay);
+    }
+
+    saveBtn.addEventListener("click", collapseIntoRail);
+
+    // 「改 / 重新展开」：把卡召回中栏（演示可逆）
+    function reopen(){
+      $("#stowNote").classList.remove("shown");
+      railP.classList.remove("shown");
+      portrait.classList.remove("stowed");
+      stowed.classList.remove("shown");
+      scanBtn.disabled = true;
+      scanBtn.setAttribute("title", "先存这版画像，再开始扫描");
+      $("#f-field").focus();
+    }
+    $("#railEdit").addEventListener("click", reopen);
+    $("#reopenBtn").addEventListener("click", reopen);
+    $("#reuseNote").addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); }
+    });
+  })();
+</script>
+</body>
+</html>

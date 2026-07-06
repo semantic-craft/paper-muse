@@ -1,0 +1,579 @@
+<!-- 产物面板 · 方向B 左栏常驻产物账 -->
+<!DOCTYPE html>
+<html lang="zh-Hans" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>产物账 · 文稿台扩展面 方向B</title>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   文稿台 设计令牌 + 基座 + 顶栏 —— 整段内联自 _shared/tokens.css
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  /* 明主题 */
+  --paper: #F5F4F1;
+  --ink: #1A1A17;
+  --ink-2: #57534A;
+  --hair: #E2E0DA;
+  --hair-strong: #D3D0C8;
+  --vermilion: #A83232;   /* 朱批 / 强调 / 主操作 hover */
+  --gold: #9A7B2E;        /* 🥇英热中冷 */
+  --own: #4F6B3A;         /* 📚已藏未用 */
+  --pt-view: #3A6B6E;     /* 视角=青 */
+  --pt-theory: #6B4E7A;   /* 理论=紫褐 */
+  --pt-method: #9A7B2E;   /* 方法=赭 */
+  --sel-wash: rgba(168,50,50,0.06);
+  /* 字族 */
+  --serif-zh: "Songti SC","STSong",serif;
+  --serif-en: "New York","Iowan Old Style","Palatino",Georgia,serif;
+  --kai: "Kaiti SC","STKaiti",serif;      /* 朱批 / 你的声音 / 编辑嗓音 */
+  --mono: "SF Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+  --sans: -apple-system,"SF Pro Text","Helvetica Neue",sans-serif;
+}
+html[data-theme="dark"] {
+  --paper: #1C1B18;
+  --ink: #E8E5DD;
+  --ink-2: #A8A498;
+  --hair: #33312B;
+  --hair-strong: #45423A;
+  --vermilion: #D8695C;
+  --gold: #C6A94E;
+  --own: #8FB06A;
+  --pt-view: #6FA9AC;
+  --pt-theory: #A88CB8;
+  --pt-method: #C6A94E;
+  --sel-wash: rgba(216,105,92,0.08);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif-zh);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: var(--sel-wash); }
+:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; border-radius: 1px; }
+
+/* ── 顶部细 bar（框住扩展面，保持在世界里） ── */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: baseline; gap: 24px;
+  padding: 12px 28px;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: saturate(1.1) blur(6px);
+  border-bottom: 1px solid var(--hair);
+}
+.wordmark { font-family: var(--serif-en); font-size: 15px; letter-spacing: .02em; color: var(--ink-2); white-space: nowrap; font-style: italic; }
+.wordmark b { font-style: normal; color: var(--ink); font-weight: 600; }
+.topic-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.topic-field label { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.topic-input { flex: 1 1 auto; min-width: 0; font-family: var(--serif-zh); font-size: 17px; color: var(--ink); background: transparent; border: none; border-bottom: 1px solid var(--hair-strong); padding: 2px 2px 4px; line-height: 1.4; }
+.topic-input:focus { border-bottom-color: var(--vermilion); outline: none; }
+.scan-btn { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--paper); background: var(--ink); border: none; padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+.scan-btn:hover { background: var(--vermilion); }
+.acts { display: flex; gap: 2px; white-space: nowrap; }
+.act-tab { font-family: var(--serif-zh); font-size: 15px; color: var(--ink-2); background: none; border: none; padding: 4px 4px 8px; cursor: pointer; border-bottom: 2px solid transparent; position: relative; }
+.act-tab.active { color: var(--ink); border-bottom-color: var(--vermilion); }
+.act-tab[disabled] { color: var(--ink-2); opacity: .5; cursor: not-allowed; }
+.act-tab .soon { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; vertical-align: super; color: var(--vermilion); margin-left: 3px; }
+.act-sep { color: var(--hair-strong); align-self: center; padding-bottom: 4px; }
+.theme-btn { font-family: var(--mono); font-size: 13px; color: var(--ink-2); background: none; border: 1px solid var(--hair-strong); border-radius: 50%; width: 30px; height: 30px; cursor: pointer; line-height: 1; flex: 0 0 auto; }
+.theme-btn:hover { border-color: var(--vermilion); color: var(--vermilion); }
+
+/* ══════════════════════════════════════════════════════════════
+   扩展面本体 —— 方向B 左栏常驻产物账
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── 双栏骨架 ── */
+.shell {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  align-items: start;
+  min-height: calc(100vh - 55px);
+}
+.rail {
+  position: sticky; top: 55px;
+  align-self: start;
+  height: calc(100vh - 55px);
+  overflow-y: auto;
+  border-right: 1px solid var(--hair);
+  padding: 22px 18px 28px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.rail::-webkit-scrollbar { width: 8px; }
+.rail::-webkit-scrollbar-thumb { background: var(--hair-strong); border-radius: 4px; }
+
+/* 左栏区块通用节奏 */
+.rail-block {}
+.rail-h {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0 0 11px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.rail-h .count { color: var(--hair-strong); font-size: 9px; }
+
+/* ── 区块一：研究者画像 ── */
+.who {
+  display: flex; gap: 11px; align-items: flex-start;
+}
+.who-mark {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--kai);
+  font-size: 17px;
+  color: var(--vermilion);
+}
+.who-body { min-width: 0; }
+.who-name { font-family: var(--serif-zh); font-size: 14px; color: var(--ink); line-height: 1.4; }
+.who-role { font-family: var(--serif-en); font-style: italic; font-size: 11.5px; color: var(--ink-2); line-height: 1.5; }
+.who-tags { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.who-tag {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .04em;
+  color: var(--ink-2);
+  border: 1px solid var(--hair);
+  border-radius: 2px; padding: 1px 5px;
+}
+
+/* ── 区块二：手稿目次 ── */
+.toc { list-style: none; margin: 0; padding: 0; }
+.toc li {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 3px 0;
+  font-family: var(--serif-zh); font-size: 13px;
+  color: var(--ink-2);
+  cursor: default;
+}
+.toc li .n { font-family: var(--mono); font-size: 9.5px; color: var(--hair-strong); flex: 0 0 auto; width: 15px; }
+.toc li.here { color: var(--ink); }
+.toc li.here .n { color: var(--vermilion); }
+.toc li .dots { flex: 1 1 auto; border-bottom: 1px dotted var(--hair-strong); transform: translateY(-3px); }
+.toc li .pg { font-family: var(--mono); font-size: 9.5px; color: var(--ink-2); flex: 0 0 auto; }
+
+/* ── 区块三：识读图例 ── */
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.legend li { display: flex; align-items: center; gap: 8px; font-family: var(--serif-zh); font-size: 12px; color: var(--ink-2); }
+.legend .glyph { flex: 0 0 auto; width: 15px; text-align: center; font-size: 12px; }
+.legend .pt-swatch { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 2px; }
+
+/* ══════════════════════════════════════════════════════════════
+   ★ 区块四：产物账（本方向主角）
+   ══════════════════════════════════════════════════════════════ */
+.ledger {
+  margin-top: auto;                 /* 沉到左栏底部：常驻家具 */
+  padding-top: 22px;
+  border-top: 1px solid var(--hair);
+}
+.ledger-h {
+  font-family: var(--mono);
+  font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0 0 4px;
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.ledger-h .path {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0;
+  text-transform: none; color: var(--hair-strong);
+}
+.ledger-sub {
+  font-family: var(--kai); font-size: 11px; color: var(--ink-2);
+  margin: 0 0 12px; line-height: 1.5;
+}
+.ledger-sub em { font-style: normal; color: var(--vermilion); }
+
+/* 进度骨料：n / 7 生成 */
+.ledger-meter {
+  display: flex; align-items: center; gap: 3px;
+  margin: 0 0 13px;
+}
+.ledger-meter .tick {
+  flex: 1 1 auto; height: 2px; border-radius: 1px;
+  background: var(--hair-strong);
+}
+.ledger-meter .tick.on { background: var(--vermilion); }
+.ledger-meter .frac {
+  font-family: var(--mono); font-size: 9px; color: var(--ink-2);
+  flex: 0 0 auto; margin-left: 4px;
+}
+
+/* 产物行 —— 每件一行 */
+.ledger-list { list-style: none; margin: 0; padding: 0; }
+.led-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 5px 4px 5px 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  background: none; border: none; width: 100%; text-align: left;
+  font: inherit; color: inherit;
+  transition: background .12s ease;
+}
+.led-row:hover,
+.led-row:focus-visible { background: var(--sel-wash); }
+@media (prefers-reduced-motion: reduce) { .led-row { transition: none; } }
+
+/* 状态点 */
+.led-dot {
+  grid-row: 1;
+  align-self: center;
+  width: 7px; height: 7px; border-radius: 50%;
+  margin-top: 1px;
+  flex: 0 0 auto;
+}
+.led-dot.done   { background: var(--vermilion); }         /* 已生成·朱 */
+.led-dot.done.own { background: var(--own); }             /* 已生成·墨绿变体（数据/表类） */
+.led-dot.todo   { background: transparent; border: 1px solid var(--hair-strong); }  /* 待生成·空心灰 */
+
+/* 文件名（mono） */
+.led-name {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: .01em;
+  color: var(--ink);
+  line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.led-row.is-todo .led-name { color: var(--ink-2); }
+.led-name .ext { color: var(--ink-2); }
+
+/* 极小操作：已生成=打开/访达；待生成=状态字 */
+.led-act {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--hair-strong);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.led-row:hover .led-act.open,
+.led-row:focus-visible .led-act.open { color: var(--vermilion); }
+.led-act.pending { color: var(--ink-2); opacity: .7; }
+
+/* 第二行：喂给谁（贴在文件名下，极小 kai） */
+.led-feed {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  font-family: var(--kai);
+  font-size: 10px;
+  color: var(--ink-2);
+  line-height: 1.4;
+  margin-top: 1px;
+}
+.led-feed .arrow { color: var(--hair-strong); }
+.led-feed b { font-weight: 400; color: var(--vermilion); font-family: var(--mono); font-size: 9px; letter-spacing: .03em; }
+.led-row.is-todo .led-feed { opacity: .8; }
+
+/* 底注 */
+.ledger-note {
+  font-family: var(--kai); font-size: 10px; color: var(--ink-2);
+  margin: 12px 0 0; line-height: 1.55; opacity: .85;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   右侧主区 —— 简化手稿流残影（配角）
+   ══════════════════════════════════════════════════════════════ */
+.main { padding: 26px 34px 60px; min-width: 0; }
+.main-lede {
+  font-family: var(--kai); font-size: 13px; color: var(--ink-2);
+  margin: 0 0 22px; max-width: 60ch; line-height: 1.7;
+}
+.main-lede em { font-style: normal; color: var(--vermilion); }
+
+.wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+  gap: 16px;
+}
+.card {
+  border: 1px solid var(--hair);
+  border-radius: 3px;
+  padding: 14px 15px 15px;
+  background: color-mix(in srgb, var(--paper) 96%, var(--ink) 1%);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.card-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-2);
+}
+.card-badge { display: flex; align-items: center; gap: 5px; }
+.card-badge .pt { width: 8px; height: 8px; border-radius: 2px; }
+.card-h { font-family: var(--serif-zh); font-size: 15px; color: var(--ink); line-height: 1.5; }
+.card-b { font-family: var(--serif-zh); font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
+.card-b .redink { font-family: var(--kai); color: var(--vermilion); }
+.card-foot {
+  margin-top: 2px; padding-top: 8px; border-top: 1px dotted var(--hair-strong);
+  font-family: var(--mono); font-size: 9px; letter-spacing: .06em; color: var(--ink-2);
+  display: flex; justify-content: space-between;
+}
+.card.ghost { opacity: .5; }
+.card.ghost .card-h,
+.card.ghost .card-b { color: var(--hair-strong); }
+
+/* 无障碍：可视隐藏 */
+.vh {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* 窄屏折叠：左栏落到上方 */
+@media (max-width: 760px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail {
+    position: static; height: auto; width: 100%;
+    border-right: none; border-bottom: 1px solid var(--hair);
+  }
+  .ledger { margin-top: 26px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── 顶栏（保持在世界里） ── -->
+<header class="topbar">
+  <div class="wordmark"><b>论文构思者</b> · 文稿台</div>
+  <div class="topic-field">
+    <label for="topic">选题</label>
+    <input id="topic" class="topic-input" type="text"
+           value="县域医共体下家庭医生签约的制度激励错位" aria-label="研究选题">
+  </div>
+  <nav class="acts" aria-label="工序">
+    <button class="act-tab active" type="button">扫盲区</button>
+    <span class="act-sep">·</span>
+    <button class="act-tab" type="button">拷问</button>
+    <span class="act-sep">·</span>
+    <button class="act-tab" type="button">对抗<span class="soon">SOON</span></button>
+  </nav>
+  <button class="scan-btn" type="button">Re-scan</button>
+  <button class="theme-btn" type="button" id="themeBtn" aria-label="切换明暗主题" aria-pressed="false" title="切换明暗">☾</button>
+</header>
+
+<div class="shell">
+
+  <!-- ══════════ 左栏 ══════════ -->
+  <aside class="rail" aria-label="文稿台侧栏">
+
+    <!-- 研究者画像 -->
+    <section class="rail-block" aria-labelledby="h-who">
+      <h2 class="rail-h" id="h-who">研究者画像</h2>
+      <div class="who">
+        <div class="who-mark" aria-hidden="true">张</div>
+        <div class="who-body">
+          <div class="who-name">张宪伟</div>
+          <div class="who-role">public-health PhD candidate</div>
+          <div class="who-tags">
+            <span class="who-tag">卫生政策</span>
+            <span class="who-tag">质性为主</span>
+            <span class="who-tag">县域田野</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 手稿目次 -->
+    <section class="rail-block" aria-labelledby="h-toc">
+      <h2 class="rail-h" id="h-toc">手稿目次 <span class="count">6 篇</span></h2>
+      <ol class="toc">
+        <li class="here"><span class="n">01</span>问题缘起<span class="dots"></span><span class="pg">此处</span></li>
+        <li><span class="n">02</span>制度背景<span class="dots"></span><span class="pg">p.3</span></li>
+        <li><span class="n">03</span>激励错位<span class="dots"></span><span class="pg">p.7</span></li>
+        <li><span class="n">04</span>田野证据<span class="dots"></span><span class="pg">p.12</span></li>
+        <li><span class="n">05</span>对话文献<span class="dots"></span><span class="pg">p.18</span></li>
+        <li><span class="n">06</span>政策含义<span class="dots"></span><span class="pg">p.24</span></li>
+      </ol>
+    </section>
+
+    <!-- 识读图例 -->
+    <section class="rail-block" aria-labelledby="h-legend">
+      <h2 class="rail-h" id="h-legend">识读图例</h2>
+      <ul class="legend">
+        <li><span class="glyph">🥇</span>英热中冷（本土空白）</li>
+        <li><span class="glyph">📚</span>已藏未用（你手边的）</li>
+        <li><span class="pt-swatch" style="background:var(--pt-view)"></span>视角切口</li>
+        <li><span class="pt-swatch" style="background:var(--pt-theory)"></span>理论嫁接</li>
+        <li><span class="pt-swatch" style="background:var(--pt-method)"></span>方法迁移</li>
+      </ul>
+    </section>
+
+    <!-- ★★★ 产物账 —— 本方向主角，沉到底部常驻 ★★★ -->
+    <section class="ledger" aria-labelledby="h-ledger">
+      <div class="ledger-h" id="h-ledger">
+        <span>产物账</span>
+        <span class="path">docs/agents/muse/</span>
+      </div>
+      <p class="ledger-sub">写作流水线的<em>唯一接口</em>：这些文件在，下游工序就能接。</p>
+
+      <!-- 进度骨料 5/7 -->
+      <div class="ledger-meter" aria-hidden="true">
+        <span class="tick on"></span><span class="tick on"></span><span class="tick on"></span>
+        <span class="tick on"></span><span class="tick on"></span>
+        <span class="tick"></span><span class="tick"></span>
+        <span class="frac">5/7</span>
+      </div>
+      <p class="vh">产物账：共 7 件，已生成 5 件，待生成 2 件。</p>
+
+      <ul class="ledger-list">
+
+        <li>
+          <button class="led-row" type="button">
+            <span class="led-dot done" aria-hidden="true"></span>
+            <span class="led-name">perspectives<span class="ext">.md</span></span>
+            <span class="led-act open">打开</span>
+            <span class="led-feed"><span class="arrow">↳ 供 </span>手稿全部视角卡</span>
+            <span class="vh">已生成，点击打开或在访达中显示。供手稿全部视角卡。</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="led-row" type="button">
+            <span class="led-dot done" aria-hidden="true"></span>
+            <span class="led-name">questions<span class="ext">.md</span></span>
+            <span class="led-act open">打开</span>
+            <span class="led-feed"><span class="arrow">↳ 喂 </span><b>grill</b> 拷问句</span>
+            <span class="vh">已生成，点击打开或在访达中显示。喂给 grill 工序作拷问句。</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="led-row" type="button">
+            <span class="led-dot done" aria-hidden="true"></span>
+            <span class="led-name">sources<span class="ext">.md</span></span>
+            <span class="led-act open">打开</span>
+            <span class="led-feed"><span class="arrow">↳ 供 </span>文献锚点索引</span>
+            <span class="vh">已生成，点击打开或在访达中显示。供文献锚点索引。</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="led-row" type="button">
+            <span class="led-dot done" aria-hidden="true"></span>
+            <span class="led-name">profile<span class="ext">.md</span></span>
+            <span class="led-act open">打开</span>
+            <span class="led-feed"><span class="arrow">↳ 供 </span>研究者画像</span>
+            <span class="vh">已生成，点击打开或在访达中显示。供研究者画像。</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="led-row" type="button">
+            <span class="led-dot done own" aria-hidden="true"></span>
+            <span class="led-name">angle-feedback<span class="ext">.json</span></span>
+            <span class="led-act open">打开</span>
+            <span class="led-feed"><span class="arrow">↳ 记 </span>视角抑制表</span>
+            <span class="vh">已生成的数据文件，点击打开或在访达中显示。记录视角抑制表。</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="led-row is-todo" type="button">
+            <span class="led-dot todo" aria-hidden="true"></span>
+            <span class="led-name">mindmap<span class="ext">.md</span></span>
+            <span class="led-act pending">待生成</span>
+            <span class="led-feed"><span class="arrow">↳ 供 </span>思维导图导出</span>
+            <span class="vh">待生成。将供思维导图导出。</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="led-row is-todo" type="button">
+            <span class="led-dot todo" aria-hidden="true"></span>
+            <span class="led-name">failure-points<span class="ext">.md</span></span>
+            <span class="led-act pending">待生成</span>
+            <span class="led-feed"><span class="arrow">↳ 喂 </span><b>to-prove</b> 失败点</span>
+            <span class="vh">待生成。将喂给 to-prove 工序作对抗失败点。</span>
+          </button>
+        </li>
+
+      </ul>
+
+      <p class="ledger-note">两件待生成的会在「对抗」工序跑完后自动落盘。</p>
+    </section>
+
+  </aside>
+
+  <!-- ══════════ 右侧主区：手稿流残影（配角） ══════════ -->
+  <main class="main" aria-label="盲区扫描卡片墙">
+    <p class="main-lede">左栏底部那本<em>产物账</em>始终在视野里——你不必打开抽屉，也知道流水线接口攒到了几件。下面是盲区扫描的卡片残影，只作陪衬。</p>
+
+    <section class="wall" aria-label="视角卡片（示意）">
+
+      <article class="card">
+        <div class="card-top">
+          <span class="card-badge"><span class="pt" style="background:var(--pt-view)"></span>视角切口</span>
+          <span>🥇</span>
+        </div>
+        <div class="card-h">把「签约率」读成一场基层数字表演</div>
+        <div class="card-b">英文圈有 street-level bureaucracy 的成熟叙述，本土几乎没人从<span class="redink">表演性合规</span>切进签约考核。</div>
+        <div class="card-foot"><span>PERSPECTIVE · 03</span><span>英热中冷</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-top">
+          <span class="card-badge"><span class="pt" style="background:var(--pt-theory)"></span>理论嫁接</span>
+          <span>📚</span>
+        </div>
+        <div class="card-h">用委托—代理错配解释激励倒挂</div>
+        <div class="card-b">你 Zotero 里那批公共经济学文献<span class="redink">已藏未用</span>，正好搭这条线。</div>
+        <div class="card-foot"><span>PERSPECTIVE · 07</span><span>已藏未用</span></div>
+      </article>
+
+      <article class="card">
+        <div class="card-top">
+          <span class="card-badge"><span class="pt" style="background:var(--pt-method)"></span>方法迁移</span>
+          <span></span>
+        </div>
+        <div class="card-h">把政策文本做成时间线编码</div>
+        <div class="card-b">把三年文件的措辞漂移编码成序列，让「错位」有可核的证据。</div>
+        <div class="card-foot"><span>PERSPECTIVE · 11</span><span>方法迁移</span></div>
+      </article>
+
+      <article class="card ghost">
+        <div class="card-top">
+          <span class="card-badge"><span class="pt" style="background:var(--hair-strong)"></span>待扫描</span>
+          <span></span>
+        </div>
+        <div class="card-h">⋯ 更多视角待「对抗」工序补出</div>
+        <div class="card-b">此卡为占位残影。</div>
+        <div class="card-foot"><span>PENDING</span><span>—</span></div>
+      </article>
+
+    </section>
+  </main>
+
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var btn  = document.getElementById('themeBtn');
+  function apply(t) {
+    root.setAttribute('data-theme', t);
+    var dark = t === 'dark';
+    btn.textContent = dark ? '☀' : '☾';
+    btn.setAttribute('aria-pressed', String(dark));
+  }
+  btn.addEventListener('click', function () {
+    apply(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,79 @@
+/* 文稿台 设计令牌 + 基座 + 顶栏 —— 抄自 webui/index.html（已选定方向）。
+   扩展面 mock（产物面板 / 画像流）内联这份，保证与真界面同一套语言。
+   新面用这些变量与字族搭；别引入新色系/新字体。 */
+
+:root {
+  /* 明主题 */
+  --paper: #F5F4F1;
+  --ink: #1A1A17;
+  --ink-2: #57534A;
+  --hair: #E2E0DA;
+  --hair-strong: #D3D0C8;
+  --vermilion: #A83232;   /* 朱批 / 强调 / 主操作 hover */
+  --gold: #9A7B2E;        /* 🥇英热中冷 */
+  --own: #4F6B3A;         /* 📚已藏未用 */
+  --pt-view: #3A6B6E;     /* 视角=青 */
+  --pt-theory: #6B4E7A;   /* 理论=紫褐 */
+  --pt-method: #9A7B2E;   /* 方法=赭 */
+  --sel-wash: rgba(168,50,50,0.06);
+  /* 字族 */
+  --serif-zh: "Songti SC","STSong",serif;
+  --serif-en: "New York","Iowan Old Style","Palatino",Georgia,serif;
+  --kai: "Kaiti SC","STKaiti",serif;      /* 朱批 / 你的声音 / 编辑嗓音 */
+  --mono: "SF Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+  --sans: -apple-system,"SF Pro Text","Helvetica Neue",sans-serif;
+}
+html[data-theme="dark"] {
+  --paper: #1C1B18;
+  --ink: #E8E5DD;
+  --ink-2: #A8A498;
+  --hair: #33312B;
+  --hair-strong: #45423A;
+  --vermilion: #D8695C;
+  --gold: #C6A94E;
+  --own: #8FB06A;
+  --pt-view: #6FA9AC;
+  --pt-theory: #A88CB8;
+  --pt-method: #C6A94E;
+  --sel-wash: rgba(216,105,92,0.08);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif-zh);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: var(--sel-wash); }
+:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; border-radius: 1px; }
+
+/* ── 顶部细 bar（框住扩展面，保持在世界里） ── */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: baseline; gap: 24px;
+  padding: 12px 28px;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: saturate(1.1) blur(6px);
+  border-bottom: 1px solid var(--hair);
+}
+.wordmark { font-family: var(--serif-en); font-size: 15px; letter-spacing: .02em; color: var(--ink-2); white-space: nowrap; font-style: italic; }
+.wordmark b { font-style: normal; color: var(--ink); font-weight: 600; }
+.topic-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.topic-field label { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.topic-input { flex: 1 1 auto; min-width: 0; font-family: var(--serif-zh); font-size: 17px; color: var(--ink); background: transparent; border: none; border-bottom: 1px solid var(--hair-strong); padding: 2px 2px 4px; line-height: 1.4; }
+.topic-input:focus { border-bottom-color: var(--vermilion); outline: none; }
+.scan-btn { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--paper); background: var(--ink); border: none; padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+.scan-btn:hover { background: var(--vermilion); }
+.acts { display: flex; gap: 2px; white-space: nowrap; }
+.act-tab { font-family: var(--serif-zh); font-size: 15px; color: var(--ink-2); background: none; border: none; padding: 4px 4px 8px; cursor: pointer; border-bottom: 2px solid transparent; position: relative; }
+.act-tab.active { color: var(--ink); border-bottom-color: var(--vermilion); }
+.act-tab[disabled] { color: var(--ink-2); opacity: .5; cursor: not-allowed; }
+.act-tab .soon { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; vertical-align: super; color: var(--vermilion); margin-left: 3px; }
+.act-sep { color: var(--hair-strong); align-self: center; padding-bottom: 4px; }
+.theme-btn { font-family: var(--mono); font-size: 13px; color: var(--ink-2); background: none; border: 1px solid var(--hair-strong); border-radius: 50%; width: 30px; height: 30px; cursor: pointer; line-height: 1; flex: 0 0 auto; }
+.theme-btn:hover { border-color: var(--vermilion); color: var(--vermilion); }

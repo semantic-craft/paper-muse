@@ -1,0 +1,550 @@
+<!-- 研究者画像 · 方向B 左栏可编辑 + 因你标注 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>研究者画像 · 方向B · 论文构思者</title>
+<style>
+  /* ══ 内联 tokens.css（勿改：与真界面同一套语言）══ */
+  :root {
+    --paper: #F5F4F1;
+    --ink: #1A1A17;
+    --ink-2: #57534A;
+    --hair: #E2E0DA;
+    --hair-strong: #D3D0C8;
+    --vermilion: #A83232;
+    --gold: #9A7B2E;
+    --own: #4F6B3A;
+    --pt-view: #3A6B6E;
+    --pt-theory: #6B4E7A;
+    --pt-method: #9A7B2E;
+    --sel-wash: rgba(168,50,50,0.06);
+    --serif-zh: "Songti SC","STSong",serif;
+    --serif-en: "New York","Iowan Old Style","Palatino",Georgia,serif;
+    --kai: "Kaiti SC","STKaiti",serif;
+    --mono: "SF Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+    --sans: -apple-system,"SF Pro Text","Helvetica Neue",sans-serif;
+  }
+  html[data-theme="dark"] {
+    --paper: #1C1B18;
+    --ink: #E8E5DD;
+    --ink-2: #A8A498;
+    --hair: #33312B;
+    --hair-strong: #45423A;
+    --vermilion: #D8695C;
+    --gold: #C6A94E;
+    --own: #8FB06A;
+    --pt-view: #6FA9AC;
+    --pt-theory: #A88CB8;
+    --pt-method: #C6A94E;
+    --sel-wash: rgba(216,105,92,0.08);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif-zh);
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: var(--sel-wash); }
+  :focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; border-radius: 1px; }
+
+  /* ── 顶部细 bar ── */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: baseline; gap: 24px;
+    padding: 12px 28px;
+    background: color-mix(in srgb, var(--paper) 94%, transparent);
+    backdrop-filter: saturate(1.1) blur(6px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .wordmark { font-family: var(--serif-en); font-size: 15px; letter-spacing: .02em; color: var(--ink-2); white-space: nowrap; font-style: italic; }
+  .wordmark b { font-style: normal; color: var(--ink); font-weight: 600; }
+  .topic-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+  .topic-field label { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+  .topic-input { flex: 1 1 auto; min-width: 0; font-family: var(--serif-zh); font-size: 17px; color: var(--ink); background: transparent; border: none; border-bottom: 1px solid var(--hair-strong); padding: 2px 2px 4px; line-height: 1.4; }
+  .topic-input:focus { border-bottom-color: var(--vermilion); outline: none; }
+  .scan-btn { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--paper); background: var(--ink); border: none; padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+  .scan-btn:hover { background: var(--vermilion); }
+  .acts { display: flex; gap: 2px; white-space: nowrap; }
+  .act-tab { font-family: var(--serif-zh); font-size: 15px; color: var(--ink-2); background: none; border: none; padding: 4px 4px 8px; cursor: pointer; border-bottom: 2px solid transparent; position: relative; }
+  .act-tab.active { color: var(--ink); border-bottom-color: var(--vermilion); }
+  .act-tab[disabled] { color: var(--ink-2); opacity: .5; cursor: not-allowed; }
+  .act-tab .soon { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; vertical-align: super; color: var(--vermilion); margin-left: 3px; }
+  .act-sep { color: var(--hair-strong); align-self: center; padding-bottom: 4px; }
+  .theme-btn { font-family: var(--mono); font-size: 13px; color: var(--ink-2); background: none; border: 1px solid var(--hair-strong); border-radius: 50%; width: 30px; height: 30px; cursor: pointer; line-height: 1; flex: 0 0 auto; }
+  .theme-btn:hover { border-color: var(--vermilion); color: var(--vermilion); }
+
+  /* ══ 两段式骨架：左画像栏 + 主区卡流 ══ */
+  .desk {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 720px);
+    justify-content: center;
+    gap: 0;
+    max-width: 1120px;
+    margin: 0 auto;
+    align-items: start;
+  }
+
+  /* ── 左栏：研究者画像（就地可编辑，主证据之一）── */
+  .rail {
+    position: sticky; top: 57px;
+    align-self: start;
+    padding: 34px 30px 40px 28px;
+    border-right: 1px solid var(--hair);
+  }
+  .rail-eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 3px; }
+  .rail h2 { font-family: var(--serif-zh); font-weight: 600; font-size: 18px; letter-spacing: .01em; color: var(--ink); margin: 0 0 4px; }
+  .rail-hint { font-family: var(--kai); font-size: 13px; color: var(--vermilion); letter-spacing: .03em; margin: 0 0 18px; line-height: 1.55; }
+  .rail-hint b { font-weight: 400; border-bottom: 1px solid var(--vermilion); }
+
+  .pfield {
+    padding: 9px 0 10px;
+    border-top: 1px solid var(--hair);
+  }
+  .pfield:first-of-type { border-top: none; }
+  .pfield-key {
+    display: flex; align-items: baseline; gap: 7px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-2); margin-bottom: 3px;
+  }
+  .pfield-key .refct {
+    margin-left: auto; font-family: var(--serif-zh); font-size: 10px;
+    letter-spacing: .02em; text-transform: none; color: var(--vermilion);
+    opacity: 0; transition: opacity .2s;
+  }
+  .pfield.has-ref .pfield-key .refct { opacity: .85; }
+  .pfield-key .refct::before { content: "↳ "; }
+
+  /* 就地可编辑值：文稿台风格，无输入框外观 */
+  .pval {
+    font-family: var(--serif-zh); font-size: 14.5px; line-height: 1.6;
+    color: var(--ink);
+    border-bottom: 1px dotted transparent;
+    padding: 1px 2px; margin: 0 -2px;
+    cursor: text; border-radius: 1px;
+    transition: background .18s, border-color .18s;
+  }
+  .pval:hover { border-bottom-color: var(--hair-strong); background: color-mix(in srgb, var(--paper) 55%, var(--hair) 45%); }
+  .pval:focus { outline: none; background: var(--sel-wash); border-bottom: 1px solid var(--vermilion); }
+  .pval[data-empty="true"]::before {
+    content: attr(data-placeholder);
+    color: var(--ink-2); font-style: italic;
+  }
+  /* 编辑提示：hover 时右栏字段浮出一支笔 */
+  .pval-wrap { position: relative; }
+  .pval-wrap .pen {
+    position: absolute; top: 2px; right: -14px;
+    font-family: var(--kai); font-size: 12px; color: var(--vermilion);
+    opacity: 0; pointer-events: none; transition: opacity .18s;
+  }
+  .pval-wrap:hover .pen, .pval:focus + .pen { opacity: .7; }
+
+  .rail-foot {
+    margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--hair);
+    font-family: var(--sans); font-size: 11px; line-height: 1.65; color: var(--ink-2);
+  }
+  .rail-foot .lead {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-2); display: block; margin-bottom: 3px;
+  }
+
+  /* 字段被卡片朱批「链回」时的高亮 */
+  @keyframes fieldPing {
+    0%   { background: var(--sel-wash); }
+    100% { background: transparent; }
+  }
+  .pfield.is-pinged { animation: fieldPing 1.6s ease-out; }
+  .pfield.is-pinged .pval { border-bottom-color: var(--vermilion); }
+  @media (prefers-reduced-motion: reduce) {
+    .pfield.is-pinged { animation: none; }
+    .pfield.is-pinged .pval { background: var(--sel-wash); }
+  }
+
+  /* ── 主区：切入点卡流（主证据之二）── */
+  .flow { padding: 30px 40px 120px; min-width: 0; }
+  .flow-head { margin: 6px 0 4px; }
+  .flow-head .eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+  .flow-head h1 { font-family: var(--serif-zh); font-weight: 600; font-size: 25px; line-height: 1.3; letter-spacing: .01em; margin: 4px 0 6px; color: var(--ink); }
+  .flow-head .sub { font-family: var(--serif-zh); font-size: 14px; color: var(--ink-2); margin: 0; }
+  .flow-head .sub b { color: var(--vermilion); font-weight: 600; }
+  .flow-rule { border: 0; border-top: 2px solid var(--ink); margin: 20px 0 8px; }
+
+  .entry { position: relative; padding: 30px 0 26px; border-top: 1px solid var(--hair); }
+  .entry:first-of-type { border-top: none; }
+
+  .kicker {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px;
+  }
+  .type-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+  .kicker .seq { margin-left: auto; color: var(--ink-2); font-variant-numeric: tabular-nums; letter-spacing: .05em; }
+  .entry h3 { font-family: var(--serif-zh); font-weight: 600; font-size: 22px; line-height: 1.32; letter-spacing: .005em; margin: 0 0 3px; color: var(--ink); }
+  .mechanism { font-family: var(--serif-zh); font-size: 15px; color: var(--ink-2); margin: 0 0 16px; line-height: 1.7; }
+
+  /* 「相对于你的未知」——本方向的关键：显式回指画像字段 */
+  .why {
+    position: relative; margin: 0;
+    padding: 2px 0 2px 20px;
+    border-left: 2px solid var(--pt-view);
+  }
+  .why.stance-anchored { border-left-color: var(--vermilion); }
+  .why.puzzle-anchored { border-left-color: var(--gold); }
+  .why .lead {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-2);
+    display: block; margin-bottom: 3px;
+  }
+  .why p { margin: 0; font-size: 16px; line-height: 1.78; color: var(--ink); }
+  /* 回指画像字段的那半句——朱批嗓音，随左栏变 */
+  .becuz {
+    font-family: var(--kai); color: var(--vermilion);
+    letter-spacing: .02em; font-size: 16.5px;
+  }
+  .becuz .qt {
+    border-bottom: 1px dotted var(--vermilion);
+  }
+
+  /* 因你小标：把「这张卡为何对你非显而易见」链回画像那一条 */
+  .becuz-tag {
+    display: inline-flex; align-items: baseline; gap: 6px;
+    font-family: var(--serif-zh); font-size: 11.5px; letter-spacing: .04em;
+    color: var(--vermilion); background: none;
+    border: 1px solid var(--vermilion); border-radius: 1px;
+    padding: 2px 8px 3px; margin-top: 12px;
+    cursor: pointer; line-height: 1.3;
+    transition: background .18s, color .18s;
+  }
+  .becuz-tag:hover, .becuz-tag:focus-visible { background: var(--vermilion); color: var(--paper); }
+  .becuz-tag .stamp {
+    font-family: var(--kai); font-size: 12px;
+    border: 1px solid currentColor; border-radius: 1px;
+    width: 17px; height: 17px; line-height: 15px; text-align: center;
+    flex: 0 0 auto; align-self: center;
+  }
+  .becuz-tag .to { font-family: var(--mono); font-size: 9px; letter-spacing: .06em; opacity: .8; }
+
+  /* apparatus 折叠（拷问 / 锚点）—— 沿用文稿台 */
+  .apparatus { margin-top: 18px; }
+  details.fold { margin-top: 8px; }
+  details.fold summary {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-2); cursor: pointer;
+    list-style: none; padding: 3px 0; border-bottom: 1px solid var(--hair);
+    display: inline-block;
+  }
+  details.fold summary::-webkit-details-marker { display: none; }
+  details.fold summary::before { content: "＋ "; color: var(--vermilion); }
+  details.fold[open] summary::before { content: "－ "; }
+  details.fold .body { padding: 8px 0 2px; }
+  .q-list { margin: 0 0 10px; padding: 0 0 0 18px; }
+  .q-list li { font-family: var(--kai); font-size: 15px; color: var(--ink); line-height: 1.7; margin-bottom: 3px; letter-spacing: .03em; }
+  .q-list li::marker { color: var(--vermilion); }
+  .anchors { margin: 4px 0 0; padding: 0; list-style: none; }
+  .anchors li { font-family: var(--sans); font-size: 12px; line-height: 1.55; margin-bottom: 6px; }
+  .anchors a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--hair-strong); }
+  .anchors a:hover { border-bottom-color: var(--vermilion); color: var(--vermilion); }
+  .anchors .u { font-family: var(--mono); font-size: 10px; color: var(--ink-2); margin-left: 8px; }
+
+  /* 呼应闪现：改画像时，被牵动的卡整段轻扫一下 */
+  @keyframes cardEcho {
+    0%   { background: linear-gradient(90deg, var(--sel-wash), transparent 70%); }
+    100% { background: transparent; }
+  }
+  .entry.is-echoed { animation: cardEcho 1.4s ease-out; }
+  .becuz.is-fresh { animation: none; }
+  @keyframes freshInk { 0% { opacity: .35; } 100% { opacity: 1; } }
+  .becuz.is-fresh { animation: freshInk .5s ease-out; }
+  @media (prefers-reduced-motion: reduce) {
+    .entry.is-echoed, .becuz.is-fresh { animation: none; }
+  }
+
+  /* ── 窄窗：左栏落到顶部 ── */
+  @media (max-width: 900px) {
+    .desk { grid-template-columns: minmax(0, 720px); justify-content: center; }
+    .rail { position: static; border-right: none; border-bottom: 1px solid var(--hair); padding: 22px 28px 26px; }
+    .pval-wrap .pen { display: none; }
+    .flow { padding: 26px 24px 100px; }
+  }
+  @media (max-width: 560px) {
+    .topbar { flex-wrap: wrap; gap: 10px 16px; }
+    .topic-field { order: 3; flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="wordmark"><b>论文构思者</b> · 文稿台</span>
+  <div class="topic-field">
+    <label for="topic">研究主题</label>
+    <input id="topic" class="topic-input" type="text"
+           value="平台经济中的数据权力与法律规制"
+           aria-label="研究主题输入框">
+  </div>
+  <button class="scan-btn" type="button">扫描</button>
+  <nav class="acts" aria-label="幕次切换">
+    <button class="act-tab active" type="button" aria-current="page">构思幕</button>
+    <span class="act-sep">·</span>
+    <button class="act-tab" type="button" disabled aria-disabled="true">对抗幕<span class="soon">即将上线</span></button>
+  </nav>
+  <button id="themeBtn" class="theme-btn" type="button"
+          aria-label="切换明暗主题" title="切换明暗主题">☾</button>
+</header>
+
+<main class="desk">
+
+  <!-- ── 左栏：研究者画像（就地可编辑）── -->
+  <aside class="rail" aria-label="研究者画像（可编辑）">
+    <p class="rail-eyebrow">Researcher Profile</p>
+    <h2>研究者画像</h2>
+    <p class="rail-hint">点任一行<b>就地改写</b>；改动即刻回流进每张卡的「因你」。</p>
+
+    <div class="pfield" data-field="field">
+      <div class="pfield-key"><span>领域</span></div>
+      <div class="pval-wrap">
+        <div class="pval" id="f-field" contenteditable="true" spellcheck="false" role="textbox"
+             aria-label="领域，点击就地编辑" data-placeholder="你的研究领域…">中文法学 · 数据法与反垄断</div>
+        <span class="pen" aria-hidden="true">改</span>
+      </div>
+    </div>
+
+    <div class="pfield has-ref" data-field="stance">
+      <div class="pfield-key"><span>立场</span><span class="refct">牵动 卡①</span></div>
+      <div class="pval-wrap">
+        <div class="pval" id="f-stance" contenteditable="true" spellcheck="false" role="textbox"
+             aria-label="立场，点击就地编辑，此行牵动卡片一的因你" data-placeholder="你的立场／训练…">权利本位、法教义学训练</div>
+        <span class="pen" aria-hidden="true">改</span>
+      </div>
+    </div>
+
+    <div class="pfield" data-field="familiar">
+      <div class="pfield-key"><span>熟悉</span></div>
+      <div class="pval-wrap">
+        <div class="pval" id="f-familiar" contenteditable="true" spellcheck="false" role="textbox"
+             aria-label="熟悉，点击就地编辑" data-placeholder="你已熟悉的…">个人信息保护法、反垄断法、比例原则</div>
+        <span class="pen" aria-hidden="true">改</span>
+      </div>
+    </div>
+
+    <div class="pfield has-ref" data-field="puzzle">
+      <div class="pfield-key"><span>困惑</span><span class="refct">牵动 卡②</span></div>
+      <div class="pval-wrap">
+        <div class="pval" id="f-puzzle" contenteditable="true" spellcheck="false" role="textbox"
+             aria-label="困惑，点击就地编辑，此行牵动卡片二的因你" data-placeholder="你的困惑…">想找非显而易见的跨学科切入点，怕落进「数据确权」的红海</div>
+        <span class="pen" aria-hidden="true">改</span>
+      </div>
+    </div>
+
+    <div class="rail-foot">
+      <span class="lead">画像 ⇄ 卡片</span>
+      画像不是履历。它<b style="color:var(--vermilion);font-weight:400">在场解释</b>每张卡为何对<em>你</em>非显而易见——改「立场」「困惑」，主区对应卡的「因你」随之改写。
+    </div>
+  </aside>
+
+  <!-- ── 主区：切入点卡流 ── -->
+  <div class="flow">
+    <div class="flow-head">
+      <div class="eyebrow">盲区扫描 · 构思幕 · 摘取 2 条示例</div>
+      <h1>平台经济中的数据权力与法律规制</h1>
+      <p class="sub">每条「相对于你的未知」显式回指左栏画像；卡角<b>因你</b>小标把「为何对你非显而易见」链回那一条。</p>
+    </div>
+    <hr class="flow-rule">
+
+    <!-- 卡①：科斯 —— 回指「立场」 -->
+    <article class="entry" id="entry-1">
+      <div class="kicker">
+        <span class="type-dot" style="background:var(--pt-view)"></span>
+        <span>学科视角</span>
+        <span class="seq">切入点 01</span>
+      </div>
+      <h3>科斯交易成本视角下的数据确权</h3>
+      <p class="mechanism">数据权属不清的真问题不是归谁，而是交易成本过高导致的配置失灵；确权应最小化谈判成本而非追求道德归属。</p>
+
+      <div class="why stance-anchored" id="why-1">
+        <span class="lead">相对于你的未知</span>
+        <p><span class="becuz" data-ref="stance">因你立场是<span class="qt" id="ref-stance-1">权利本位</span></span>：你从人格权／财产权二分入手；科斯把问题从「谁应拥有」转成「怎样分配最省成本」，可能消解确权之争本身。</p>
+        <button class="becuz-tag" type="button" data-target="stance"
+                aria-label="因你 · 立场：跳到左栏「立场」字段">
+          <span class="stamp">因</span><span>因你 · 立场</span><span class="to">↳ 画像</span>
+        </button>
+      </div>
+
+      <div class="apparatus">
+        <details class="fold">
+          <summary>拷问 2 · 锚点 2</summary>
+          <div class="body">
+            <ol class="q-list">
+              <li>若确权只看效率，人格尊严的底线由谁守？</li>
+              <li>交易成本能在数据场景被真实测量吗？</li>
+            </ol>
+            <ul class="anchors">
+              <li><a href="https://doi.org/10.1086/coase.data" target="_blank" rel="noopener">The Problem of Social Cost, Revisited for Data</a><span class="u">doi</span></li>
+              <li><a href="https://kns.cnki.net/kcms/sample-5801" target="_blank" rel="noopener">交易成本理论下的数据要素配置</a><span class="u">cnki</span></li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </article>
+
+    <!-- 卡②：熵增 —— 回指「困惑」 -->
+    <article class="entry" id="entry-2">
+      <div class="kicker">
+        <span class="type-dot" style="background:var(--pt-view)"></span>
+        <span>学科视角</span>
+        <span class="seq">切入点 02</span>
+      </div>
+      <h3>热力学熵增与信息不对称的负熵逻辑</h3>
+      <p class="mechanism">把平台对用户数据的聚合视为局部负熵积累，用熵增框架解释信息不对称如何自我强化。</p>
+
+      <div class="why puzzle-anchored" id="why-2">
+        <span class="lead">相对于你的未知</span>
+        <p><span class="becuz" data-ref="puzzle">因你困惑<span class="qt" id="ref-puzzle-2">怕落进数据确权红海</span></span>：熵视角把数据垄断重述为「信息势差的热力学必然」，绕开静态市场界定。</p>
+        <button class="becuz-tag" type="button" data-target="puzzle"
+                aria-label="因你 · 困惑：跳到左栏「困惑」字段">
+          <span class="stamp">因</span><span>因你 · 困惑</span><span class="to">↳ 画像</span>
+        </button>
+      </div>
+
+      <div class="apparatus">
+        <details class="fold">
+          <summary>拷问 2 · 锚点 2</summary>
+          <div class="body">
+            <ol class="q-list">
+              <li>如果熵只是隐喻，它比「信息不对称」这个现成概念多解释了什么？</li>
+              <li>负熵积累能否落到可观测的平台指标（如数据回流速率）？</li>
+            </ol>
+            <ul class="anchors">
+              <li><a href="https://doi.org/10.1103/entropy.2019.0471" target="_blank" rel="noopener">Entropy, Information, and the Economics of Scarcity</a><span class="u">doi</span></li>
+              <li><a href="https://kns.cnki.net/kcms/sample-4471" target="_blank" rel="noopener">负熵、信息与市场秩序：一个跨学科综述</a><span class="u">cnki</span></li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </article>
+
+  </div>
+</main>
+
+<script>
+  const $ = (sel, el = document) => el.querySelector(sel);
+
+  /* ══ 画像 ⇄ 卡片 绑定表 ══
+     每个可编辑字段 → 它牵动的卡片，以及卡上「因你」里那半句怎么从字段值派生。 */
+  const BINDINGS = {
+    stance: {
+      fieldEl: () => $("#f-stance"),
+      pfieldEl: () => document.querySelector('.pfield[data-field="stance"]'),
+      entryEl: () => $("#entry-1"),
+      refEl:   () => $("#ref-stance-1"),
+      // 从整句立场里摘出「主立场」那一小段回填进卡片
+      derive: (raw) => {
+        const t = raw.trim();
+        if (!t) return "（未填立场）";
+        // 取第一个顿号/逗号前的核心词，作为卡上回指的那半句
+        const head = t.split(/[，,、；;。\s]/).filter(Boolean)[0] || t;
+        return head;
+      },
+    },
+    puzzle: {
+      fieldEl: () => $("#f-puzzle"),
+      pfieldEl: () => document.querySelector('.pfield[data-field="puzzle"]'),
+      entryEl: () => $("#entry-2"),
+      refEl:   () => $("#ref-puzzle-2"),
+      derive: (raw) => {
+        const t = raw.trim();
+        if (!t) return "（未填困惑）";
+        // 优先摘出带「怕」的分句，否则退回首句
+        const clauses = t.split(/[，,。；;]/).map(s => s.trim()).filter(Boolean);
+        const fear = clauses.find(c => /怕|担心|恐|红海|陷/.test(c));
+        return (fear || clauses[clauses.length - 1] || t).replace(/^想?/, "");
+      },
+    },
+  };
+
+  /* 编辑某字段 → 重派生 → 写回卡片「因你」半句 + 轻扫呼应 */
+  function syncBinding(key, animate) {
+    const b = BINDINGS[key];
+    if (!b) return;
+    const raw = b.fieldEl().textContent;
+    const derived = b.derive(raw);
+    const refEl = b.refEl();
+    if (refEl.textContent !== derived) {
+      refEl.textContent = derived;
+      if (animate) {
+        const becuz = refEl.closest(".becuz");
+        const entry = b.entryEl();
+        becuz.classList.remove("is-fresh"); void becuz.offsetWidth; becuz.classList.add("is-fresh");
+        entry.classList.remove("is-echoed"); void entry.offsetWidth; entry.classList.add("is-echoed");
+      }
+    }
+  }
+
+  /* 就地编辑：占位符状态 + 回车提交（不换行）+ 失焦收尾 */
+  function wireProfile() {
+    document.querySelectorAll(".pval").forEach(el => {
+      const refreshEmpty = () => el.setAttribute("data-empty", el.textContent.trim() === "" ? "true" : "false");
+      refreshEmpty();
+      el.addEventListener("input", () => {
+        refreshEmpty();
+        const key = el.closest(".pfield").dataset.field;
+        syncBinding(key, true);
+      });
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+        if (e.key === "Escape") { el.blur(); }
+      });
+      el.addEventListener("blur", refreshEmpty);
+    });
+  }
+
+  /* 因你小标 → 链回画像字段：滚动到左栏 + 该行 ping 高亮 + 焦点落到值上 */
+  function wireBecuzTags() {
+    document.querySelectorAll(".becuz-tag").forEach(tag => {
+      tag.addEventListener("click", () => {
+        const key = tag.dataset.target;
+        const b = BINDINGS[key];
+        if (!b) return;
+        const pf = b.pfieldEl();
+        pf.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+        pf.classList.remove("is-pinged"); void pf.offsetWidth; pf.classList.add("is-pinged");
+        // 宽屏左栏 sticky，不必滚；直接把编辑焦点交给用户
+        setTimeout(() => b.fieldEl().focus(), matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 320);
+      });
+    });
+  }
+
+  /* 明暗切换 */
+  function wireTheme() {
+    const btn = $("#themeBtn"), root = document.documentElement;
+    btn.addEventListener("click", () => {
+      const dark = root.getAttribute("data-theme") === "dark";
+      root.setAttribute("data-theme", dark ? "light" : "dark");
+      btn.textContent = dark ? "☾" : "☀";
+      btn.setAttribute("aria-label", dark ? "切换到暗色主题" : "切换到亮色主题");
+    });
+  }
+
+  /* 扫描按钮（视觉稿：无后端，仅示意重扫时卡片会依画像重算「因你」） */
+  function wireScan() {
+    $(".scan-btn").addEventListener("click", () => {
+      Object.keys(BINDINGS).forEach(k => syncBinding(k, true));
+    });
+  }
+
+  wireProfile();
+  wireBecuzTags();
+  wireTheme();
+  wireScan();
+  // 初次对齐一次（若默认值与卡片文案已一致则无动作）
+  Object.keys(BINDINGS).forEach(k => syncBinding(k, false));
+</script>
+</body>
+</html>

@@ -56,6 +56,16 @@
 - `app/build/`（旧会话 17:38 产物）会误导 `open` 启动老二进制——加 `.gitignore` 或删；正常从 Xcode ⌘R / 默认 DerivedData 跑。
 - 圆桌错误态（`/session` 忙 409、热身失败）只是 toast，可能要更稳。
 
+## UI 设计决策（扩展面，已定方向；mock 见 `docs/superpowers/mocks/ext-*.html` + `_shared/tokens.css`）
+
+- **产物面板 = 右侧抽屉（A）**：顶栏「产物·N」扣 → 右滑「附录·版记」，列 7 件产物（每件 打开 / 在访达 + 一句「喂给谁」）。读面干净、按需取用。
+- **研究者画像 = A+B 合并**：首次「开笔卡」采集（浮于空墙、扫描按钮先置灰）+ 左栏就地改 + **每张卡「因你」回指画像字段**（"因你立场是权利本位…"）。采集 + 兑现两层都要。
+
+集成触点 / 坑（接线前先解决）：
+- 产物抽屉列 7 件，但**服务端现只写** perspectives/questions/sources/angle-feedback（scan）+ profile（若填）+ report/conversation/instance_dump/log（`/report`）。`mindmap.md`、`failure-points.md` **尚无写入**（圆桌思维导图、对抗幕失败点未接）→ UI 只列真实存在的、灰"待生成"明示工序未跑，或补引擎写这两件。打开/在访达走已有 `museBridge{action:reveal}`。
+- 画像：first-run 存 → `POST /scan {profile}`（`ScanReq` 已有 `profile` 字段，webui 现发 `profile:""`，接上即可）；确认引擎把画像落 `profile.md`。
+- **「因你」回指是最大的坑**：卡的 `why_nonobvious` 是自由文本，**不结构化链到画像字段**。真「因你·立场」需引擎侧标注（每卡带"被哪条画像维度顶成非显而易见"），或 UI 侧启发式匹配（弱）；mock 里是写死的 → 要么引擎加这个 tag，要么本期降级为 presentational（why 已含相对你的措辞，不做硬链接）。
+
 ## 环境 / 怎么跑
 
 - venv：`.venv/bin/python`（uv 建，无 pip）。key 在 `secrets.toml`（gitignore，DEEPSEEK/OPENAI/GOOGLE/PERPLEXITY/JINA/TAVILY 全有）。
