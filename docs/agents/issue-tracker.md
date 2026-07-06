@@ -11,7 +11,7 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
+**⚠️ Fork footgun**: this clone has an `upstream` remote pointing at `stanford-oval/storm`, and without a pinned default `gh` resolves issue commands to the **upstream** repo — you would read (or create!) issues on storm's public tracker. The default is pinned via `gh repo set-default semantic-craft/paper-muse` (stored in `.git/config`, machine-local — re-pin after a fresh clone). When in doubt, pass `--repo semantic-craft/paper-muse` explicitly and sanity-check `gh issue list` output before creating anything.
 
 ## Pull requests as a triage surface
 
