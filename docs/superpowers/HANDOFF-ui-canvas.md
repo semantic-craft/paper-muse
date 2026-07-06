@@ -66,6 +66,10 @@
 - 画像：first-run 存 → `POST /scan {profile}`（`ScanReq` 已有 `profile` 字段，webui 现发 `profile:""`，接上即可）；确认引擎把画像落 `profile.md`。
 - **「因你」回指是最大的坑**：卡的 `why_nonobvious` 是自由文本，**不结构化链到画像字段**。真「因你·立场」需引擎侧标注（每卡带"被哪条画像维度顶成非显而易见"），或 UI 侧启发式匹配（弱）；mock 里是写死的 → 要么引擎加这个 tag，要么本期降级为 presentational（why 已含相对你的措辞，不做硬链接）。
 
+**集成状态（已接进 webui + server + app；demo/live/真机都验过，0 JS 报错；真扫描冒烟待用户）**：
+- ✅ 画像 A+B：首次「开笔卡」+ 左栏就地改（`contenteditable`）+ 可选 + `startScan` 发真 `profileText()`；顶栏「产物·N」抽屉 `GET /scan/products` + 打开(`{action:open}`)/在访达(`{action:reveal}`)走 museBridge（`CanvasWebView` 已加 open）。
+- ⚠️ 残留：「因你」是**透明启发式**（画像词面真出现在 why/steelman 才挂 tag，无命中不挂；待引擎给结构化 tag 升级）；`mindmap.md`/`failure-points.md` 仍未写入（抽屉恒显「待生成」）；**画像跨会话加载**（起界面时读已存的 `profile.md` 预填）未做，现每次 live 起为空。
+
 ## 环境 / 怎么跑
 
 - venv：`.venv/bin/python`（uv 建，无 pip）。key 在 `secrets.toml`（gitignore，DEEPSEEK/OPENAI/GOOGLE/PERPLEXITY/JINA/TAVILY 全有）。

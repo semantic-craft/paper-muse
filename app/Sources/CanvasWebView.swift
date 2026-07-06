@@ -25,8 +25,12 @@ struct CanvasWebView: NSViewRepresentable {
                                    didReceive message: WKScriptMessage) {
             guard message.name == "museBridge",
                   let body = message.body as? [String: Any] else { return }
-            if (body["action"] as? String) == "reveal", let path = body["path"] as? String {
+            let action = body["action"] as? String
+            guard let path = body["path"] as? String else { return }
+            if action == "reveal" {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            } else if action == "open" {
+                NSWorkspace.shared.open(URL(fileURLWithPath: path))
             }
         }
     }

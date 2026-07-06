@@ -356,6 +356,33 @@ def scan_status():
             "output_dir": SCAN["output_dir"], "error": SCAN["error"]}
 
 
+# 产物抽屉：docs/agents/muse/ 下 7 件的存在状态 + 绝对路径（打开/在访达用）。
+# mindmap/failure-points 引擎暂不写 → exists 恒 false，UI 显示「待生成」。
+MUSE_PRODUCTS = [
+    ("perspectives.md", "全部切入点卡（含反馈状态）", "paper-annotator / 任何 agent"),
+    ("questions.md", "每卡 1–2 拷问句（不开圆桌也有种子）", "grill-with-docs"),
+    ("sources.md", "文献锚点", "引用核查"),
+    ("profile.md", "研究者画像", "本论文复用参照系"),
+    ("angle-feedback.json", "已知角度抑制表", "再扫抑制"),
+    ("mindmap.md", "圆桌思维导图", "圆桌深挖后"),
+    ("failure-points.md", "对抗幕失败点（带证据或未决）", "to-prove / diagnose"),
+]
+
+
+@app.get("/scan/products")
+def scan_products():
+    base = SCAN["output_dir"]
+    if not base:
+        return {"dir": None, "files": []}
+    d = os.path.join(base, "docs", "agents", "muse")
+    files = [
+        {"name": n, "path": os.path.join(d, n), "exists": os.path.exists(os.path.join(d, n)),
+         "desc": desc, "consumer": cons}
+        for n, desc, cons in MUSE_PRODUCTS
+    ]
+    return {"dir": d, "files": files}
+
+
 @app.post("/scan/feedback")
 def scan_feedback(req: FeedbackReq):
     if not SCAN["output_dir"]:
