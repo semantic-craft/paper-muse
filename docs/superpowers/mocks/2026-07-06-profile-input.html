@@ -1,0 +1,227 @@
+<!-- mock：研究者画像 侧栏就地可编辑（方案 A）· 复用真 webui CSS
+     v2：按 CJK 排版规范去斜体，强调改用 着重号 / 字体对比（W3C CLReq） -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>画像输入 mock · 文稿台</title>
+<style>
+  :root {
+    --paper: #F5F4F1; --ink: #1A1A17; --ink-2: #57534A;
+    --hair: #E2E0DA; --hair-strong: #D3D0C8;
+    --vermilion: #A83232; --gold: #9A7B2E; --own: #4F6B3A;
+    --sel-wash: rgba(168,50,50,0.06);
+    --serif-zh: "Songti SC","STSong",serif;
+    --serif-en: "New York","Iowan Old Style","Palatino",Georgia,serif;
+    --kai: "Kaiti SC","STKaiti",serif;
+    --hei: "PingFang SC","Heiti SC",-apple-system,sans-serif;   /* 黑体：CJK 强调用 */
+    --mono: "SF Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+    --sans: -apple-system,"SF Pro Text","Helvetica Neue",sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: var(--serif-zh); font-size: 16px; line-height: 1.75;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    padding: 20px 16px 48px;
+  }
+
+  /* 说明条（mock 专用，非 app 元素） */
+  .cap { font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--vermilion); margin: 0 0 8px; }
+  .shot { border: 1px solid var(--hair); border-radius: 3px; overflow: hidden;
+    margin: 0 0 30px; background: var(--paper); }
+
+  /* ── 顶部 bar ── */
+  .topbar { display: flex; align-items: baseline; gap: 20px;
+    padding: 12px 20px; border-bottom: 1px solid var(--hair); }
+  /* wordmark：去掉西文 italic（中文不做斜体），改用字距 + 色阶对比 */
+  .wordmark { font-family: var(--serif-zh); font-size: 15px; letter-spacing: .05em;
+    color: var(--ink-2); white-space: nowrap; }
+  .wordmark b { font-weight: 400; color: var(--ink); }
+  .topic-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+  .topic-field label { font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+  .topic-input { flex: 1 1 auto; min-width: 0; font-family: var(--serif-zh); font-size: 17px;
+    color: var(--ink); background: transparent; border: none;
+    border-bottom: 1px solid var(--hair-strong); padding: 2px 2px 4px; line-height: 1.4; }
+  .scan-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .scan-btn { font-family: var(--mono); font-size: 11px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--paper); background: var(--ink);
+    border: none; padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+  /* 首跑软提示 —— 新增（非斜体） */
+  .scan-hint { font-family: var(--mono); font-size: 9px; letter-spacing: .04em;
+    color: var(--vermilion); white-space: nowrap; }
+  .acts { display: flex; gap: 2px; white-space: nowrap; }
+  .act-tab { font-family: var(--serif-zh); font-size: 15px; color: var(--ink-2);
+    background: none; border: none; padding: 4px 4px 8px; border-bottom: 2px solid transparent; }
+  .act-tab.active { color: var(--ink); border-bottom-color: var(--vermilion); }
+  .act-tab[disabled] { opacity: .5; }
+  .act-sep { color: var(--hair-strong); align-self: center; padding-bottom: 4px; }
+
+  /* ── desk / rail ── */
+  .desk { display: grid; grid-template-columns: 232px minmax(0,1fr);
+    max-width: 720px; margin: 0 auto; align-items: start; }
+  .rail { padding: 26px 22px 34px 24px; border-right: 1px solid var(--hair);
+    font-family: var(--sans); }
+  .rail h2 { font-family: var(--mono); font-size: 10px; font-weight: 400;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); margin: 22px 0 10px; }
+  .profile { margin: 0 0 6px; }
+  .profile summary { font-family: var(--serif-zh); font-size: 13px; color: var(--ink);
+    cursor: pointer; list-style: none; padding: 2px 0; border-bottom: 1px dotted var(--hair-strong); }
+  .profile summary::-webkit-details-marker { display: none; }
+  .profile summary::before { content: "▾ "; color: var(--vermilion); }
+  .profile.collapsed summary::before { content: "▸ "; }
+
+  /* ── 可编辑字段 ── */
+  .pf-body { margin: 10px 0 0; }
+  .pf-field { margin-top: 9px; }
+  .pf-field label { font-family: var(--mono); font-size: 9px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-2); display: block; margin-bottom: 1px; }
+  .pf-field textarea { width: 100%; font-family: var(--serif-zh); font-size: 12.5px;
+    line-height: 1.55; color: var(--ink); background: transparent; border: none;
+    border-bottom: 1px solid var(--hair); padding: 1px 0 3px; resize: none; overflow: hidden; }
+  .pf-field textarea:focus { border-bottom-color: var(--vermilion); outline: none; }
+  /* 占位示例：用楷体做「手写建议」质感，非斜体（中文不倾斜） */
+  .pf-field textarea::placeholder { font-family: var(--kai); font-style: normal;
+    color: var(--ink-2); opacity: .6; }
+  .pf-note { font-family: var(--mono); font-size: 8.5px; letter-spacing: .04em;
+    color: var(--ink-2); margin-top: 12px; opacity: .8; }
+  /* 首跑高亮 —— 左边框 + 淡洗底 */
+  .profile.firstrun { border-left: 2px solid var(--vermilion); background: var(--sel-wash);
+    margin-left: -12px; padding: 2px 8px 6px 10px; border-radius: 2px; }
+
+  /* 收起态回显 */
+  .profile.collapsed .pf-body { display: none; }
+  .collapsed-echo { font-family: var(--serif-zh); font-size: 11px; color: var(--ink-2);
+    line-height: 1.6; margin: 6px 0 0; }
+  .collapsed-echo b { color: var(--ink); font-weight: 400; }
+
+  /* ── CJK 强调：着重号（首选），永不斜体 ── */
+  .emph {
+    -webkit-text-emphasis: filled dot var(--vermilion);
+    text-emphasis: filled dot var(--vermilion);
+    -webkit-text-emphasis-position: under right;
+    text-emphasis-position: under right;
+    font-style: normal;
+  }
+  .heiti { font-family: var(--hei); color: var(--ink); }
+  .kaiti { font-family: var(--kai); }
+
+  /* 中栏 ghost（示意） */
+  .flow { padding: 30px 30px 40px; }
+  .eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-2); margin-bottom: 16px; }
+  .ghost { border: 1px dashed var(--hair-strong); border-radius: 2px; height: 46px;
+    margin-bottom: 10px; opacity: .5; }
+  .rail-only { max-width: 300px; margin: 0 auto; padding: 20px 24px; }
+
+  /* ── 排版说明卡（mock 专用） ── */
+  .typespec { max-width: 380px; margin: 0 auto; padding: 22px 26px; font-family: var(--serif-zh); }
+  .typespec .row { display: flex; gap: 14px; align-items: baseline; margin: 12px 0; font-size: 15px; color: var(--ink); }
+  .typespec .tag { font-family: var(--mono); font-size: 9px; letter-spacing: .05em;
+    color: var(--ink-2); white-space: nowrap; width: 84px; flex: 0 0 auto; text-align: right; }
+  .typespec .tag.x { color: var(--vermilion); }
+  .typespec .bad { color: var(--ink-2); }
+  .typespec .bad .slant { font-style: italic; }   /* 唯一出现斜体处 —— 作反例 */
+  .typespec .hint { font-family: var(--mono); font-size: 8.5px; color: var(--ink-2);
+    letter-spacing: .04em; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+  <p class="cap">① 首跑 · 空 · 高亮轻推</p>
+  <div class="shot">
+    <header class="topbar">
+      <span class="wordmark"><b>论文构思者</b> · 文稿台</span>
+      <div class="topic-field">
+        <label for="t1">研究主题</label>
+        <input id="t1" class="topic-input" type="text" value="平台经济中的数据权力与法律规制">
+      </div>
+      <div class="scan-wrap">
+        <button class="scan-btn" type="button">扫描</button>
+        <span class="scan-hint">填画像更准 · 可跳过</span>
+      </div>
+      <nav class="acts">
+        <button class="act-tab active" type="button">构思幕</button>
+        <span class="act-sep">·</span>
+        <button class="act-tab" type="button" disabled>对抗幕</button>
+      </nav>
+    </header>
+    <div class="desk">
+      <aside class="rail">
+        <details class="profile firstrun" open>
+          <summary>研究者画像</summary>
+          <div class="pf-body">
+            <div class="pf-field"><label>领域</label>
+              <textarea rows="1" placeholder="如：中文法学 · 数据法与反垄断"></textarea></div>
+            <div class="pf-field"><label>已有立场</label>
+              <textarea rows="1" placeholder="如：权利本位、法教义学训练"></textarea></div>
+            <div class="pf-field"><label>熟悉的理论</label>
+              <textarea rows="1" placeholder="如：个人信息保护法、比例原则"></textarea></div>
+            <div class="pf-field"><label>本篇的困惑</label>
+              <textarea rows="2" placeholder="如：想找非显而易见的跨学科切入点，怕落进红海"></textarea></div>
+            <p class="pf-note">扫描时自动存到本论文 · 下次自动带出</p>
+          </div>
+        </details>
+        <h2>手稿目次</h2>
+        <div class="ghost" style="height:20px;border-style:dotted"></div>
+      </aside>
+      <div class="flow">
+        <div class="eyebrow">盲区扫描 · 构思幕 · 首批 7 条</div>
+        <div class="ghost"></div><div class="ghost"></div><div class="ghost"></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">② 已填 · 可改（复用态，无高亮）</p>
+  <div class="shot">
+    <div class="rail-only">
+      <details class="profile" open>
+        <summary>研究者画像</summary>
+        <div class="pf-body">
+          <div class="pf-field"><label>领域</label>
+            <textarea rows="1">中文法学 · 数据法与反垄断</textarea></div>
+          <div class="pf-field"><label>已有立场</label>
+            <textarea rows="1">权利本位、法教义学训练</textarea></div>
+          <div class="pf-field"><label>熟悉的理论</label>
+            <textarea rows="1">个人信息保护法、反垄断法、比例原则</textarea></div>
+          <div class="pf-field"><label>本篇的困惑</label>
+            <textarea rows="2">想找非显而易见的跨学科切入点，怕落进「数据确权」的红海</textarea></div>
+          <p class="pf-note">已存 · 改动重扫即更新</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <p class="cap">③ 收起态（一眼回显 · 关键词用着重号）</p>
+  <div class="shot">
+    <div class="rail-only">
+      <details class="profile collapsed">
+        <summary>研究者画像</summary>
+      </details>
+      <p class="collapsed-echo"><b>中文法学 · 数据法与反垄断</b>；要<span class="emph">非显而易见</span>的跨学科切入点，避开「数据确权」红海。</p>
+    </div>
+  </div>
+
+  <p class="cap">④ 中文强调该用什么（不是斜体）· 依 W3C CLReq</p>
+  <div class="shot">
+    <div class="typespec">
+      <div class="row"><span class="tag">着重号 首选</span><span>要<span class="emph">非显而易见</span>的切入点</span></div>
+      <div class="row"><span class="tag">换黑体</span><span>避开 <span class="heiti">数据确权</span> 红海</span></div>
+      <div class="row"><span class="tag">换楷体</span><span>相对<span class="kaiti">你</span>的参照系</span></div>
+      <div class="row bad"><span class="tag x">✕ 斜体 禁用</span><span>避开 <span class="slant">数据确权</span> 红海</span></div>
+      <p class="hint">着重号：横排在字底、圆黑点（U+25CF）· 不加于标点 · WebKit 需 -webkit-text-emphasis</p>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('textarea').forEach(t => {
+      const fit = () => { t.style.height='auto'; t.style.height=(t.scrollHeight)+'px'; };
+      t.addEventListener('input', fit); fit();
+    });
+  </script>
+</body>
+</html>
