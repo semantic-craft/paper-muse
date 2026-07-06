@@ -1,69 +1,65 @@
-# 交接：muse UI 画布（两幕剧子计划 2/4）
+# 交接：muse UI 画布（两幕剧子计划）——状态与待办
 
-本文件是新会话的完整上下文。目标：给已经跑通的盲区扫描引擎做一个**好看、现代**的图形界面。
+本文件是新会话的完整上下文。上一轮把**构思幕**做完了（盲区扫描卡片墙 + 点卡深挖 web 圆桌，全在 web 画布），已推 GitHub。本文件列**已做 / 没做 / 怎么接着做**。
+（旧版本「先做 4 个 mock」的交接见 git 历史 99ad781。）
 
 ## 一句话现状
 
-后端引擎全部做好并已推 GitHub（`semantic-craft/paper-muse` main）；**界面还没做**——这就是本次要做的事。
+构思幕端到端接线完成，视觉方向选定 **① 文稿台**（单栏手稿 + 朱批旁注）；**但至今没跑过一次真扫描 / 真圆桌**——付费边界内全绿，真实验收是本轮欠的核心。对抗幕（slice 3/4）还没动。
 
-## 已经存在什么（别重做）
+## 已做（已 commit + push，main）
 
-- **盲区扫描引擎** `blindspot.py`：三家模型（DeepSeek/OpenAI/Gemini）合议 → 三类卡（学科视角/理论框架/研究方法）→ 新颖性三面判据 → 落盘。已测、已真实冒烟。
-- **muse_server.py**（FastAPI :8765）已有接口：
-  - 盲区扫描：`POST /scan {topic, profile?, output_dir?}` → `GET /scan/status`（增量轮询，返回 `cards[]`）→ `POST /scan/feedback {name, verdict}`
-  - 互动圆桌：`POST /session` → `GET /status` → `POST /step` → `POST /report`
-- **v0.1 圆桌 App** `app/`（SwiftUI + XcodeGen）：**只有圆桌聊天**，原生气泡，只调 session/status/step/report，**没接 scan**。这是旧设计，本次要么扩展它、要么按新画布方案重写内容区。
-- 测试：`tests/` 20 项全绿（`.venv/bin/python -m pytest tests/ -q`）。
-- 检索层：Perplexity/Jina/Mixed 三检索器已在 `knowledge_storm/rm.py`。
+- 4 方向设计 mock（`docs/superpowers/mocks/`）→ 用户选 **① 文稿台**。
+- **卡片墙**：`webui/index.html` 接 `/scan`（POST /scan → @1.5s 轮询 `/scan/status` 增量出卡 → 三键 `/scan/feedback`）；防御式渲染（own_hits/zh_hits 可 null、gold/outlier/feasibility 可缺）。
+- **圆桌**：同画布 web 视图 `#rtView`，点卡「深挖圆桌」→ `enterRoundtable` → `/session`→轮询热身→`/step`→`/report`；「在访达打开」经 museBridge 回原生 Finder。文稿台手稿语言（对谈条目=席位色点，你=朱批楷体缩进，主持=金）。
+- **app 壳**：SwiftUI + WKWebView（`PaperMuseApp`→`MuseCanvasView`→`CanvasWebView`；`MuseServer` 管 python 进程）。内容区整块就是一个 WebView。**已退役 v0.1 原生圆桌**（删 `RoundtableView.swift` / `MuseClient.swift`）。
+- 提交：`12428a8` mocks、`09b6670` 卡片墙接线、`f21df3e` 圆桌重建。
 
-## 卡片数据结构（mock 要照这个真实形状）
+## 关键架构 / 文件
 
-`GET /scan/status` 的 `cards[]` 每张卡字段：
-```
-type          学科视角 | 理论框架 | 研究方法
-name          理论/方法名
-mechanism     一句话机制
-why_nonobvious 为什么对该研究者非显而易见
-steelman      最强反驳（哪类审稿人会怎么打）
-feasibility   方法卡才有：数据从哪来
-questions     ["拷问句1", "拷问句2"]
-novelty       主流 | 边缘有人做 | 交叉空白 | 中文面未检
-gold          true=🥇英热中冷（英文成熟×中文法学空白，引入型创新机会）
-outlier       true=🔸离群（仅一家模型提出）
-own_hits      自有库命中数；>0 且 novelty∈{交叉空白,边缘} → 📚已藏未用徽标
-en_hits/zh_hits 英文/中文学界命中数
-anchors       [{title, url}] 真实文献锚点
-source_models ["deepseek","gemini"]
-```
-真实卡名示例（够跨学科）：「热力学熵增与信息不对称的负熵逻辑」「组织社会学的制度同构」「裁判文书量化」。
+- `blindspot.py` — 扫描引擎（三家合议 + 新颖性三面判据 + 落盘）。
+- `muse_server.py`（FastAPI :8765，单会话 + 一把锁）— `/scan` 系 + `/session /status /step /report`（圆桌）+ `/ui` 静态托管 `webui/`。
+- `webui/index.html` — 单页画布：`#wallView`（卡片墙）+ `#rtView`（圆桌），JS 切视图；内联 `DEMO_CARDS/DEMO_TURNS`，`?demo=1`（墙）/ `?demo=1&view=rt`（圆桌）不接后端预览；真接线全走 fetch 同源。
+- `app/Sources/` — 4 个 swift：`PaperMuseApp`（入口）、`MuseCanvasView`（loading/ready/failed + WebView）、`CanvasWebView`（WKWebView + `museBridge{action:reveal}`）、`MuseServer`（拉起/复用/退出清理 python）。
+- spec：`docs/superpowers/specs/2026-07-05-muse-two-act-design.md`（§4 卡片墙 §5 圆桌 §6 对抗幕 §12 验收）。
 
-## 关键设计决定（已定，别推翻）
+## 卡片字段（webui 渲染契约，照 blindspot 真输出）
 
-1. **UI 路线：原生 SwiftUI 壳 + WKWebView web 画布**（用户拍板）。壳保留 v0.1 的窗口/进程管理/退出清理；内容区换成 web，视觉上限高、迭代快。
-2. **两幕剧**：顶部 `[构思幕 | 对抗幕]` 切换。构思幕=盲区扫描卡片墙（本次重点）+ 可深挖到圆桌；对抗幕=红队审稿（引擎是子计划 3/4，本次先留位）。
-3. **首屏是卡片墙**，不是聊天。流式出卡（首批 ≤20s）。
-4. **联动靠文件**：产物落 `docs/agents/muse/`（perspectives/questions/sources/angle-feedback.json），喂 grill-with-docs 等技能。
+`type`(学科视角|理论框架|研究方法) / `name` / `mechanism` / `why_nonobvious` / `steelman` / `feasibility`(方法卡) / `questions[]` / `novelty`(主流|边缘有人做|交叉空白|中文面未检) / `gold`(🥇英热中冷) / `outlier`(🔸离群) / `own_hits`(📚>0且交叉/边缘) / `en_hits` / `zh_hits`(可 null) / `anchors[{title,url}]` / `source_models[]`。**服务端卡无 id**，webui ingest 时补 i+1。
 
-## 本次第一步（务必先做这个，别直接写 app）
+## 没做 / 待办
 
-**生成 4 个截然不同的 HTML 设计方向**给用户挑——这是 Thariq《Finding Your Unknowns》的方法，也是用户明确要求（他对审美有要求，界面不该 agent 独断）。要求：
-- 每个方向是一个**独立自包含 HTML 文件**（内联 CSS，假卡片数据照上面结构，6-8 张卡含各种徽标组合）；
-- 4 个方向审美上要**真的不同**（不是配色变体）——比如：编辑器/文档流、卡片瀑布、仪表盘、杂志排版；
-- 都要体现：主题输入、模式切换、三类卡、新颖性徽标（🥇🔸📚）、最强反驳、三键反馈按钮（已知/新但不适用/新且值得深挖）；
-- 现代感、编辑器级排印、明暗双主题至少留接口。
-- 用 `artifact-design` skill 校准投入度；可用 Artifact 工具或直接写 HTML 文件让用户在浏览器看。
+### ★ 门槛：真实端到端冒烟 + 按 §12 验收（先做，几乎必炸 bug）
 
-用户挑定方向后，再实现选中方向、用 WKWebView 接管 app 内容区、接 `/scan` 增量轮询。
+全程只验到「付费边界」（demo 渲染、模拟流式、xcodebuild、真机起 app 空态）。**没跑过一次真的。** 起 server + app，真跑一个中文法学主题：
 
-## 待用户提供 / 待验证（不阻塞 mock）
+- **扫描**：首批卡 ≤20s？三类卡齐？≥1 离群标亮？每卡最强反驳 + **真实**文献锚点？中英密度非空（或明示中文面未检）？标「已知」→再扫该角度真不出（抑制表）？
+- **深挖**：真圆桌热身（1–3min）→出转录→插话/让继续/出报告→7 件产物齐？「在访达打开」真定位产物目录？
+- `provider` 三选一（deepseek/openai/gemini）都能跑通两处？
+- 真跑大概率炸：字段错位、轮询时序、热身失败处理、报告路径、增量 stagger 真流式没看过。triage + 修。
 
-- 用户两组提示词原文：「第一性原理」「对抗式审查」——到手后替换 `blindspot.py:FIRST_PRINCIPLES_PERSONA` 常量（现为要旨转述版）。
-- CNKI 走通验证：用户 Chrome + opencli 会话在时跑一次 `blindspot.py`，确认卡片中文学界命中数非 None（当前降级路径已测）。
+### 功能 slice（验收过了再上）
 
-## 环境
+- **对抗幕引擎 + UI（slice 3/4，完全没做）**：§6 有稿模式（扫 `$PAPER_MUSE_OUTPUT_DIR` 下 *.md 选草稿→抽中心主张→每条 3–5 最可能崩的失败点→检索证伪/佐证→无证据标「未决」→`failure-points.md`）+ 无稿模式（攻击一句主线，卡片一键送入）。轻量引擎，不套 Co-STORM。web 里对抗幕现在只是占位 tab。persona 取「对抗式审查」原文。
+- **圆桌钉死席位（§5，引擎侧没接）**：真 `CoStormRunner` 没强制 ① 第一性原理专家 ② 跨学科猎人（web demo 演了这俩角色，真引擎只是拿种子起普通 session）。要在引擎接。
 
-- venv：`.venv/bin/python`（uv 建，无 pip）。装包：`VIRTUAL_ENV=.venv uv pip install <pkg>`。
-- key 在 `secrets.toml`（gitignore，DEEPSEEK/OPENAI/GOOGLE/PERPLEXITY/JINA 全有）。
-- 起 server：`.venv/bin/python muse_server.py --port 8765`。
-- 完整 spec：`docs/superpowers/specs/2026-07-05-muse-two-act-design.md`（§9 UI 路线、§4 卡片墙、§12 验收）。
-- 工作纪律：子 agent 逐任务 + 双阶段评审（superpowers:subagent-driven-development），真实验证不靠猜。
+### 待用户 / 待接
+
+- **persona 原文**：`blindspot.py:FIRST_PRINCIPLES_PERSONA` 是要旨转述，待用户给「第一性原理」「对抗式审查」原文替换。
+- **CNKI 走通**：中文学界面（`opencli cnki search`）需活的 Chrome 会话才出真 zh_hits，当前降级「中文面未检」。用户 Chrome + opencli 在时验一次，确认 zh_hits 非 None。
+- **研究者画像输入 UI**（本轮 defer）：现画像栏是占位提示、扫描发 `profile:""`。§4 要 5 行输入（领域/立场/熟悉/困惑）→落 `profile.md`→复用；离群/新颖性以画像为参照系，**缺它发现力打折**。
+- **主题预填**（本轮 defer）：§2 有 `PAPER_MUSE_OUTPUT_DIR` 时读该目录近期 md 标题预填主题框。
+
+### 小债
+
+- app 自起 server 路径没验（只验了「复用已有 server」；关掉手动 server 再起 app 走 `MuseServer.launch()`）。
+- `app/build/`（旧会话 17:38 产物）会误导 `open` 启动老二进制——加 `.gitignore` 或删；正常从 Xcode ⌘R / 默认 DerivedData 跑。
+- 圆桌错误态（`/session` 忙 409、热身失败）只是 toast，可能要更稳。
+
+## 环境 / 怎么跑
+
+- venv：`.venv/bin/python`（uv 建，无 pip）。key 在 `secrets.toml`（gitignore，DEEPSEEK/OPENAI/GOOGLE/PERPLEXITY/JINA/TAVILY 全有）。
+- 起 server：`.venv/bin/python muse_server.py --port 8765`；UI = `http://127.0.0.1:8765/ui/`。
+- app：`cd app && xcodegen generate` 后 Xcode ⌘R；或 `xcodebuild -project app/PaperMuse.xcodeproj -scheme PaperMuse -configuration Debug -destination 'platform=macOS' build`（产物在**默认 DerivedData**，别用 `app/build/` 旧的）。app 会自起/复用 :8765。
+- 不接后端看 UI：`/ui/?demo=1`（墙）、`/ui/?demo=1&view=rt`（圆桌）。
+- 纪律：**真跑验证不靠猜、带证据**；提交/删改前 `git status` + 看近期 log（多会话并行同 repo）；子 agent 逐任务 + 双阶段评审。视觉稿走「4 方向反应法」，用户对审美有要求、要自己挑。
