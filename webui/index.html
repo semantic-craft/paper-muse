@@ -536,6 +536,279 @@
   .rt-btn.primary:hover:not(:disabled) { background: var(--vermilion); border-color: var(--vermilion); }
   .rt-btn:disabled { opacity: .4; cursor: default; }
   .rt-busy { font-family: var(--kai); color: var(--ink-2); font-size: 15px; padding: 16px 0; }
+
+  /* ══ 扩展面 A：研究者画像（左栏就地可编辑，参照 mock B）══ */
+  .profile summary .p-edit-hint {
+    font-family: var(--kai); font-size: 11px; color: var(--vermilion);
+    letter-spacing: .04em; margin-left: 6px; opacity: .8;
+  }
+  .pf-fields { margin: 8px 0 0; }
+  .pfield {
+    padding: 7px 0 8px; border-top: 1px solid var(--hair);
+  }
+  .pfield:first-child { border-top: none; }
+  .pfield-key {
+    display: flex; align-items: baseline; gap: 6px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-2); margin-bottom: 3px;
+  }
+  .pval-wrap { position: relative; }
+  .pval {
+    font-family: var(--serif-zh); font-size: 12.5px; line-height: 1.55;
+    color: var(--ink);
+    border-bottom: 1px dotted transparent;
+    padding: 1px 2px; margin: 0 -2px;
+    cursor: text; border-radius: 1px;
+    transition: background .18s, border-color .18s;
+  }
+  .pval:hover { border-bottom-color: var(--hair-strong); background: color-mix(in srgb, var(--paper) 55%, var(--hair) 45%); }
+  .pval:focus { outline: none; background: var(--sel-wash); border-bottom: 1px solid var(--vermilion); }
+  .pval[data-empty="true"]::before {
+    content: attr(data-placeholder);
+    color: var(--ink-2); font-style: italic;
+  }
+  .pval-wrap .pen {
+    position: absolute; top: 1px; right: -12px;
+    font-family: var(--kai); font-size: 11px; color: var(--vermilion);
+    opacity: 0; pointer-events: none; transition: opacity .18s;
+  }
+  .pval-wrap:hover .pen, .pval:focus ~ .pen { opacity: .7; }
+  /* 卡片朱批「链回」时高亮左栏字段 */
+  @keyframes fieldPing { 0% { background: var(--sel-wash); } 100% { background: transparent; } }
+  .pfield.is-pinged .pval { animation: fieldPing 1.6s ease-out; border-bottom-color: var(--vermilion); }
+  @media (prefers-reduced-motion: reduce) {
+    .pfield.is-pinged .pval { animation: none; background: var(--sel-wash); }
+  }
+
+  /* ══ 扩展面 A：首次开笔卡（空态 · 参照 mock A）══ */
+  .portrait {
+    background: var(--paper);
+    border: 1px solid var(--hair-strong);
+    border-top: 3px solid var(--ink);
+    box-shadow: 0 1px 0 var(--hair), 0 18px 44px -30px rgba(0,0,0,.32);
+    padding: 32px 34px 28px; margin: 6px 0 0;
+  }
+  .portrait .p-eyebrow {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-2);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .portrait .p-eyebrow .brush {
+    font-family: var(--serif-zh); font-size: 11px;
+    border: 1px solid var(--vermilion); color: var(--vermilion);
+    width: 18px; height: 18px; line-height: 16px; text-align: center; flex: 0 0 auto;
+  }
+  .portrait h2 {
+    font-family: var(--serif-zh); font-weight: 600;
+    font-size: 24px; line-height: 1.3; letter-spacing: .01em;
+    margin: 12px 0 0; color: var(--ink);
+  }
+  .portrait .ded {
+    font-family: var(--kai); font-size: 15px; color: var(--vermilion);
+    line-height: 1.7; letter-spacing: .04em;
+    margin: 12px 0 4px; padding-left: 16px; border-left: 2px solid var(--vermilion);
+  }
+  .portrait .ded b { color: var(--vermilion); font-weight: 600; }
+  hr.portrait-rule { border: 0; border-top: 1px solid var(--hair); margin: 20px 0 4px; }
+  .p-form .field { padding: 12px 0 4px; border-bottom: 1px solid var(--hair); }
+  .p-form .field:last-of-type { border-bottom: none; }
+  .p-form .field > label {
+    display: block;
+    font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-2); margin-bottom: 5px;
+  }
+  .p-form .pff {
+    width: 100%; display: block; min-height: 1.5em;
+    font-family: var(--serif-zh); font-size: 16px; color: var(--ink);
+    background: transparent; border: none;
+    border-bottom: 1px solid var(--hair-strong);
+    padding: 2px 2px 6px; line-height: 1.45;
+  }
+  .p-form .pff:focus { border-bottom-color: var(--vermilion); outline: none; }
+  .p-form .pff:focus ~ .hint { color: var(--vermilion); }
+  .p-form .pff[data-empty="true"]::before {
+    content: attr(data-placeholder); color: var(--ink-2); opacity: .7; font-style: italic;
+  }
+  .p-form .field.puzzle .pff { font-family: var(--kai); font-size: 15.5px; letter-spacing: .02em; }
+  .p-form .hint {
+    display: block; margin-top: 5px;
+    font-family: var(--kai); font-size: 12px; color: var(--ink-2);
+    letter-spacing: .03em; line-height: 1.5; transition: color .2s;
+  }
+  .portrait-foot {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 14px 18px; margin-top: 24px;
+  }
+  .p-save {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--paper); background: var(--ink);
+    border: none; padding: 10px 20px; cursor: pointer; line-height: 1.3;
+    display: inline-flex; align-items: baseline; gap: 8px;
+  }
+  .p-save:hover { background: var(--vermilion); }
+  .p-save .sep { opacity: .5; }
+  .p-save .go { font-family: var(--serif-zh); text-transform: none; letter-spacing: .04em; }
+  .portrait .foot-note {
+    font-family: var(--sans); font-size: 12px; color: var(--ink-2);
+    line-height: 1.55; flex: 1 1 200px; min-width: 0; margin: 0;
+  }
+  .portrait .foot-note code {
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+    background: var(--sel-wash); padding: 1px 5px; border-radius: 2px;
+  }
+
+  /* ══ 扩展面 A：卡上「因你」小标（参照 mock B 印记）══ */
+  .becuz-tag {
+    display: inline-flex; align-items: baseline; gap: 6px;
+    font-family: var(--serif-zh); font-size: 11.5px; letter-spacing: .04em;
+    color: var(--vermilion); background: none;
+    border: 1px solid var(--vermilion); border-radius: 1px;
+    padding: 2px 8px 3px; margin-top: 10px;
+    cursor: pointer; line-height: 1.3;
+    transition: background .18s, color .18s;
+  }
+  .becuz-tag:hover, .becuz-tag:focus-visible { background: var(--vermilion); color: var(--paper); }
+  .becuz-tag .stamp {
+    font-family: var(--kai); font-size: 12px;
+    border: 1px solid currentColor; border-radius: 1px;
+    width: 17px; height: 17px; line-height: 15px; text-align: center;
+    flex: 0 0 auto; align-self: center;
+  }
+  .becuz-tag .to { font-family: var(--mono); font-size: 9px; letter-spacing: .06em; opacity: .8; }
+
+  /* ══ 扩展面 B：产物抽屉入口扣（参照 products mock A）══ */
+  .products-tab {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+    color: var(--ink-2); background: none;
+    border: 1px solid var(--hair-strong); border-radius: 0;
+    padding: 5px 12px; cursor: pointer; white-space: nowrap;
+    flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: 7px;
+    transition: color .15s, border-color .15s;
+  }
+  .products-tab:hover { border-color: var(--vermilion); color: var(--ink); }
+  .products-tab .cnt {
+    font-family: var(--serif-en); font-size: 12px; font-style: normal;
+    color: var(--vermilion); letter-spacing: 0;
+  }
+  .products-tab[aria-expanded="true"] { border-color: var(--vermilion); color: var(--ink); }
+
+  /* 遮罩 + 抽屉 */
+  .scrim {
+    position: fixed; inset: 0; z-index: 30;
+    background: color-mix(in srgb, var(--ink) 34%, transparent);
+    opacity: 0; visibility: hidden;
+    transition: opacity .32s ease, visibility 0s linear .32s;
+  }
+  .scrim.open { opacity: 1; visibility: visible; transition: opacity .32s ease; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 40;
+    width: min(480px, 92vw);
+    background: var(--paper);
+    border-left: 1px solid var(--hair-strong);
+    box-shadow: -1px 0 0 var(--hair), -18px 0 40px -30px rgba(0,0,0,.4);
+    transform: translateX(100%);
+    transition: transform .34s cubic-bezier(.22,.61,.36,1);
+    display: flex; flex-direction: column; will-change: transform;
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer[hidden] { display: flex; }  /* 用 transform 控制显隐；[hidden] 时仍参与滑出 */
+  .drawer-head {
+    flex: 0 0 auto; padding: 20px 26px 16px;
+    border-bottom: 1px solid var(--hair);
+    display: flex; align-items: flex-start; gap: 16px;
+  }
+  .dh-text { flex: 1 1 auto; min-width: 0; }
+  .dh-kicker {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--vermilion); margin-bottom: 6px;
+  }
+  .dh-title {
+    font-family: var(--serif-zh); font-size: 20px; font-weight: 600;
+    color: var(--ink); margin: 0 0 8px; line-height: 1.3;
+  }
+  .dh-path {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+    letter-spacing: .02em; word-break: break-all; margin: 0;
+  }
+  .dh-path b { color: var(--ink); font-weight: 400; }
+  .drawer-close {
+    flex: 0 0 auto; font-family: var(--mono); font-size: 15px; line-height: 1;
+    color: var(--ink-2); background: none;
+    border: 1px solid var(--hair-strong); border-radius: 50%;
+    width: 30px; height: 30px; cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .drawer-close:hover { color: var(--vermilion); border-color: var(--vermilion); }
+  .drawer-body { flex: 1 1 auto; overflow-y: auto; padding: 4px 0 26px; }
+  .grp-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-2);
+    padding: 20px 26px 8px; margin: 0;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .grp-label .n { font-family: var(--serif-en); color: var(--ink-2); font-size: 11px; }
+  .product {
+    border-top: 1px solid var(--hair);
+    padding: 16px 26px 18px;
+    display: grid; grid-template-columns: 1fr auto;
+    grid-template-areas: "name status" "meta status" "acts acts";
+    gap: 4px 12px; align-items: baseline;
+  }
+  .product.pending { opacity: .82; }
+  .p-name {
+    grid-area: name;
+    font-family: var(--mono); font-size: 13.5px; letter-spacing: .01em;
+    color: var(--ink); word-break: break-all;
+  }
+  .product.pending .p-name { color: var(--ink-2); }
+  .p-status {
+    grid-area: status;
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+    text-transform: uppercase; white-space: nowrap;
+    align-self: start; padding-top: 3px;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .p-status::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    display: inline-block; flex: 0 0 auto;
+  }
+  .p-status.done { color: var(--vermilion); }
+  .p-status.done::before { background: var(--vermilion); }
+  .p-status.done.json { color: var(--own); }
+  .p-status.done.json::before { background: var(--own); }
+  .p-status.wait { color: var(--ink-2); }
+  .p-status.wait::before { background: transparent; box-shadow: inset 0 0 0 1px var(--hair-strong); }
+  .p-meta { grid-area: meta; padding-top: 2px; }
+  .p-what { font-family: var(--serif-zh); font-size: 14px; line-height: 1.55; color: var(--ink-2); margin: 0; }
+  .p-feed { font-family: var(--kai); font-size: 13px; line-height: 1.5; color: var(--vermilion); margin: 5px 0 0; opacity: .92; }
+  .p-feed .arrow { font-family: var(--mono); font-style: normal; margin-right: 4px; opacity: .7; }
+  .p-note { font-family: var(--serif-zh); font-size: 12.5px; color: var(--ink-2); margin: 5px 0 0; font-style: italic; }
+  .p-acts { grid-area: acts; display: flex; gap: 4px; margin-top: 12px; align-items: center; }
+  .p-act {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+    color: var(--ink); background: none;
+    border: 1px solid var(--hair-strong); border-radius: 0;
+    padding: 4px 11px; cursor: pointer; white-space: nowrap;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .p-act:hover { border-color: var(--vermilion); color: var(--vermilion); }
+  .p-act.primary { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+  .p-act.primary:hover { background: var(--vermilion); border-color: var(--vermilion); color: var(--paper); }
+  .product.pending .p-act { color: var(--ink-2); border-color: var(--hair); cursor: not-allowed; opacity: .6; }
+  .product.pending .p-act:hover { border-color: var(--hair); color: var(--ink-2); }
+  .p-acts .when {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .06em;
+    color: var(--ink-2); margin-left: 6px; opacity: .8;
+  }
+  .drawer-foot {
+    flex: 0 0 auto; border-top: 1px solid var(--hair);
+    padding: 13px 26px 15px;
+    font-family: var(--kai); font-size: 12.5px; line-height: 1.5; color: var(--ink-2);
+  }
+  .drawer-foot code { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+  .drawer-busy { padding: 30px 26px; font-family: var(--kai); font-size: 14px; color: var(--ink-2); }
+  @media (prefers-reduced-motion: reduce) {
+    .drawer, .scrim { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -555,6 +828,9 @@
     <span class="act-sep">·</span>
     <button class="act-tab" type="button" disabled aria-disabled="true">对抗幕<span class="soon">即将上线</span></button>
   </nav>
+  <button id="productsTab" class="products-tab" type="button"
+          aria-haspopup="dialog" aria-controls="drawer" aria-expanded="false"
+          title="查看产物文件">产物<span class="cnt" id="productsCnt">· 0</span></button>
   <button id="themeBtn" class="theme-btn" type="button"
           aria-label="切换明暗主题" title="切换明暗主题">☾</button>
 </header>
@@ -564,8 +840,8 @@
   <!-- 左栏 -->
   <aside class="rail" aria-label="目录与画像">
     <details class="profile" open>
-      <summary>研究者画像</summary>
-      <dl id="profileDl"></dl>
+      <summary>研究者画像<span class="p-edit-hint">点行就地改</span></summary>
+      <div class="pf-fields" id="profileFields"></div>
     </details>
 
     <div class="nav-block">
@@ -636,6 +912,27 @@
     </div>
   </footer>
 </section>
+
+<!-- 产物抽屉（方向 A）：右侧滑出的附录·版记，卡片墙与圆桌共用 -->
+<div id="scrim" class="scrim" tabindex="-1" hidden></div>
+<aside id="drawer" class="drawer" role="dialog" aria-modal="true"
+       aria-labelledby="drawerTitle" tabindex="-1" hidden>
+  <div class="drawer-head">
+    <div class="dh-text">
+      <div class="dh-kicker">附录 · 版记</div>
+      <h2 id="drawerTitle" class="dh-title">产物</h2>
+      <p class="dh-path" id="drawerPath">落盘 · <b>—</b></p>
+    </div>
+    <button id="drawerClose" class="drawer-close" type="button"
+            aria-label="关闭产物抽屉" title="关闭（Esc）">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <div class="drawer-busy">读取产物清单…</div>
+  </div>
+  <footer class="drawer-foot">
+    这 7 件是本工具联动写作流水线的唯一接口——按需取用，用完退回 <code>docs/agents/muse/</code>。
+  </footer>
+</aside>
 
 <script>
 /* ══ 内联规范数据（抄自 _shared/cards.js，勿改） ══ */
@@ -774,6 +1071,8 @@ const DEMO_CARDS = [
 /* ══ 运行态 ══ */
 let CARDS = [];            // 当前墙上的卡：真扫描=/scan/status 快照；?demo=DEMO_CARDS
 let PROFILE = DEMO_PROFILE;
+// 研究者画像 live 态：真界面起空；DEMO 态用 DEMO_PROFILE 预填以便预览（见启动 init）
+let PROFILE_DATA = { field: "", stance: "", familiar: "", puzzle: "" };
 let TOTAL = 0;             // 顶部「手稿 NN / TOTAL」计数
 let shownCount = 0;        // 已入场动画的卡数（增量 stagger 只动新卡）
 let pollTimer = null;
@@ -801,16 +1100,121 @@ function shortHost(url){
   return h;
 }
 
-/* ══ 画像 ══ */
+/* ══ 研究者画像（A+B 合并：左栏就地可编辑 + 首次开笔卡，共享 PROFILE_DATA）══ */
+// 四个字段的元数据：key / 左栏标签 / 占位 / 开笔卡上的楷体 hint
+const PROFILE_FIELDS = [
+  { key: "field",    label: "领域", placeholder: "你的研究领域…",
+    formLabel: "领域", formPh: "你的学科落点，越具体越好",
+    hint: "扫描据此校准语料与检索面。" },
+  { key: "stance",   label: "立场", placeholder: "你的立场／训练…",
+    formLabel: "立场 / 方法训练", formPh: "你惯用的分析立场或范式",
+    hint: "与你立场相左的切入点，会被标为「离群」。" },
+  { key: "familiar", label: "熟悉", placeholder: "你已熟悉的…",
+    formLabel: "熟悉的理论 / 概念", formPh: "你已经会的，逗号分隔",
+    hint: "这些不会再当新知端上来——只报你没见过的。" },
+  { key: "puzzle",   label: "困惑", placeholder: "你的困惑…",
+    formLabel: "本篇困惑", formPh: "这一篇，你到底卡在哪里？",
+    hint: "这句最重要——扫描朝你的困惑发力。" },
+];
+const PROFILE_KEY_LABEL = { field: "领域", stance: "立场", familiar: "熟悉", puzzle: "困惑" };
+
+// 把非空字段拼成喂扫描的画像串
+function profileText(){
+  return PROFILE_FIELDS
+    .filter(f => (PROFILE_DATA[f.key] || "").trim())
+    .map(f => `${f.label}：${PROFILE_DATA[f.key].trim()}`)
+    .join("\n");
+}
+
+// 左栏：渲染 4 行 contenteditable 字段（mock B 样式）
 function renderProfile(){
-  const dl = $("#profileDl");
-  const rows = [
-    ["领域", PROFILE.field],
-    ["立场", PROFILE.stance],
-    ["熟悉", PROFILE.familiar],
-    ["困惑", PROFILE.puzzle],
-  ];
-  dl.innerHTML = rows.map(([k,v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  const box = $("#profileFields");
+  if (!box) return;
+  box.innerHTML = PROFILE_FIELDS.map(f => `<div class="pfield" data-field="${f.key}">
+      <div class="pfield-key"><span>${esc(f.label)}</span></div>
+      <div class="pval-wrap">
+        <div class="pval" data-field="${f.key}" contenteditable="true" spellcheck="false"
+             role="textbox" aria-label="${esc(f.label)}，点击就地编辑"
+             data-placeholder="${esc(f.placeholder)}">${esc(PROFILE_DATA[f.key] || "")}</div>
+        <span class="pen" aria-hidden="true">改</span>
+      </div>
+    </div>`).join("");
+  wireProfileEditables(box);
+}
+
+// 就地编辑通用绑定：占位状态 + 回写 PROFILE_DATA + 回车/Esc 收尾
+function wireProfileEditables(scope){
+  scope.querySelectorAll(".pval").forEach(el => {
+    const key = el.dataset.field;
+    const refreshEmpty = () => el.setAttribute("data-empty", el.textContent.trim() === "" ? "true" : "false");
+    refreshEmpty();
+    el.addEventListener("input", () => { PROFILE_DATA[key] = el.textContent; refreshEmpty(); });
+    el.addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+      if (e.key === "Escape") { el.blur(); }
+    });
+    el.addEventListener("blur", () => { PROFILE_DATA[key] = el.textContent; refreshEmpty(); });
+  });
+}
+
+// 把左栏画像面板重画（切换/存画像后同步显示态）
+function syncProfileToRail(){ renderProfile(); }
+
+// 首次开笔卡（mock A）：live 且未扫描且非 demo 的空态里渲染
+function firstRunPortraitHTML(){
+  const fields = PROFILE_FIELDS.map(f => {
+    const puzzleCls = f.key === "puzzle" ? " puzzle" : "";
+    const v = PROFILE_DATA[f.key] || "";
+    return `<div class="field${puzzleCls}">
+        <label id="pf-lab-${f.key}">${esc(f.formLabel)}</label>
+        <div class="pff" data-field="${f.key}" contenteditable="true" spellcheck="false"
+             role="textbox" aria-labelledby="pf-lab-${f.key}"
+             data-placeholder="${esc(f.formPh)}">${esc(v)}</div>
+        <span class="hint">${esc(f.hint)}</span>
+      </div>`;
+  }).join("");
+  return `<section class="portrait" id="portrait" aria-labelledby="p-title">
+      <div class="p-eyebrow"><span class="brush">笔</span>开笔之前 · 研究者画像</div>
+      <h2 id="p-title">先落一笔你是谁</h2>
+      <p class="ded">这一版画像，是本工具丈量「新颖」的<b>参照系</b>——发掘的是相对于<b>你</b>的未知，不是相对于模型语料的。离群与惊喜，都以此为原点。</p>
+      <hr class="portrait-rule">
+      <div class="p-form" id="pForm">${fields}</div>
+      <div class="portrait-foot">
+        <button class="p-save" type="button" id="pSave">
+          存这版画像<span class="sep">·</span><span class="go">开始扫描</span>
+        </button>
+        <p class="foot-note">画像可选：顶栏「扫描」不填也能用。存后收进左栏，主题非空则随即开笔——落盘 <code>profile.md</code>。</p>
+      </div>
+    </section>`;
+}
+
+// 首次开笔卡就地编辑 + 主操作（存画像 → 收进左栏 → 主题非空则扫描）
+function wireFirstRunPortrait(){
+  const form = $("#pForm");
+  if (form) wireProfileEditables(form);
+  const save = $("#pSave");
+  if (save) save.addEventListener("click", () => {
+    // 从卡上字段落定 PROFILE_DATA（blur 可能未触发，主动收一次）
+    if (form) form.querySelectorAll(".pff").forEach(el => { PROFILE_DATA[el.dataset.field] = el.textContent; });
+    syncProfileToRail();               // 画像收进左栏
+    const details = document.querySelector(".profile");
+    if (details) details.open = true;
+    if (($("#topic").value || "").trim()) startScan();   // 主题非空 → 直接开笔
+    else { toast("画像已存 · 输入主题后点「扫描」开笔"); $("#topic").focus(); }
+  });
+}
+
+// 点卡上「因你」小标 → 高亮左栏对应字段
+function pingProfileField(key){
+  const details = document.querySelector(".profile");
+  if (details && !details.open) details.open = true;
+  const pf = document.querySelector(`#profileFields .pfield[data-field="${key}"]`);
+  if (!pf) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  pf.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+  pf.classList.remove("is-pinged"); void pf.offsetWidth; pf.classList.add("is-pinged");
+  const val = pf.querySelector(".pval");
+  if (val) setTimeout(() => val.focus(), reduce ? 0 : 300);
 }
 
 /* ══ 左栏目次 ══ */
@@ -862,6 +1266,42 @@ function sealsHTML(c){
   return out.join("");
 }
 
+/* ══ 卡上「因你」回指（降级 presentational + 透明启发式）══
+   HEURISTIC：若某画像字段的显著词真的出现在该卡 why_nonobvious / steelman 里，
+   才挂「因你 · {字段}」小标 —— 只在真有文字呼应时挂，绝不编造。画像已喂进扫描
+   prompt（blindspot.enumerate_cards 以画像为「非显而易见」参照系），故 why/steelman
+   常回响画像用词，这匹配是真的。待引擎给结构化 tag 后可升级为精确来源。 */
+const BECUZ_STOP = new Set(["的","了","和","与","或","在","是","不","有","这","那","个","中","法","学","论"]);
+function salientTerms(raw){
+  // 从字段值切出候选词：顿号/逗号/空格分段，再取 ≥2 字的中文/词块，过滤停用单字
+  return String(raw || "")
+    .split(/[，,、；;。\s／\/·]+/)
+    .map(s => s.trim())
+    .filter(s => s.length >= 2 && !BECUZ_STOP.has(s));
+}
+function becuzMatches(c){
+  const hay = `${c.why_nonobvious || ""}\n${c.steelman || ""}`;
+  const out = [];
+  for (const f of PROFILE_FIELDS){
+    const v = (PROFILE_DATA[f.key] || "").trim();
+    if (!v) continue;
+    const hit = salientTerms(v).some(term => hay.includes(term));
+    if (hit) out.push(f.key);
+  }
+  return out;
+}
+function becuzTagsHTML(c){
+  const keys = becuzMatches(c);
+  if (!keys.length) return "";
+  return keys.map(k => {
+    const label = PROFILE_KEY_LABEL[k];
+    return `<button class="becuz-tag" type="button" data-target="${k}"
+        aria-label="因你 · ${esc(label)}：跳到左栏「${esc(label)}」字段并高亮">
+      <span class="stamp">因</span><span>因你 · ${esc(label)}</span><span class="to">↳ 画像</span>
+    </button>`;
+  }).join(" ");
+}
+
 /* ══ 一条手稿 entry ══ */
 function entryHTML(c, i){
   const tm = TYPE_META[c.type];
@@ -891,6 +1331,7 @@ function entryHTML(c, i){
     <h3>${esc(c.name)}</h3>
     <p class="mechanism">${esc(c.mechanism)}</p>
     <div class="why"><span class="lead">相对于你的未知</span>${esc(c.why_nonobvious)}</div>
+    ${becuzTagsHTML(c)}
 
     ${feas}
 
@@ -993,6 +1434,9 @@ function wireEntries(){
     });
     const drillBtn = entry.querySelector(".drill");
     if (drillBtn) drillBtn.addEventListener("click", () => drill(c));
+    entry.querySelectorAll(".becuz-tag").forEach(tag => {
+      tag.addEventListener("click", () => pingProfileField(tag.dataset.target));
+    });
   });
 }
 
@@ -1049,7 +1493,13 @@ function render(){
   TOTAL = CARDS.length;
   const box = $("#entries");
   if (CARDS.length === 0) {
-    box.innerHTML = `<div class="empty-state" style="color:var(--ink-2);font-family:var(--serif);padding:44px 6px;line-height:1.95">输入研究主题，点右上「扫描」——盲区扫描会把三家模型合议出的非显而易见切入点逐张贴上墙。</div>`;
+    // live 且未扫描且非 demo → 首次开笔卡；否则维持原空态提示
+    if (!DEMO) {
+      box.innerHTML = firstRunPortraitHTML();
+      wireFirstRunPortrait();
+    } else {
+      box.innerHTML = `<div class="empty-state" style="color:var(--ink-2);font-family:var(--serif);padding:44px 6px;line-height:1.95">输入研究主题，点右上「扫描」——盲区扫描会把三家模型合议出的非显而易见切入点逐张贴上墙。</div>`;
+    }
     $("#margins").innerHTML = "";
     $("#navList").innerHTML = "";
     shownCount = 0;
@@ -1089,7 +1539,7 @@ async function startScan(){
   try {
     const r = await fetch("/scan", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({topic, profile: ""})
+      body: JSON.stringify({topic, profile: profileText()})
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ("HTTP " + r.status));
     ingest([]); shownCount = 0; render(); setStatus("scanning");
@@ -1129,6 +1579,142 @@ function toast(msg){
   requestAnimationFrame(() => { t.style.opacity = "1"; });
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.style.opacity = "0"; }, 2600);
+}
+
+/* ══ 产物抽屉（方向 A）══
+   真态：GET /scan/products；DEMO：静态示意列（5 已生成 + 2 待生成，路径示意）。
+   打开/在访达走 museBridge，无桥用 toast 兜底。 */
+const DEMO_PRODUCTS = {
+  dir: "~/results/muse/平台经济中的数据权力/docs/agents/muse",
+  files: [
+    { name: "perspectives.md",     exists: true,  desc: "全部切入点卡（含反馈状态）", consumer: "paper-annotator / 任何 agent", path: "~/results/muse/demo/docs/agents/muse/perspectives.md" },
+    { name: "questions.md",        exists: true,  desc: "每卡 1–2 拷问句（不开圆桌也有种子）", consumer: "grill-with-docs", path: "~/results/muse/demo/docs/agents/muse/questions.md" },
+    { name: "sources.md",          exists: true,  desc: "文献锚点", consumer: "引用核查", path: "~/results/muse/demo/docs/agents/muse/sources.md" },
+    { name: "profile.md",          exists: true,  desc: "研究者画像", consumer: "本论文复用参照系", path: "~/results/muse/demo/docs/agents/muse/profile.md" },
+    { name: "angle-feedback.json", exists: true,  desc: "已知角度抑制表", consumer: "再扫抑制", path: "~/results/muse/demo/docs/agents/muse/angle-feedback.json" },
+    { name: "mindmap.md",          exists: false, desc: "圆桌思维导图", consumer: "圆桌深挖后", path: "~/results/muse/demo/docs/agents/muse/mindmap.md" },
+    { name: "failure-points.md",   exists: false, desc: "对抗幕失败点（带证据或未决）", consumer: "to-prove / diagnose", path: "~/results/muse/demo/docs/agents/muse/failure-points.md" },
+  ],
+};
+const PRD = { lastFocus: null, files: [] };
+
+function bridgeMsg(action, path){
+  const b = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.museBridge;
+  if (b && path) { b.postMessage({ action, path }); return true; }
+  return false;
+}
+function productAct(action, path, exists){
+  if (!exists || !path) return;
+  if (!bridgeMsg(action, path)) toast((action === "reveal" ? "在访达定位：" : "打开：") + path);
+}
+
+// N = exists 为真的件数 → 更新顶栏徽标
+function updateProductsCount(files){
+  const n = (files || []).filter(f => f.exists).length;
+  const el = $("#productsCnt"); if (el) el.textContent = "· " + n;
+}
+
+function productRowHTML(f){
+  const isJson = /\.json$/.test(f.name);
+  const statusCls = f.exists ? ("done" + (isJson ? " json" : "")) : "wait";
+  const statusTxt = f.exists ? "已生成" : "待生成";
+  const feed = f.consumer
+    ? `<p class="p-feed"><span class="arrow">→</span>喂 ${esc(f.consumer)}</p>` : "";
+  if (f.exists){
+    return `<article class="product">
+      <span class="p-name">${esc(f.name)}</span>
+      <span class="p-status ${statusCls}">${statusTxt}</span>
+      <div class="p-meta"><p class="p-what">${esc(f.desc || "")}</p>${feed}</div>
+      <div class="p-acts">
+        <button class="p-act primary" type="button" data-act="open" data-path="${esc(f.path || "")}">打开</button>
+        <button class="p-act" type="button" data-act="reveal" data-path="${esc(f.path || "")}">在访达</button>
+      </div>
+    </article>`;
+  }
+  // 待生成：整条灰化，操作禁用，末尾提示工序
+  const when = /mindmap/.test(f.name) ? "深挖圆桌 →"
+             : /failure/.test(f.name) ? "对抗幕 →" : "待后续工序";
+  return `<article class="product pending">
+      <span class="p-name">${esc(f.name)}</span>
+      <span class="p-status ${statusCls}">${statusTxt}</span>
+      <div class="p-meta"><p class="p-what">${esc(f.desc || "")}</p>${feed}
+        <p class="p-note">${/failure/.test(f.name) ? "对抗幕后产出。" : "深挖圆桌后产出。"}</p></div>
+      <div class="p-acts">
+        <button class="p-act" type="button" disabled aria-disabled="true">打开</button>
+        <button class="p-act" type="button" disabled aria-disabled="true">在访达</button>
+        <span class="when">${esc(when)}</span>
+      </div>
+    </article>`;
+}
+
+function renderProducts(data){
+  const body = $("#drawerBody");
+  const files = (data && data.files) || [];
+  PRD.files = files;
+  const done = files.filter(f => f.exists);
+  const wait = files.filter(f => !f.exists);
+  const path = (data && data.dir) || "—";
+  $("#drawerPath").innerHTML = "落盘 · <b>" + esc(path) + "</b>";
+  let html = "";
+  html += `<h3 class="grp-label">已生成 <span class="n">· ${done.length}</span></h3>`;
+  html += done.map(productRowHTML).join("") || `<div class="drawer-busy">尚无已生成产物 · 先扫描</div>`;
+  html += `<h3 class="grp-label">待生成 <span class="n">· ${wait.length}</span></h3>`;
+  html += wait.map(productRowHTML).join("");
+  body.innerHTML = html;
+  body.querySelectorAll(".p-act[data-act]").forEach(btn => {
+    btn.addEventListener("click", () => productAct(btn.dataset.act, btn.dataset.path, true));
+  });
+  updateProductsCount(files);
+}
+
+async function loadProducts(){
+  if (DEMO) { renderProducts(DEMO_PRODUCTS); return; }
+  $("#drawerBody").innerHTML = `<div class="drawer-busy">读取产物清单…</div>`;
+  try {
+    const data = await (await fetch("/scan/products")).json();
+    renderProducts(data);
+  } catch (e) {
+    $("#drawerBody").innerHTML = `<div class="drawer-busy">读取产物失败：${esc(e.message || String(e))}</div>`;
+  }
+}
+
+function openDrawer(){
+  const drawer = $("#drawer"), scrim = $("#scrim"), tab = $("#productsTab");
+  PRD.lastFocus = document.activeElement;
+  scrim.hidden = false; drawer.hidden = false;
+  requestAnimationFrame(() => { scrim.classList.add("open"); drawer.classList.add("open"); });
+  tab.setAttribute("aria-expanded", "true");
+  loadProducts();
+  $("#drawerClose").focus();
+}
+function closeDrawer(){
+  const drawer = $("#drawer"), scrim = $("#scrim"), tab = $("#productsTab");
+  drawer.classList.remove("open"); scrim.classList.remove("open");
+  tab.setAttribute("aria-expanded", "false");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  setTimeout(() => { drawer.hidden = true; scrim.hidden = true; }, reduce ? 0 : 340);
+  (PRD.lastFocus || tab).focus();
+}
+function drawerIsOpen(){ return $("#drawer").classList.contains("open"); }
+
+function wireDrawer(){
+  const tab = $("#productsTab"), drawer = $("#drawer"), scrim = $("#scrim");
+  tab.addEventListener("click", () => drawerIsOpen() ? closeDrawer() : openDrawer());
+  $("#drawerClose").addEventListener("click", closeDrawer);
+  scrim.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && drawerIsOpen()) closeDrawer(); });
+  // 焦点圈在抽屉内（简易 focus trap）
+  drawer.addEventListener("keydown", e => {
+    if (e.key !== "Tab") return;
+    const f = drawer.querySelectorAll("button:not([disabled])");
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  // 初次进来先把 N 徽标填对（不打开抽屉）
+  if (DEMO) updateProductsCount(DEMO_PRODUCTS.files);
+  else fetch("/scan/products").then(r => r.json()).then(d => updateProductsCount((d && d.files) || [])).catch(() => {});
 }
 
 /* ══ 圆桌 · 对谈手稿 ══ */
@@ -1266,11 +1852,15 @@ function wireRoundtable(){
 /* ══ 启动 ══ */
 wireTheme();
 wireRoundtable();
+wireDrawer();
 $(".scan-btn").addEventListener("click", startScan);
 $("#topic").addEventListener("keydown", e => { if (e.key === "Enter") startScan(); });
 
 if (DEMO) {
   $("#topic").value = DEMO_TOPIC;
+  // DEMO：画像预填 DEMO_PROFILE 四值，左栏与开笔卡都可预览
+  PROFILE_DATA = { field: DEMO_PROFILE.field, stance: DEMO_PROFILE.stance,
+                   familiar: DEMO_PROFILE.familiar, puzzle: DEMO_PROFILE.puzzle };
   renderProfile();
   ingest(DEMO_CARDS);
   render();
@@ -1280,7 +1870,7 @@ if (DEMO) {
 } else {
   $("#topic").value = "";
   $("#topic").placeholder = "输入论文主题或研究困惑，点「扫描」…";
-  $("#profileDl").innerHTML = '<dd style="color:var(--ink-2);font-style:italic">画像输入下一步接入；本 slice 先做不带画像的扫描。</dd>';
+  renderProfile();   // live 起空画像；空态 render() 会在中栏出首次开笔卡
   render();
   setStatus("idle");
   // 接管可能已在进行/完成的扫描
