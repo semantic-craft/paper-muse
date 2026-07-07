@@ -58,6 +58,102 @@ def test_extract_json_repairs_cjk_quote_and_missing_brace():
     assert got["fundamentals"][0] == "问题一？"
 
 
+def test_zh_name_core_shapes():
+    from blindspot import _zh_name_core
+    assert _zh_name_core("信息论与控制论（Cybernetics）视角") == "信息论与控制论"
+    assert _zh_name_core("实验法学：图灵测试变体（The Intellectual Turing Test）") == "图灵测试变体"
+    assert _zh_name_core("法律符号学（Legal Semiotics）") == "法律符号学"
+    assert _zh_name_core("Purely English") == "Purely English"  # 中文核心为空 → 回退原名
+
+
+def test_cnki_empty_result_is_zero_hits(monkeypatch):
+    # EMPTY_RESULT（零命中）≠ 未检：回 [] 让交叉空白/金矿判据可触发。
+    # 真实形态（冒烟实证）：stdout 为空、YAML 错误块走 stderr、exit 66
+    import blindspot as B
+
+    class R:
+        stdout = ""
+        stderr = "ok: false\nerror:\n  code: EMPTY_RESULT\n  message: cnki search returned no data\n"
+
+    monkeypatch.setattr(B.subprocess, "run", lambda *a, **k: R)
+    assert B.real_cnki_search()("任意查询") == []
+
+
+def test_cnki_session_error_still_raises(monkeypatch):
+    import blindspot as B
+
+    class R:
+        stdout = ""
+        stderr = "ok: false\nerror:\n  code: NO_BROWSER_SESSION\n"
+
+    monkeypatch.setattr(B.subprocess, "run", lambda *a, **k: R)
+    with pytest.raises(RuntimeError):
+        B.real_cnki_search()("任意查询")
+
+
+def test_run_scan_streaming_merge_and_enrich(tmp_path, monkeypatch):
+    """流式两段出卡：快家先上墙（慢家未返回时 on_card 已发），重名合并翻离群，徽标异步补挂全齐。"""
+    import threading as th
+
+    import blindspot as B
+
+    gate = th.Event()
+
+    def fake_enum(topic, fundamentals, profile, tag, call):
+        if tag == "fast":
+            return [_card("A", "fast"), _card("B", "fast")]
+        assert gate.wait(timeout=5), "快家的卡迟迟没上墙——流式失效"
+        return [_card("A", "slow"), _card("C", "slow")]
+
+    monkeypatch.setattr(B, "enumerate_cards", fake_enum)
+    monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
+    monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "著作权")
+    emitted = []
+
+    def on_card(c):
+        emitted.append(c["name"])
+        if len(emitted) == 2:
+            gate.set()  # 快家两张上墙后才放行慢家
+
+    cards = B.run_scan(
+        "主题", "", str(tmp_path),
+        providers={"fast": lambda p: "", "slow": lambda p: ""},
+        decompose_llm=lambda p: "",
+        en_search=lambda q: [{"title": "t", "url": "u"}] * 4,
+        zh_search=lambda q: [],
+        own_search=lambda q: [{"title": "t", "url": "u"}],
+        on_card=on_card)
+
+    assert emitted == ["A", "B", "C"]
+    assert [c["id"] for c in cards] == [1, 2, 3]
+    a, b, _c = cards
+    assert set(a["source_models"]) == {"fast", "slow"}  # 重名只并来源
+    assert a["outlier"] is False and b["outlier"] is True
+    assert a["en_hits"] == 4 and a["zh_hits"] == 0 and a["own_hits"] == 1
+    assert a["novelty"] == "交叉空白" and a["gold"] is True  # en 热 × zh 真零 = 金标
+    assert len(a["anchors"]) == 3
+
+
+def test_run_scan_suppression_blocks_emit(tmp_path, monkeypatch):
+    import blindspot as B
+
+    muse = tmp_path / "docs" / "agents" / "muse"
+    muse.mkdir(parents=True)
+    (muse / "angle-feedback.json").write_text(
+        json.dumps({normalize_name("B"): {"name": "B", "verdict": "已知"}}, ensure_ascii=False),
+        encoding="utf-8")
+    monkeypatch.setattr(B, "enumerate_cards",
+                        lambda topic, f, p, tag, call: [_card("A", tag), _card("B", tag)])
+    monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
+    monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: None)
+    emitted = []
+    cards = B.run_scan("主题", "", str(tmp_path), providers={"m": lambda p: ""},
+                       decompose_llm=lambda p: "", en_search=lambda q: [],
+                       zh_search=lambda q: [], own_search=None, on_card=emitted.append)
+    assert [c["name"] for c in cards] == ["A"] and emitted[0]["name"] == "A"
+    assert cards[0]["own_hits"] is None and cards[0]["novelty"] == "交叉空白"
+
+
 def test_classify_novelty_quadrants():
     # (en_hits, zh_hits) -> 分类；金标 = 英热中冷
     assert classify_novelty(en_hits=5, zh_hits=6) == ("主流", False)
