@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import threading
+from contextlib import nullcontext
 from pathlib import Path
 
 import json_repair
@@ -189,31 +190,66 @@ def record_feedback(output_dir: str, name: str, verdict: str):
     f.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _novelty_for(card, topic, en_search, zh_search, own_search=None):
+def _zh_name_core(name: str) -> str:
+    """卡名 → 知网可检索的中文核心词。
+    冒烟实证（2026-07-07）：CNKI 对「全名（英文）＋整句主题」长复合查询必空且 ~42s/次，
+    「控制论 著作权」两短词才有真命中——查询必须收敛到中文短词。"""
+    core = re.sub(r"[（(][^）)]*[）)]", "", name)      # 去括号注（多为英文名）
+    core = re.sub(r"[A-Za-z0-9·\-–—'']+", "", core)   # 去英文/数字残留
+    core = re.sub(r"\s+", "", core).strip("：:，,、 ")
+    if "：" in core:
+        core = core.split("：")[-1]                    # 取冒号后最具体段（计算法学：X → X）
+    core = re.sub(r"视角$", "", core) or core          # 去卡型后缀
+    return core or name
+
+
+def _topic_zh_keyword(topic: str, llm_call):
+    """主题 → 1 个知网检索核心词（「谁已经用 X 研究过 Y」的 Y）。失败回 None 并留痕。"""
+    prompt = (f"论文主题：{topic}\n"
+              "在知网检索该主题相关文献时，最核心的一个检索词是什么？要求：2-6 个汉字、"
+              "领域概念词（学科名/制度名/理论名，如「著作权」「不正当竞争」），"
+              '不要对象描述词、不要照抄主题。只输出 JSON：{"keyword": "..."}')
+    try:
+        kw = re.sub(r"\s+", "", str(extract_json(llm_call(prompt)).get("keyword", "")))
+        return kw or None
+    except Exception as e:
+        logging.warning(f"主题检索词提取失败（zh 查询退回整题）：{e}")
+        return None
+
+
+def _novelty_for(card, topic, en_search, zh_search, own_search=None,
+                 zh_gate=None, own_gate=None, zh_keyword=None):
+    """新颖性三面定位，逐面原地回填（卡已上墙，字段更新靠 /scan/status 轮询快照可见）。
+    顺序：en → own（秒级）先挂，zh（CNKI 走浏览器，慢且必须串行）最后定 novelty/gold。"""
     query = f"{card['name']} {topic}"
     try:
         en = en_search(query) or []
-    except Exception:
-        en = []
-    try:
-        zh = zh_search(query)  # 中文学界面 = CNKI（新颖性判据）
-        zh_hits = len(zh or [])
     except Exception as e:
-        # 降级必须留痕：中文面是新颖性判据，静默吞掉会让「未检」无从诊断
-        logging.warning(f"zh_search 失败（降级中文面未检）[{card['name']}]：{e}")
-        zh_hits = None  # 中文面未检，明示不装懂
+        logging.warning(f"en_search 失败（en_hits=0 计）[{card['name']}]：{e}")
+        en = []
+    card["en_hits"] = len(en)
+    card["anchors"] = [{"title": r.get("title", ""), "url": r.get("url", "")} for r in en[:3]]
     if own_search is None:
         card["own_hits"] = None
     else:
         try:
-            card["own_hits"] = len(own_search(query) or [])  # 自有语料面 = zsearch（unknown-knowns 信号）
+            with (own_gate or nullcontext()):
+                card["own_hits"] = len(own_search(query) or [])  # 自有语料面 = zsearch
         except Exception as e:
             logging.warning(f"own_search 失败（own_hits 置空）[{card['name']}]：{e}")
             card["own_hits"] = None
+    kw = zh_keyword() if callable(zh_keyword) else zh_keyword
+    zq = f"{_zh_name_core(card['name'])} {kw or topic}"
+    try:
+        with (zh_gate or nullcontext()):
+            zh = zh_search(zq)  # 中文学界面 = CNKI（新颖性判据）
+        zh_hits = len(zh or [])  # []＝真零命中（交叉空白/金矿判据靠它触发）
+    except Exception as e:
+        # 降级必须留痕：中文面是新颖性判据，静默吞掉会让「未检」无从诊断
+        logging.warning(f"zh_search 失败（降级中文面未检）[{card['name']}] q={zq!r}：{e}")
+        zh_hits = None  # 中文面未检，明示不装懂
     card["novelty"], card["gold"] = classify_novelty(len(en), zh_hits)
     card["zh_hits"] = zh_hits
-    card["en_hits"] = len(en)
-    card["anchors"] = [{"title": r.get("title", ""), "url": r.get("url", "")} for r in en[:3]]
     return card
 
 
@@ -252,26 +288,71 @@ def _write_outputs(output_dir, topic, profile, cards):
 
 def run_scan(topic, profile, output_dir, providers, decompose_llm,
              en_search, zh_search, on_card, own_search=None):
-    """providers: {model_tag: llm_call}；on_card(card) 在每张卡出炉（含新颖性）时回调。"""
+    """providers: {model_tag: llm_call}。流式两段出卡（spec §4.1/§9，冒烟 #15）：
+    单家枚举完成即合并上墙（on_card，无徽标），新颖性三面每卡起线程异步补挂——
+    卡对象原地更新（只换预置键的值，不加键），/scan/status 轮询快照自然可见。
+    返回时全部补挂完成，产物落盘。"""
     fundamentals = decompose_topic(topic, profile, decompose_llm)
     suppressed = load_suppressed(output_dir)
 
-    all_cards, lock = [], threading.Lock()
+    wall, order = {}, []
+    lock = threading.Lock()
+    zh_gate = threading.Semaphore(1)    # CNKI 共用一个浏览器会话，必须串行
+    own_gate = threading.Semaphore(3)   # zsearch 子进程限并发
+    enrich_ts = []
+
+    # 主题检索词后台先备着（只有 zh 面等它；en/own 不受影响）
+    kw_holder = {}
+    kw_t = threading.Thread(
+        target=lambda: kw_holder.update(kw=_topic_zh_keyword(topic, decompose_llm)), daemon=True)
+    kw_t.start()
+
+    def zh_keyword():
+        kw_t.join(timeout=60)
+        return kw_holder.get("kw")
+
+    def emit_family(cards):
+        """单家枚举结果并入墙：新卡上墙＋起新颖性线程；重名卡只并 source_models。"""
+        fresh = []
+        with lock:
+            for c in cards:
+                key = normalize_name(c["name"])
+                if key in suppressed:
+                    continue
+                if key in wall:
+                    prev = wall[key]
+                    prev["source_models"] = sorted(set(prev["source_models"]) | set(c["source_models"]))
+                else:
+                    c = dict(c)
+                    # 徽标字段占位：上墙后原地更新只换值不加键（快照序列化安全）
+                    c.update(id=len(order) + 1, outlier=None, novelty=None, gold=None,
+                             en_hits=None, zh_hits=None, own_hits=None, anchors=[])
+                    wall[key] = c
+                    order.append(key)
+                    fresh.append(c)
+        for c in fresh:
+            on_card(c)
+            t = threading.Thread(target=_novelty_for,
+                                 args=(c, topic, en_search, zh_search, own_search,
+                                       zh_gate, own_gate, zh_keyword), daemon=True)
+            t.start()
+            enrich_ts.append(t)
+
+    threads_out = {}
 
     def one_provider(tag, call):
         try:
-            return enumerate_cards(topic, fundamentals, profile, tag, call)
+            cards = enumerate_cards(topic, fundamentals, profile, tag, call)
         except Exception as e:
             # 单家失败不拖垮扫描，但必须留痕——否则三方合议静默降为两方，离群徽标失真
             logging.error(f"provider[{tag}] 枚举失败：{e}")
-            return []
+            cards = []
+        threads_out[tag] = cards
+        emit_family(cards)  # 最快家先上墙，其余家增量合并（spec §4.1）
 
-    threads_out = {}
-    ts = []
-    for tag, call in providers.items():
-        t = threading.Thread(target=lambda tg=tag, c=call: threads_out.__setitem__(tg, one_provider(tg, c)))
+    ts = [threading.Thread(target=one_provider, args=(tag, call)) for tag, call in providers.items()]
+    for t in ts:
         t.start()
-        ts.append(t)
     for t in ts:
         t.join()
 
@@ -279,15 +360,14 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
     if providers and not any(threads_out.values()):
         raise RuntimeError("所有模型枚举均失败或零卡——检查 key/模型名/输出解析（stderr 有各家错误日志）")
 
-    merged = mark_outliers(dedupe_cards([c for v in threads_out.values() for c in v]))
-    merged = apply_suppression(merged, suppressed)
+    # 离群 = 全家到齐后仅一家提出（早标会闪烁误导，故与其他徽标同为异步补挂）
+    with lock:
+        mark_outliers([wall[k] for k in order])
 
-    for card in merged:
-        _novelty_for(card, topic, en_search, zh_search, own_search)
-        with lock:
-            all_cards.append(card)
-        on_card(card)
+    for t in enrich_ts:
+        t.join()
 
+    all_cards = [wall[k] for k in order]
     _write_outputs(output_dir, topic, profile, all_cards)
     return all_cards
 
@@ -320,7 +400,10 @@ def real_providers():
             api_key=os.getenv("DEEPSEEK_API_KEY"),
             api_base=os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com"))
     if os.getenv("OPENAI_API_KEY"):
-        out["openai"] = _litellm_call("openai/chat-latest", api_key=os.getenv("OPENAI_API_KEY"))
+        # 显式钉官方端点：用户 shell 全局导出的 OPENAI_BASE_URL（kimi 代理）会被 litellm
+        # 读走，把官方 key 发往代理 → AuthenticationError（冒烟 2026-07-07 实证）
+        out["openai"] = _litellm_call("openai/chat-latest", api_key=os.getenv("OPENAI_API_KEY"),
+                                      api_base="https://api.openai.com/v1")
     if os.getenv("GOOGLE_API_KEY"):
         out["gemini"] = _litellm_call("gemini/gemini-3.1-flash-lite", api_key=os.getenv("GOOGLE_API_KEY"))
     return out
@@ -340,17 +423,25 @@ def real_en_search(k: int = 5):
 def real_cnki_search(limit: int = 5):
     """中文学界面（新颖性判据）：opencli cnki search，CSSCI 过滤。
     需 Chrome 会话（`opencli browser open <url>` 一次）；无会话/风控抛错 → 上层降级「中文面未检」。
-    实测：无会话时 `-f json` 仍输出 YAML 风格错误文本（`ok: false` 块），非合法 JSON——
-    json.loads 会直接抛 JSONDecodeError，被这里的调用方（_novelty_for）当普通异常吞掉，
-    无需额外分支识别该文本形态。"""
+    错误输出是 YAML 风格文本（`ok: false` 块）非合法 JSON。
+    ⚠️ EMPTY_RESULT（零命中）≠ 未检：必须回 []（zh_hits=0），交叉空白/金矿判据靠它触发
+    （冒烟 2026-07-07：之前当异常抛导致金标永不可能出现）。"""
 
     def search(query):
         r = subprocess.run(
             ["opencli", "cnki", "search", query, "--source_category", "CSSCI",
              "--limit", str(limit), "-f", "json"],
             capture_output=True, text=True, timeout=90)
-        data = json.loads(r.stdout)
+        try:
+            data = json.loads(r.stdout)
+        except json.JSONDecodeError:
+            blob = (r.stdout or "") + (r.stderr or "")
+            if "EMPTY_RESULT" in blob:
+                return []  # 真零命中（实测：错误 YAML 走 stderr、stdout 为空、exit 66）
+            raise RuntimeError(blob[:200])
         if isinstance(data, dict) and not data.get("ok", True):
+            if (data.get("error") or {}).get("code") == "EMPTY_RESULT":
+                return []  # 真零命中
             raise RuntimeError(data.get("error", {}).get("message", "cnki search failed"))
         rows = data.get("data") if isinstance(data, dict) else data
         return rows or []
