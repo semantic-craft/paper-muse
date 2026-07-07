@@ -277,6 +277,31 @@ def step(req: StepReq):
         RUNNER_LOCK.release()
 
 
+def _merge_roundtable_into_muse(paper_dir, topic, article, conversation):
+    """圆桌产物并入七件契约（#16，spec §5/§8）：mindmap.md 用报告标题层级作导图（覆盖），
+    questions.md 追加圆桌对谈里的新拷问句（同话题幂等）。
+    paper_dir = costorm_* 子目录的上一级 = 论文根（七件契约所在）。"""
+    muse = os.path.join(paper_dir, "docs", "agents", "muse")
+    os.makedirs(muse, exist_ok=True)
+    heads = [ln.rstrip() for ln in article.splitlines() if ln.lstrip().startswith("#")]
+    body = "\n".join(heads) if heads else "（本轮圆桌报告无标题层级）"
+    with open(os.path.join(muse, "mindmap.md"), "w", encoding="utf-8") as f:
+        f.write(f"# 思维导图（圆桌深挖）：{topic}\n\n{body}\n")
+    text = " ".join(getattr(t, "utterance", "") or "" for t in conversation)
+    qs, seen = [], set()
+    for q in re.findall(r"[^。！？\n]{6,}？", text):
+        q = q.strip()
+        if q not in seen:
+            seen.add(q)
+            qs.append(q)
+    qfile = os.path.join(muse, "questions.md")
+    marker = f"## 圆桌深挖：{topic}"
+    existing = open(qfile, encoding="utf-8").read() if os.path.exists(qfile) else ""
+    if qs and marker not in existing:
+        with open(qfile, "a", encoding="utf-8") as f:
+            f.write(f"\n\n{marker}\n" + "\n".join(f"- {q}" for q in qs[:15]) + "\n")
+
+
 @app.post("/report")
 def report():
     # 同 /step：相位检查/置位与执行同锁，堵并发 TOCTOU
@@ -302,7 +327,14 @@ def report():
                 json.dump(runner.to_dict(), f, indent=2, ensure_ascii=False)
             with open(os.path.join(output_dir, "log.json"), "w", encoding="utf-8") as f:
                 json.dump(runner.dump_logging_and_reset(), f, indent=2, ensure_ascii=False)
-            return {"output_dir": output_dir, "files": ["report.md", "conversation.md", "instance_dump.json", "log.json"]}
+            files = ["report.md", "conversation.md", "instance_dump.json", "log.json"]
+            try:
+                _merge_roundtable_into_muse(os.path.dirname(output_dir), SESSION["topic"],
+                                            article, runner.conversation_history)
+                files += ["../docs/agents/muse/mindmap.md", "../docs/agents/muse/questions.md(+圆桌)"]
+            except Exception:
+                traceback.print_exc()  # 并入失败不该让已生成的报告 500
+            return {"output_dir": output_dir, "files": files}
         except Exception as e:
             raise HTTPException(500, f"生成报告失败：{e}")
         finally:
