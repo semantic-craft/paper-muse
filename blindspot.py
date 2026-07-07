@@ -13,6 +13,8 @@ import subprocess
 import threading
 from pathlib import Path
 
+import json_repair
+
 # ---- persona（用户提供原文后整体替换本常量）----
 FIRST_PRINCIPLES_PERSONA = (
     "你是第一性原理思考者：回到问题的根本，把问题拆解到最小可验证单元，"
@@ -57,9 +59,20 @@ def extract_json(text: str):
         try:
             candidates.append((len(span), json.loads(span)))
         except json.JSONDecodeError:
-            pass
+            try:
+                # strict=False 容忍字符串内裸控制符（LLM 输出最常见的坏法）
+                candidates.append((len(span), json.loads(span, strict=False)))
+            except json.JSONDecodeError:
+                pass
         start = text.find("{", end)
     if not candidates:
+        # 终极兜底：json_repair 修「未闭合/中文引号当界符」类坏 JSON
+        # （deepseek 对部分中文 prompt 稳定产出 `…？”]` 缺 `}` 的输出，冒烟实证）
+        start = text.find("{")
+        if start != -1:
+            repaired = json_repair.loads(text[start:])
+            if isinstance(repaired, dict) and repaired:
+                return repaired
         raise ValueError(f"输出中未找到 JSON：{text[:200]}")
     return max(candidates, key=lambda x: x[0])[1]
 
@@ -119,7 +132,11 @@ def decompose_topic(topic: str, profile: str, llm_call) -> list:
         "用第一性原理把它拆成 3-5 个根本问题（最小可验证、互相独立、直指本质）。"
         '只输出 JSON：{"fundamentals": ["...", "..."]}'
     )
-    return extract_json(llm_call(prompt))["fundamentals"]
+    # 拆解是全扫描的单点：一次坏输出不该整扫崩死，重试一次再抛
+    try:
+        return extract_json(llm_call(prompt))["fundamentals"]
+    except (ValueError, KeyError):
+        return extract_json(llm_call(prompt))["fundamentals"]
 
 
 def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str, llm_call) -> list:
@@ -181,14 +198,17 @@ def _novelty_for(card, topic, en_search, zh_search, own_search=None):
     try:
         zh = zh_search(query)  # 中文学界面 = CNKI（新颖性判据）
         zh_hits = len(zh or [])
-    except Exception:
+    except Exception as e:
+        # 降级必须留痕：中文面是新颖性判据，静默吞掉会让「未检」无从诊断
+        logging.warning(f"zh_search 失败（降级中文面未检）[{card['name']}]：{e}")
         zh_hits = None  # 中文面未检，明示不装懂
     if own_search is None:
         card["own_hits"] = None
     else:
         try:
             card["own_hits"] = len(own_search(query) or [])  # 自有语料面 = zsearch（unknown-knowns 信号）
-        except Exception:
+        except Exception as e:
+            logging.warning(f"own_search 失败（own_hits 置空）[{card['name']}]：{e}")
             card["own_hits"] = None
     card["novelty"], card["gold"] = classify_novelty(len(en), zh_hits)
     card["zh_hits"] = zh_hits

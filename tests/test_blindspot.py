@@ -50,6 +50,14 @@ def test_apply_suppression_filters_known():
     assert [c["name"] for c in kept] == ["B"]
 
 
+def test_extract_json_repairs_cjk_quote_and_missing_brace():
+    # 冒烟实证的 deepseek 坏法：结尾英文引号写成 ” 且丢最后的 }（未闭合）
+    bad = '{"fundamentals": ["问题一？", "激励对象是谁？”]'
+    got = extract_json(bad)
+    assert isinstance(got["fundamentals"], list) and len(got["fundamentals"]) == 2
+    assert got["fundamentals"][0] == "问题一？"
+
+
 def test_classify_novelty_quadrants():
     # (en_hits, zh_hits) -> 分类；金标 = 英热中冷
     assert classify_novelty(en_hits=5, zh_hits=6) == ("主流", False)
