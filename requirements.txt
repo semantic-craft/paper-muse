@@ -10,3 +10,8 @@ langchain-qdrant
 numpy
 litellm
 diskcache
+json-repair
+# muse_server.py（本地 API 服务）
+fastapi
+uvicorn[standard]
+tavily-python
