@@ -113,7 +113,7 @@ def test_run_scan_streaming_merge_and_enrich(tmp_path, monkeypatch):
 
     gate = th.Event()
 
-    def fake_enum(topic, fundamentals, profile, tag, call):
+    def fake_enum(topic, fundamentals, profile, tag, call, puzzle=""):
         if tag == "fast":
             return [_card("A", "fast"), _card("B", "fast")]
         assert gate.wait(timeout=5), "快家的卡迟迟没上墙——流式失效"
@@ -157,7 +157,7 @@ def test_run_scan_suppression_blocks_emit(tmp_path, monkeypatch):
         json.dumps({normalize_name("B"): {"name": "B", "verdict": "已知"}}, ensure_ascii=False),
         encoding="utf-8")
     monkeypatch.setattr(B, "enumerate_cards",
-                        lambda topic, f, p, tag, call: [_card("A", tag), _card("B", tag)])
+                        lambda topic, f, p, tag, call, puzzle="": [_card("A", tag), _card("B", tag)])
     monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
     monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: None)
     emitted = []
@@ -340,3 +340,72 @@ def test_run_scan_all_providers_failing_raises(tmp_path):
             decompose_llm=lambda p: json.dumps({"fundamentals": ["f"]}),
             en_search=lambda q: [], zh_search=lambda q: [], on_card=lambda c: None,
         )
+
+
+# ---- 机器级画像 researcher.md（ADR-0001 / #3）----
+from blindspot import (
+    load_researcher_profile,
+    save_researcher_profile,
+    profile_text_from_dict,
+    profile_dict_from_text,
+    researcher_md_path,
+)
+
+
+def test_researcher_md_path_honors_xdg(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert researcher_md_path() == tmp_path / "paper-muse" / "researcher.md"
+
+
+def test_profile_text_dict_roundtrip_excludes_empty_and_puzzle():
+    d = {"field": "中文法学", "stance": "权利本位", "familiar": "比例原则"}
+    text = profile_text_from_dict(d)
+    assert text == "领域：中文法学\n立场：权利本位\n熟悉：比例原则"
+    assert profile_dict_from_text(text) == d
+    # 空字段不落行；未知标签（如手改混入的「困惑」）解析时忽略，不进画像三要素
+    assert profile_text_from_dict({"field": "X", "stance": "", "familiar": ""}) == "领域：X"
+    assert profile_dict_from_text("困惑：想不通\n领域：X") == {"field": "X", "stance": "", "familiar": ""}
+
+
+def test_researcher_profile_save_load_roundtrip(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert load_researcher_profile() == {"field": "", "stance": "", "familiar": ""}  # 缺文件回全空
+    save_researcher_profile({"field": "数据法", "stance": "法教义学", "familiar": "反垄断法"})
+    assert load_researcher_profile() == {"field": "数据法", "stance": "法教义学", "familiar": "反垄断法"}
+
+
+def test_profile_value_with_newline_stays_single_line_no_injection():
+    """值内换行归一为单空格：既不截断续行，也不让续行伪装成别的字段标签（审核 F2/F3）。"""
+    # 续行以「立场：」开头——归一前会串改 stance；归一后整段留在 familiar
+    d = {"field": "数据法", "stance": "", "familiar": "反垄断\n立场：钓鱼"}
+    text = profile_text_from_dict(d)
+    assert "\n立场：" not in text                      # 不产生第二个可被误解析的标签行
+    back = profile_dict_from_text(text)
+    assert back == {"field": "数据法", "stance": "", "familiar": "反垄断 立场：钓鱼"}
+
+
+def test_run_scan_puzzle_feeds_prompts_but_not_profile_md(tmp_path):
+    """困惑入 decompose/enumerate 提示词，但绝不落 profile.md（困惑不污染画像，#3 验收）。"""
+    seen = []
+
+    def capture_provider(prompt):
+        seen.append(prompt)
+        return json.dumps({"cards": [
+            {"type": "理论框架", "name": "X", "mechanism": "m", "why_nonobvious": "w",
+             "steelman": "s", "questions": ["q"]}]})
+
+    def capture_decompose(prompt):
+        seen.append(prompt)
+        return json.dumps({"fundamentals": ["f"]})
+
+    run_scan(
+        topic="平台数据", profile="领域：中文法学", puzzle="怕落进数据确权红海",
+        output_dir=str(tmp_path), providers={"deepseek": capture_provider},
+        decompose_llm=capture_decompose,
+        en_search=lambda q: [], zh_search=lambda q: [], on_card=lambda c: None,
+    )
+    blob = "\n".join(seen)
+    assert "怕落进数据确权红海" in blob          # 困惑喂进提示词
+    profile_md = (tmp_path / "docs" / "agents" / "muse" / "profile.md").read_text(encoding="utf-8")
+    assert profile_md == "领域：中文法学"          # 快照 = 画像，困惑不在其中
+    assert "怕落进" not in profile_md

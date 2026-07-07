@@ -125,6 +125,28 @@
   }
   .theme-btn:hover { border-color: var(--vermilion); color: var(--vermilion); }
 
+  /* ── 本次困惑：顶栏下独立一行（与主题并列的一次性输入，不进画像）──
+     不粘顶：避免与同为 top:57px 的左栏 .rail 叠层；顶栏主题/扫描仍常驻。 */
+  .puzzle-bar {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 8px 28px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .puzzle-bar label {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: .14em; text-transform: uppercase;
+    color: var(--vermilion); white-space: nowrap;
+  }
+  .puzzle-input {
+    flex: 1 1 auto; min-width: 0;
+    font-family: var(--kai); font-size: 15px; letter-spacing: .02em;
+    color: var(--ink); background: transparent;
+    border: none; border-bottom: 1px solid var(--hair-strong);
+    padding: 2px 2px 4px; line-height: 1.4;
+  }
+  .puzzle-input:focus { border-bottom-color: var(--vermilion); outline: none; }
+  .puzzle-input::placeholder { color: var(--ink-2); font-style: italic; opacity: .8; }
+
   /* ── 三段式骨架 ─────────────────────────────── */
   .desk {
     display: grid;
@@ -629,7 +651,6 @@
   .p-form .pff[data-empty="true"]::before {
     content: attr(data-placeholder); color: var(--ink-2); opacity: .7; font-style: italic;
   }
-  .p-form .field.puzzle .pff { font-family: var(--kai); font-size: 15.5px; letter-spacing: .02em; }
   .p-form .hint {
     display: block; margin-top: 5px;
     font-family: var(--kai); font-size: 12px; color: var(--ink-2);
@@ -834,6 +855,13 @@
   <button id="themeBtn" class="theme-btn" type="button"
           aria-label="切换明暗主题" title="切换明暗主题">☾</button>
 </header>
+
+<div class="puzzle-bar">
+  <label for="puzzle">本次困惑</label>
+  <input id="puzzle" class="puzzle-input" type="text"
+         placeholder="这一篇，你到底卡在哪里？（选填，扫描朝此发力）"
+         aria-label="本次困惑输入框（与主题并列的一次性输入）">
+</div>
 
 <main class="desk">
 
@@ -1072,7 +1100,8 @@ const DEMO_CARDS = [
 let CARDS = [];            // 当前墙上的卡：真扫描=/scan/status 快照；?demo=DEMO_CARDS
 let PROFILE = DEMO_PROFILE;
 // 研究者画像 live 态：真界面起空；DEMO 态用 DEMO_PROFILE 预填以便预览（见启动 init）
-let PROFILE_DATA = { field: "", stance: "", familiar: "", puzzle: "" };
+let PROFILE_DATA = { field: "", stance: "", familiar: "" };  // 画像三要素，困惑不在此列（#3）
+let PROFILE_LOADED = false;  // GET /profile 成功前不落盘，防空态 blur 覆写清空机器级画像（审核 F1）
 let TOTAL = 0;             // 顶部「手稿 NN / TOTAL」计数
 let shownCount = 0;        // 已入场动画的卡数（增量 stagger 只动新卡）
 let pollTimer = null;
@@ -1101,7 +1130,8 @@ function shortHost(url){
 }
 
 /* ══ 研究者画像（A+B 合并：左栏就地可编辑 + 首次开笔卡，共享 PROFILE_DATA）══ */
-// 四个字段的元数据：key / 左栏标签 / 占位 / 开笔卡上的楷体 hint
+// 三要素的元数据：key / 左栏标签 / 占位 / 开笔卡上的楷体 hint
+// 画像三要素（领域/立场/熟悉）——机器级 researcher.md 复用，不含困惑。困惑改由顶栏下独立输入行采集。
 const PROFILE_FIELDS = [
   { key: "field",    label: "领域", placeholder: "你的研究领域…",
     formLabel: "领域", formPh: "你的学科落点，越具体越好",
@@ -1112,21 +1142,28 @@ const PROFILE_FIELDS = [
   { key: "familiar", label: "熟悉", placeholder: "你已熟悉的…",
     formLabel: "熟悉的理论 / 概念", formPh: "你已经会的，逗号分隔",
     hint: "这些不会再当新知端上来——只报你没见过的。" },
-  { key: "puzzle",   label: "困惑", placeholder: "你的困惑…",
-    formLabel: "本篇困惑", formPh: "这一篇，你到底卡在哪里？",
-    hint: "这句最重要——扫描朝你的困惑发力。" },
 ];
+// puzzle 保留标签供卡上「因你·困惑」小标用（困惑虽非画像字段，仍可回指困惑输入行）
 const PROFILE_KEY_LABEL = { field: "领域", stance: "立场", familiar: "熟悉", puzzle: "困惑" };
 
-// 把非空字段拼成喂扫描的画像串
-function profileText(){
-  return PROFILE_FIELDS
-    .filter(f => (PROFILE_DATA[f.key] || "").trim())
-    .map(f => `${f.label}：${PROFILE_DATA[f.key].trim()}`)
-    .join("\n");
+// 三要素 → POST /profile 载荷（写机器级 researcher.md）
+function profilePayload(){
+  return { field: PROFILE_DATA.field || "", stance: PROFILE_DATA.stance || "",
+           familiar: PROFILE_DATA.familiar || "" };
 }
+// 落定画像到机器级（左栏 blur / 开笔卡保存 / 扫描前调用）。demo 态不联网。
+// 未成功拉过画像时不写：否则 GET 瞬时失败留下的空 PROFILE_DATA 会覆写清空 researcher.md（F1）。
+async function saveProfile(){
+  if (DEMO || !PROFILE_LOADED) return;
+  try {
+    await fetch("/profile", { method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(profilePayload()) });
+  } catch (e) { /* 本地服务瞬时错误，下次编辑/扫描再存 */ }
+}
+// 本次困惑（一次性输入，不落画像）
+function puzzleValue(){ const el = $("#puzzle"); return el ? (el.value || "").trim() : ""; }
 
-// 左栏：渲染 4 行 contenteditable 字段（mock B 样式）
+// 左栏：渲染 3 行 contenteditable 字段（mock B 样式）
 function renderProfile(){
   const box = $("#profileFields");
   if (!box) return;
@@ -1153,7 +1190,7 @@ function wireProfileEditables(scope){
       if (e.key === "Enter") { e.preventDefault(); el.blur(); }
       if (e.key === "Escape") { el.blur(); }
     });
-    el.addEventListener("blur", () => { PROFILE_DATA[key] = el.textContent; refreshEmpty(); });
+    el.addEventListener("blur", () => { PROFILE_DATA[key] = el.textContent; refreshEmpty(); saveProfile(); });
   });
 }
 
@@ -1163,9 +1200,8 @@ function syncProfileToRail(){ renderProfile(); }
 // 首次开笔卡（mock A）：live 且未扫描且非 demo 的空态里渲染
 function firstRunPortraitHTML(){
   const fields = PROFILE_FIELDS.map(f => {
-    const puzzleCls = f.key === "puzzle" ? " puzzle" : "";
     const v = PROFILE_DATA[f.key] || "";
-    return `<div class="field${puzzleCls}">
+    return `<div class="field">
         <label id="pf-lab-${f.key}">${esc(f.formLabel)}</label>
         <div class="pff" data-field="${f.key}" contenteditable="true" spellcheck="false"
              role="textbox" aria-labelledby="pf-lab-${f.key}"
@@ -1183,7 +1219,7 @@ function firstRunPortraitHTML(){
         <button class="p-save" type="button" id="pSave">
           存这版画像<span class="sep">·</span><span class="go">开始扫描</span>
         </button>
-        <p class="foot-note">画像可选：顶栏「扫描」不填也能用。存后收进左栏，主题非空则随即开笔——落盘 <code>profile.md</code>。</p>
+        <p class="foot-note">画像可选：顶栏「扫描」不填也能用。存后收进左栏、跨论文复用——落机器级 <code>researcher.md</code>，扫描时物化只读快照 <code>profile.md</code>。困惑另填在顶栏下「本次困惑」。</p>
       </div>
     </section>`;
 }
@@ -1193,10 +1229,11 @@ function wireFirstRunPortrait(){
   const form = $("#pForm");
   if (form) wireProfileEditables(form);
   const save = $("#pSave");
-  if (save) save.addEventListener("click", () => {
+  if (save) save.addEventListener("click", async () => {
     // 从卡上字段落定 PROFILE_DATA（blur 可能未触发，主动收一次）
     if (form) form.querySelectorAll(".pff").forEach(el => { PROFILE_DATA[el.dataset.field] = el.textContent; });
     syncProfileToRail();               // 画像收进左栏
+    await saveProfile();               // 落机器级 researcher.md（跨论文复用）
     const details = document.querySelector(".profile");
     if (details) details.open = true;
     if (($("#topic").value || "").trim()) startScan();   // 主题非空 → 直接开笔
@@ -1206,6 +1243,11 @@ function wireFirstRunPortrait(){
 
 // 点卡上「因你」小标 → 高亮左栏对应字段
 function pingProfileField(key){
+  if (key === "puzzle") {   // 困惑非画像字段 → 回指顶栏下「本次困惑」输入行
+    const pin = $("#puzzle");
+    if (pin) { pin.scrollIntoView({ block: "center" }); pin.focus(); }
+    return;
+  }
   const details = document.querySelector(".profile");
   if (details && !details.open) details.open = true;
   const pf = document.querySelector(`#profileFields .pfield[data-field="${key}"]`);
@@ -1288,6 +1330,9 @@ function becuzMatches(c){
     const hit = salientTerms(v).some(term => hay.includes(term));
     if (hit) out.push(f.key);
   }
+  // 困惑（本次输入，非画像字段）也参与「因你」呼应 → 小标回指顶栏困惑行
+  const pz = puzzleValue();
+  if (pz && salientTerms(pz).some(term => hay.includes(term))) out.push("puzzle");
   return out;
 }
 function becuzTagsHTML(c){
@@ -1295,9 +1340,10 @@ function becuzTagsHTML(c){
   if (!keys.length) return "";
   return keys.map(k => {
     const label = PROFILE_KEY_LABEL[k];
+    const dest = k === "puzzle" ? "困惑行" : "左栏画像";
     return `<button class="becuz-tag" type="button" data-target="${k}"
-        aria-label="因你 · ${esc(label)}：跳到左栏「${esc(label)}」字段并高亮">
-      <span class="stamp">因</span><span>因你 · ${esc(label)}</span><span class="to">↳ 画像</span>
+        aria-label="因你 · ${esc(label)}：跳到${esc(dest)}并高亮">
+      <span class="stamp">因</span><span>因你 · ${esc(label)}</span><span class="to">↳ ${k === "puzzle" ? "困惑" : "画像"}</span>
     </button>`;
   }).join(" ");
 }
@@ -1537,9 +1583,10 @@ async function startScan(){
   }
   setStatus("scanning");
   try {
+    await saveProfile();   // 画像先落机器级 researcher.md（扫描据其物化快照，源头恒为机器级）
     const r = await fetch("/scan", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({topic, profile: profileText()})
+      body: JSON.stringify({topic, puzzle: puzzleValue()})
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ("HTTP " + r.status));
     ingest([]); shownCount = 0; render(); setStatus("scanning");
@@ -1855,12 +1902,14 @@ wireRoundtable();
 wireDrawer();
 $(".scan-btn").addEventListener("click", startScan);
 $("#topic").addEventListener("keydown", e => { if (e.key === "Enter") startScan(); });
+$("#puzzle").addEventListener("keydown", e => { if (e.key === "Enter") startScan(); });
 
 if (DEMO) {
   $("#topic").value = DEMO_TOPIC;
-  // DEMO：画像预填 DEMO_PROFILE 四值，左栏与开笔卡都可预览
+  // DEMO：画像三要素预填左栏；困惑填进顶栏下「本次困惑」输入行
   PROFILE_DATA = { field: DEMO_PROFILE.field, stance: DEMO_PROFILE.stance,
-                   familiar: DEMO_PROFILE.familiar, puzzle: DEMO_PROFILE.puzzle };
+                   familiar: DEMO_PROFILE.familiar };
+  $("#puzzle").value = DEMO_PROFILE.puzzle || "";
   renderProfile();
   ingest(DEMO_CARDS);
   render();
@@ -1873,6 +1922,14 @@ if (DEMO) {
   renderProfile();   // live 起空画像；空态 render() 会在中栏出首次开笔卡
   render();
   setStatus("idle");
+  // 拉机器级画像预填（跨两篇论文复用免重填，ADR-0001）——有值则收进左栏、跳过开笔卡空态
+  fetch("/profile").then(r => r.json()).then(p => {
+    if (!p) return;
+    PROFILE_DATA = { field: p.field || "", stance: p.stance || "", familiar: p.familiar || "" };
+    PROFILE_LOADED = true;                  // 拿到机器级真态后，后续编辑才允许落盘（F1）
+    renderProfile();                       // 收进左栏
+    if (CARDS.length === 0) render();       // 仍空态 → 重画开笔卡，字段预填（免重填）
+  }).catch(() => {});
   // 接管可能已在进行/完成的扫描
   fetch("/scan/status").then(r => r.json()).then(s => {
     if (!s) return;
