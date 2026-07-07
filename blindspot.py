@@ -410,6 +410,19 @@ def real_providers():
     return out
 
 
+# 第一性拆解是全扫描根基，且是首批卡的串行前置——挑快而稳的家，避开 deepseek
+# （实测 2026-07-07：decompose 耗时 gemini 2.5s / openai 5.2s / deepseek 7.9s，
+#  且 deepseek 对中文 prompt 有坏 JSON 重试风险，会把首批推到 ~38s）。
+DECOMPOSE_PREFERENCE = ("gemini", "openai", "deepseek")
+
+
+def pick_decompose_llm(provs: dict):
+    for tag in DECOMPOSE_PREFERENCE:
+        if tag in provs:
+            return provs[tag]
+    return next(iter(provs.values()))  # 全是自定义 provider → 回退第一个
+
+
 def real_en_search(k: int = 5):
     from knowledge_storm.rm import PerplexitySearchRM
 
@@ -491,7 +504,7 @@ if __name__ == "__main__":
               f"｜own={c.get('own_hits')}")
 
     cards = run_scan(a.topic, a.profile, out, provs,
-                     decompose_llm=next(iter(provs.values())),
+                     decompose_llm=pick_decompose_llm(provs),
                      en_search=real_en_search(), zh_search=real_cnki_search(),
                      own_search=real_own_search(), on_card=show)
     print(f"共 {len(cards)} 张卡，产物在 {out}/docs/agents/muse/")

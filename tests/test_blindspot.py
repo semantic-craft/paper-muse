@@ -58,6 +58,20 @@ def test_extract_json_repairs_cjk_quote_and_missing_brace():
     assert got["fundamentals"][0] == "问题一？"
 
 
+def test_pick_decompose_llm_prefers_fast_stable():
+    from blindspot import pick_decompose_llm
+    ds, oa, gm = object(), object(), object()
+    # 三家全在 → gemini（最快最稳，避 deepseek）
+    assert pick_decompose_llm({"deepseek": ds, "openai": oa, "gemini": gm}) is gm
+    # gemini 缺 → 退 openai，而非 deepseek
+    assert pick_decompose_llm({"deepseek": ds, "openai": oa}) is oa
+    # 只剩 deepseek → 用它
+    assert pick_decompose_llm({"deepseek": ds}) is ds
+    # 全自定义 → 回退第一个
+    cx = object()
+    assert pick_decompose_llm({"custom": cx}) is cx
+
+
 def test_zh_name_core_shapes():
     from blindspot import _zh_name_core
     assert _zh_name_core("信息论与控制论（Cybernetics）视角") == "信息论与控制论"
