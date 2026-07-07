@@ -211,6 +211,7 @@ def _topic_zh_keyword(topic: str, llm_call):
               '不要对象描述词、不要照抄主题。只输出 JSON：{"keyword": "..."}')
     try:
         kw = re.sub(r"\s+", "", str(extract_json(llm_call(prompt)).get("keyword", "")))
+        logging.info(f"zh 检索词：{kw!r}")  # 全零命中时诊断靠它
         return kw or None
     except Exception as e:
         logging.warning(f"主题检索词提取失败（zh 查询退回整题）：{e}")
