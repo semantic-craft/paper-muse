@@ -324,7 +324,7 @@ def scan_bg(req: ScanReq):
 
         blindspot.run_scan(
             topic=req.topic, profile=req.profile, output_dir=SCAN["output_dir"],
-            providers=provs, decompose_llm=next(iter(provs.values())),
+            providers=provs, decompose_llm=blindspot.pick_decompose_llm(provs),
             en_search=blindspot.real_en_search(), zh_search=blindspot.real_cnki_search(),
             own_search=blindspot.real_own_search(), on_card=on_card)
         SCAN["phase"] = "done"
