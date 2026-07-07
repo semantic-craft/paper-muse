@@ -125,12 +125,13 @@ ENUM_SCHEMA_HINT = (
 REQUIRED_CARD_FIELDS = {"type", "name", "mechanism", "why_nonobvious", "steelman", "questions"}
 
 
-def decompose_topic(topic: str, profile: str, llm_call) -> list:
+def decompose_topic(topic: str, profile: str, llm_call, puzzle: str = "") -> list:
     prompt = (
         f"{FIRST_PRINCIPLES_PERSONA}\n\n"
         f"研究者画像（可能为空）：{profile}\n"
-        f"论文主题/困惑：{topic}\n\n"
-        "用第一性原理把它拆成 3-5 个根本问题（最小可验证、互相独立、直指本质）。"
+        f"论文主题：{topic}\n"
+        + (f"本次困惑（研究者这一篇想不通什么）：{puzzle}\n" if puzzle else "")
+        + "\n用第一性原理把它拆成 3-5 个根本问题（最小可验证、互相独立、直指本质）。"
         '只输出 JSON：{"fundamentals": ["...", "..."]}'
     )
     # 拆解是全扫描的单点：一次坏输出不该整扫崩死，重试一次再抛
@@ -140,11 +141,13 @@ def decompose_topic(topic: str, profile: str, llm_call) -> list:
         return extract_json(llm_call(prompt))["fundamentals"]
 
 
-def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str, llm_call) -> list:
+def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str, llm_call,
+                    puzzle: str = "") -> list:
     prompt = (
         "你要为一篇中文法学论文勘探非显而易见的切入点。跨学科越远越好，但必须论证适配性。\n"
         f"主题：{topic}\n根本问题：{json.dumps(fundamentals, ensure_ascii=False)}\n"
-        f"研究者画像（『非显而易见』以此为参照系）：{profile or '未提供'}\n\n"
+        + (f"本次困惑（扫描应朝此发力，切入点优先解此惑）：{puzzle}\n" if puzzle else "")
+        + f"研究者画像（『非显而易见』以此为参照系）：{profile or '未提供'}\n\n"
         "硬性配额：三类卡各至少 2 张——学科视角（其他学科怎么看这个问题）、"
         "理论框架（具体理论及其机制）、研究方法（实证/比较法/计算法学等，必附 feasibility 数据来源）。"
         "卡片之间必须彼此截然不同（学科、方法论、规范/实证、时间尺度错开），拒绝同一角度的变体。\n"
@@ -288,12 +291,14 @@ def _write_outputs(output_dir, topic, profile, cards):
 
 
 def run_scan(topic, profile, output_dir, providers, decompose_llm,
-             en_search, zh_search, on_card, own_search=None):
+             en_search, zh_search, on_card, own_search=None, puzzle=""):
     """providers: {model_tag: llm_call}。流式两段出卡（spec §4.1/§9，冒烟 #15）：
     单家枚举完成即合并上墙（on_card，无徽标），新颖性三面每卡起线程异步补挂——
     卡对象原地更新（只换预置键的值，不加键），/scan/status 轮询快照自然可见。
-    返回时全部补挂完成，产物落盘。"""
-    fundamentals = decompose_topic(topic, profile, decompose_llm)
+    返回时全部补挂完成，产物落盘。
+    profile=研究者画像（稳定，机器级源头物化的只读串）；puzzle=本次困惑（一次性输入，
+    喂扫描但不落 profile.md、不进画像，见 ADR-0001 / CONTEXT.md）。"""
+    fundamentals = decompose_topic(topic, profile, decompose_llm, puzzle)
     suppressed = load_suppressed(output_dir)
 
     wall, order = {}, []
@@ -343,7 +348,7 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
 
     def one_provider(tag, call):
         try:
-            cards = enumerate_cards(topic, fundamentals, profile, tag, call)
+            cards = enumerate_cards(topic, fundamentals, profile, tag, call, puzzle)
         except Exception as e:
             # 单家失败不拖垮扫描，但必须留痕——否则三方合议静默降为两方，离群徽标失真
             logging.error(f"provider[{tag}] 枚举失败：{e}")
@@ -374,6 +379,58 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
 
 
 # ---- 真实接线（引擎之外的薄层）----
+
+# 研究者画像 = 机器级配置，跨所有论文/扫描复用（ADR-0001）。三要素、不含困惑（CONTEXT.md）。
+# 存 `${XDG_CONFIG_HOME:-~/.config}/paper-muse/researcher.md`，扫描时物化只读快照为论文 profile.md。
+# 键值块格式与 profile.md 一致 → 下游（grill-with-docs 等）读法无感。
+PROFILE_ELEMENTS = [("field", "领域"), ("stance", "立场"), ("familiar", "熟悉")]
+_LABEL_TO_KEY = {label: key for key, label in PROFILE_ELEMENTS}
+
+
+def researcher_md_path() -> Path:
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return Path(base) / "paper-muse" / "researcher.md"
+
+
+def profile_text_from_dict(d: dict) -> str:
+    """三要素 dict → 键值块文本（喂扫描 = researcher.md 内容 = profile.md 快照，同一份）。
+    每要素严格单行：值内空白（含换行）归一为单空格，否则往返时续行会被丢弃、
+    甚至若续行以「立场：」等标签开头会串改别的字段（审核 F2/F3）。"""
+    def _oneline(v):
+        return re.sub(r"\s+", " ", (v or "")).strip()
+    lines = [f"{label}：{_oneline(d.get(key))}"
+             for key, label in PROFILE_ELEMENTS if _oneline(d.get(key))]
+    return "\n".join(lines)
+
+
+def profile_dict_from_text(text: str) -> dict:
+    """键值块文本 → 三要素 dict（容错手改：全/半角冒号、未知行忽略）。"""
+    d = {key: "" for key, _ in PROFILE_ELEMENTS}
+    for line in (text or "").splitlines():
+        for sep in ("：", ":"):
+            if sep in line:
+                label, val = line.split(sep, 1)
+                key = _LABEL_TO_KEY.get(label.strip())
+                if key:
+                    d[key] = val.strip()
+                break
+    return d
+
+
+def load_researcher_profile() -> dict:
+    """读机器级画像 → 三要素 dict（缺文件回全空，供首填/无画像「发现力打折」）。"""
+    p = researcher_md_path()
+    if not p.exists():
+        return {key: "" for key, _ in PROFILE_ELEMENTS}
+    return profile_dict_from_text(p.read_text(encoding="utf-8"))
+
+
+def save_researcher_profile(d: dict) -> None:
+    """写机器级画像（首版单向源头：机器级→论文快照）。不进 git、跨机由用户软链。"""
+    p = researcher_md_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(profile_text_from_dict(d) + "\n", encoding="utf-8")
+
 
 def _litellm_call(model, api_key=None, api_base=None):
     import litellm
@@ -491,6 +548,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("topic")
     ap.add_argument("--profile", default="")
+    ap.add_argument("--puzzle", default="")
     ap.add_argument("--output-dir", default=None)
     a = ap.parse_args()
     out = a.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or f"./results/muse/{a.topic[:20]}"
@@ -506,5 +564,5 @@ if __name__ == "__main__":
     cards = run_scan(a.topic, a.profile, out, provs,
                      decompose_llm=pick_decompose_llm(provs),
                      en_search=real_en_search(), zh_search=real_cnki_search(),
-                     own_search=real_own_search(), on_card=show)
+                     own_search=real_own_search(), on_card=show, puzzle=a.puzzle)
     print(f"共 {len(cards)} 张卡，产物在 {out}/docs/agents/muse/")

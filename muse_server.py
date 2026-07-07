@@ -12,7 +12,9 @@
     GET  /status   → {phase: idle|warming|ready|stepping|error, progress: [...], turns: [...], topic, output_dir, error?}
     POST /step     {utterance?: ""} 空=让圆桌自行推进一轮；非空=先插话再让圆桌回应。阻塞到本轮完成，返回新增 turns
     POST /report   生成报告并落盘 report.md / conversation.md / instance_dump.json / log.json
-    POST /scan          {topic, profile?, output_dir?} 起盲区扫描（后台），轮询 /scan/status
+    GET  /profile       → {field, stance, familiar} 机器级研究者画像（缺文件回全空）
+    POST /profile       {field?, stance?, familiar?} 写机器级 researcher.md（不含困惑）
+    POST /scan          {topic, puzzle?, output_dir?} 起盲区扫描（画像取自 researcher.md，困惑本次传），轮询 /scan/status
     GET  /scan/status   → {phase: idle|scanning|done|error, cards: [...], output_dir, error?}
     POST /scan/feedback {name, verdict: 已知|新但不适用|新且值得深挖} 三键反馈（喂抑制表）
 """
@@ -116,8 +118,15 @@ class StepReq(BaseModel):
 
 class ScanReq(BaseModel):
     topic: str
-    profile: str = ""
+    puzzle: str = ""                # 本次困惑：与主题并列的一次性输入，不进画像（ADR-0001/#3）
     output_dir: str | None = None
+
+
+class ProfileReq(BaseModel):
+    # 研究者画像三要素（机器级 researcher.md，不含困惑）
+    field: str = ""
+    stance: str = ""
+    familiar: str = ""
 
 
 class FeedbackReq(BaseModel):
@@ -354,8 +363,10 @@ def scan_bg(req: ScanReq):
             with SCAN_LOCK:
                 SCAN["cards"].append(card)
 
+        # 机器级 researcher.md 为画像源头；run_scan 物化只读快照为该论文 profile.md（ADR-0001）
+        profile = blindspot.profile_text_from_dict(blindspot.load_researcher_profile())
         blindspot.run_scan(
-            topic=req.topic, profile=req.profile, output_dir=SCAN["output_dir"],
+            topic=req.topic, profile=profile, puzzle=req.puzzle, output_dir=SCAN["output_dir"],
             providers=provs, decompose_llm=blindspot.pick_decompose_llm(provs),
             en_search=blindspot.real_en_search(), zh_search=blindspot.real_cnki_search(),
             own_search=blindspot.real_own_search(), on_card=on_card)
@@ -363,6 +374,19 @@ def scan_bg(req: ScanReq):
     except Exception:
         SCAN["error"] = traceback.format_exc()
         SCAN["phase"] = "error"
+
+
+@app.get("/profile")
+def get_profile():
+    """机器级研究者画像（三要素）。缺文件回全空 → webui 起空画像/首填。跨两篇论文复用免重填。"""
+    return blindspot.load_researcher_profile()
+
+
+@app.post("/profile")
+def put_profile(req: ProfileReq):
+    """写机器级 researcher.md（左栏就地编辑 / 开笔卡保存触发）。困惑不在此列。"""
+    blindspot.save_researcher_profile(req.model_dump())
+    return {"ok": True, "path": str(blindspot.researcher_md_path())}
 
 
 @app.post("/scan")
