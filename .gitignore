@@ -58,3 +58,6 @@ app/PaperMuse.xcodeproj/
 /.agents/skills/edit-article
 /.agents/skills/obsidian-vault
 # <<< dev-link <<<
+
+# Playwright MCP 浏览器验证的临时产物（设计 agent 自验时生成，勿提交）
+.playwright-mcp/
