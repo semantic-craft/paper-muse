@@ -61,3 +61,6 @@ app/PaperMuse.xcodeproj/
 
 # Playwright MCP 浏览器验证的临时产物（设计 agent 自验时生成，勿提交）
 .playwright-mcp/
+
+# gpt-researcher 隔离沙盒 venv（对抗幕证伪 sidecar，重依赖不进主 venv）
+.venv-gptr/
