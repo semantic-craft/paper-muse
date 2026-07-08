@@ -6,7 +6,7 @@ targets:
     type: application
     platform: macOS
     deploymentTarget: "14.0"
-    sources: [Sources]
+    sources: [Sources, Assets.xcassets]
     info:
       path: Info.plist
       properties:
@@ -19,3 +19,4 @@ targets:
         SWIFT_VERSION: "5.0"
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
