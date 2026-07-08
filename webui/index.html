@@ -855,6 +855,210 @@
   @media (prefers-reduced-motion: reduce) {
     .drawer, .scrim { transition: none; }
   }
+
+  /* ══════════════ 对抗幕 · 红笔审稿（#10，adv-02 接线；一律 scoped 于 #advView，避与构思幕同名类相撞） ══════════════ */
+  #advView { min-height: 100vh; }
+  #advView[hidden] { display: none; }   /* 显式 display 会盖过 [hidden] UA 规则，须补这条（同 #rtView） */
+
+  #advView .mode-seg { display: inline-flex; border: 1px solid var(--hair-strong); border-radius: 2px; overflow: hidden; align-self: center; }
+  #advView .seg-btn { font-family: var(--sans); font-size: 12px; color: var(--ink-2); background: none; border: none; padding: 4px 13px; cursor: pointer; line-height: 1.5; }
+  #advView .seg-btn + .seg-btn { border-left: 1px solid var(--hair-strong); }
+  #advView .seg-btn:hover { color: var(--ink); }
+  #advView .seg-btn.active { background: var(--ink); color: var(--paper); }
+  #advView .adv-run { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--paper); background: var(--vermilion); border: none; padding: 6px 14px; cursor: pointer; white-space: nowrap; }
+  #advView .adv-run:hover { background: var(--ink); }
+  #advView .adv-run[disabled] { opacity: .5; cursor: not-allowed; }
+
+  #advView .live-strip { min-height: 20px; padding: 4px 30px 0; font-family: var(--kai); font-size: 13px; letter-spacing: .04em; color: var(--vermilion); text-align: right; opacity: 0; transition: opacity .3s; }
+  #advView .live-strip.show { opacity: 1; }
+
+  #advView .desk-wrap { position: relative; }
+  #advView .desk { display: grid; grid-template-columns: 190px minmax(0, 600px) 350px; justify-content: center; gap: 0; max-width: 1340px; margin: 0 auto; align-items: start; }
+
+  #advView .leaders { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2; overflow: visible; }
+  #advView .leader { fill: none; stroke: var(--vermilion); stroke-width: 1.3; opacity: .40; stroke-linecap: round; }
+  #advView .leader.undec { stroke-dasharray: 2 4; opacity: .62; }
+  #advView .leader.hot { opacity: .95; stroke-width: 2.1; }
+
+  #advView .rail { position: sticky; top: 58px; align-self: start; padding: 30px 20px 40px 28px; border-right: 1px solid var(--hair); font-family: var(--sans); z-index: 3; }
+  #advView .rail h2 { font-family: var(--mono); font-size: 10px; font-weight: 400; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 10px; }
+  #advView .rail h2:not(:first-child) { margin-top: 24px; }
+  #advView .draft-item { display: block; width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: 7px 8px; margin: 0 -8px 2px; border-left: 2px solid transparent; }
+  #advView .draft-item:hover { background: var(--sel-wash); }
+  #advView .draft-item.on { border-left-color: var(--vermilion); background: var(--sel-wash); }
+  #advView .draft-item .dn { font-family: var(--serif-zh); font-size: 12.5px; color: var(--ink); line-height: 1.4; display: block; word-break: break-all; }
+  #advView .draft-item .dmeta { font-family: var(--mono); font-size: 9px; letter-spacing: .04em; color: var(--ink-2); margin-top: 3px; display: block; }
+  #advView .draft-empty { font-family: var(--kai); font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+
+  #advView .claim-nav { list-style: none; margin: 0; padding: 0; }
+  #advView .claim-nav button { display: block; width: 100%; text-align: left; background: none; cursor: pointer; border: none; border-top: 1px solid var(--hair); padding: 10px 8px 10px 10px; margin: 0 -8px; border-left: 2px solid transparent; }
+  #advView .claim-nav li:first-child button { border-top: none; }
+  #advView .claim-nav button:hover { background: var(--sel-wash); }
+  #advView .claim-nav button.on { border-left-color: var(--vermilion); background: var(--sel-wash); }
+  #advView .cn-row { display: flex; align-items: baseline; gap: 6px; }
+  #advView .cn-num { font-family: var(--serif-en); font-size: 15px; color: var(--vermilion); font-style: italic; flex: 0 0 auto; }
+  #advView .cn-txt { font-family: var(--serif-zh); font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+  #advView .cn-tags { display: flex; flex-wrap: wrap; gap: 4px 8px; margin: 5px 0 0 21px; font-family: var(--mono); font-size: 9px; letter-spacing: .03em; color: var(--ink-2); }
+  #advView .cn-tags .fatal { color: var(--vermilion); font-weight: 600; }
+  #advView .cn-tags .undec { color: var(--paper); background: var(--vermilion); padding: 0 4px; font-weight: 600; }
+
+  #advView .legend { font-family: var(--mono); font-size: 9.5px; line-height: 1.5; color: var(--ink-2); }
+  #advView .legend .lg-row { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+  #advView .legend .lg-k { color: var(--ink); flex: 0 0 auto; }
+  #advView .sev-bar { width: 16px; flex: 0 0 auto; height: 0; }
+  #advView .sev-bar.f { border-top: 4px solid var(--vermilion); }
+  #advView .sev-bar.m { border-top: 3px solid color-mix(in srgb, var(--vermilion) 55%, var(--hair-strong)); }
+  #advView .sev-bar.d { border-top: 2px solid var(--hair-strong); }
+  #advView .lg-seal { font-family: var(--serif-zh); font-size: 10px; padding: 1px 6px; border-radius: 1px; flex: 0 0 auto; letter-spacing: .04em; }
+  #advView .lg-seal.fal { color: var(--vermilion); border: 1px solid var(--vermilion); }
+  #advView .lg-seal.sup { color: var(--ink-2); background: var(--sel-wash); border: 1px solid transparent; }
+  #advView .lg-seal.und { color: var(--paper); background: var(--vermilion); border: 1px solid var(--vermilion); font-weight: 700; }
+  #advView .legend .note { margin-top: 8px; color: var(--ink-2); font-family: var(--kai); font-size: 11.5px; line-height: 1.6; letter-spacing: .03em; }
+
+  #advView .flow { padding: 30px 40px 60px; min-width: 0; position: relative; z-index: 3; }
+  #advView .flow-head .eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+  #advView .flow-head h1 { font-family: var(--serif-zh); font-weight: 600; font-size: 24px; line-height: 1.3; margin: 5px 0 6px; color: var(--ink); }
+  #advView .flow-head .sub { font-family: var(--kai); font-size: 14.5px; color: var(--vermilion); margin: 0; line-height: 1.65; letter-spacing: .03em; }
+  #advView .flow-head .sub b { font-family: var(--serif-zh); color: var(--vermilion); font-weight: 600; }
+  #advView .flow-rule { border: 0; border-top: 2px solid var(--ink); margin: 18px 0 22px; }
+
+  #advView .manuscript { min-width: 0; }
+  #advView .ms-h { font-family: var(--serif-zh); font-weight: 600; font-size: 15px; letter-spacing: .04em; color: var(--ink-2); margin: 22px 0 8px; }
+  #advView .ms-h:first-child { margin-top: 0; }
+  #advView .manuscript p { margin: 0 0 15px; font-size: 16.5px; line-height: 1.95; color: var(--ink); text-align: justify; overflow-wrap: anywhere; }
+  #advView .ms-empty { font-family: var(--kai); font-size: 15px; color: var(--ink-2); line-height: 1.8; letter-spacing: .03em; }
+
+  #advView .claim-sent { font: inherit; color: var(--ink); cursor: pointer; background: var(--sel-wash); border: none; padding: 1px 2px; border-bottom: 1px solid var(--hair-strong); -webkit-box-decoration-break: clone; box-decoration-break: clone; transition: background .2s, border-color .2s; position: relative; }
+  #advView .claim-sent:hover { border-bottom-color: var(--vermilion); }
+  #advView .claim-sent.is-active { background: color-mix(in srgb, var(--vermilion) 12%, transparent); border-bottom: 2px solid var(--vermilion); }
+  #advView .claim-flags { font-family: var(--mono); font-size: 9px; letter-spacing: .04em; white-space: nowrap; margin-left: 4px; vertical-align: 1px; }
+  #advView .claim-flags .flag { color: var(--ink-2); }
+  #advView .claim-flags .flag-fatal { color: var(--vermilion); font-weight: 600; }
+  #advView .claim-flags .flag-undec { color: var(--paper); background: var(--vermilion); padding: 0 4px; font-weight: 600; }
+  #advView .anchor-node { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--vermilion); vertical-align: middle; margin-left: 3px; box-shadow: 0 0 0 3px var(--sel-wash); opacity: 0; transition: opacity .2s; }
+  #advView .claim-sent.is-active .anchor-node { opacity: 1; }
+
+  #advView .colophon { margin-top: 30px; padding: 16px 0 0; border-top: 2px solid var(--ink); }
+  #advView .colo-line { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+  #advView .colo-meta { font-family: var(--serif-zh); font-size: 13px; line-height: 1.7; color: var(--ink-2); margin: 5px 0 12px; }
+  #advView .colo-meta b { color: var(--vermilion); font-weight: 600; }
+  #advView .colo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+  #advView .colo-primary { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--paper); background: var(--vermilion); border: none; padding: 8px 16px; cursor: pointer; }
+  #advView .colo-primary:hover { background: var(--ink); }
+  #advView .colo-primary[disabled] { opacity: .5; cursor: not-allowed; }
+  #advView .colo-warn { font-family: var(--kai); font-size: 13px; color: var(--vermilion); letter-spacing: .03em; }
+  #advView .colo-warn b { font-family: var(--serif-zh); }
+
+  #advView .margins { padding: 30px 26px 40px 0; min-width: 0; position: relative; z-index: 3; }
+  #advView .margin-head { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 4px; }
+  #advView .margin-sub { font-family: var(--kai); font-size: 12px; color: var(--ink-2); margin-bottom: 14px; letter-spacing: .03em; line-height: 1.5; }
+  #advView .fp-stack { display: flex; flex-direction: column; gap: 16px; }
+
+  #advView .fp-card { position: relative; min-width: 0; padding: 13px 15px 14px; background: var(--paper); border: 1px solid var(--hair); border-left: 3px solid var(--hair-strong); }
+  #advView .fp-card.sev-fatal { border-left: 4px solid var(--vermilion); }
+  #advView .fp-card.sev-major { border-left: 3px solid color-mix(in srgb, var(--vermilion) 55%, var(--hair-strong)); }
+  #advView .fp-card.sev-doubt { border-left: 2px solid var(--hair-strong); }
+  #advView .fp-card.is-undec { background: linear-gradient(0deg, var(--sel-wash), var(--sel-wash)), var(--paper); outline: 1px dashed var(--vermilion); outline-offset: -4px; }
+  #advView .fp-node { position: absolute; left: -4px; top: 18px; width: 8px; height: 8px; border-radius: 50%; background: var(--paper); border: 1.5px solid var(--vermilion); z-index: 2; }
+  #advView .solo .fp-node { display: none; }
+
+  #advView .fp-head { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 9px; }
+  #advView .fp-idx { font-family: var(--mono); font-size: 11px; color: var(--vermilion); font-weight: 600; letter-spacing: .04em; }
+  #advView .fp-type { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; color: var(--ink-2); border: 1px solid var(--hair-strong); padding: 1px 6px; border-radius: 1px; white-space: nowrap; }
+  #advView .fp-sev { font-family: var(--mono); font-size: 10px; letter-spacing: .05em; display: inline-flex; align-items: center; }
+  #advView .fp-sev.sev-fatal { color: var(--vermilion); font-weight: 600; }
+  #advView .fp-sev.sev-major { color: var(--ink); }
+  #advView .fp-sev.sev-doubt { color: var(--ink-2); }
+  #advView .sev-meter { display: inline-flex; gap: 2px; margin-right: 4px; }
+  #advView .sev-meter .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--hair-strong); }
+  #advView .sev-meter .dot.on { background: var(--vermilion); }
+  #advView .fp-verdict { margin-left: auto; font-family: var(--serif-zh); font-size: 12px; letter-spacing: .1em; padding: 2px 9px; border-radius: 1px; white-space: nowrap; line-height: 1.5; }
+  #advView .v-falsified { color: var(--vermilion); border: 1px solid var(--vermilion); background: transparent; }
+  #advView .v-supported { color: var(--ink-2); background: var(--sel-wash); border: 1px solid transparent; }
+  #advView .v-undecided { color: var(--paper); background: var(--vermilion); border: 1px solid var(--vermilion); font-weight: 700; box-shadow: 0 0 0 3px var(--sel-wash); }
+  #advView .v-pending { color: var(--ink-2); border: 1px dashed var(--hair-strong); background: transparent; letter-spacing: .04em; }
+
+  #advView .fp-statement { font-family: var(--serif-zh); font-size: 14.5px; line-height: 1.62; color: var(--ink); margin: 10px 0 8px; overflow-wrap: anywhere; }
+  #advView .fp-note { font-family: var(--kai); font-size: 13.5px; line-height: 1.62; color: var(--vermilion); letter-spacing: .03em; margin: 0 0 10px; padding-left: 2px; }
+  #advView .fp-note .byline::before { content: "按"; display: inline-block; border: 1px solid var(--vermilion); color: var(--vermilion); font-family: var(--serif-zh); font-size: 10px; width: 16px; height: 16px; line-height: 14px; text-align: center; margin-right: 6px; vertical-align: 1px; }
+
+  #advView .fp-foot { border-top: 1px dotted var(--hair-strong); padding-top: 9px; }
+  #advView .density { font-family: var(--mono); font-size: 11px; color: var(--ink); font-variant-numeric: tabular-nums; display: block; margin-bottom: 8px; }
+  #advView .density .lab { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); margin-right: 5px; }
+  #advView .density .arrow { color: var(--hair-strong); margin: 0 3px; }
+  #advView .density .null { color: var(--gold); font-family: var(--serif-zh); font-size: 12px; }
+  #advView .ev-pending { font-family: var(--kai); font-size: 12px; color: var(--ink-2); letter-spacing: .03em; }
+
+  #advView details.ev-fold summary { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; list-style: none; padding: 3px 0; display: inline-block; border-bottom: 1px solid var(--hair); }
+  #advView details.ev-fold summary::-webkit-details-marker { display: none; }
+  #advView details.ev-fold summary::before { content: "呈 "; color: var(--vermilion); }
+  #advView details.ev-fold[open] summary::before { content: "－ "; }
+  #advView .ev-list { list-style: none; margin: 9px 0 2px; padding: 0; }
+  #advView .ev-item { font-family: var(--sans); font-size: 12px; line-height: 1.5; margin-bottom: 8px; overflow-x: auto; }
+  #advView .ev-item a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--hair-strong); }
+  #advView .ev-item a:hover { color: var(--vermilion); border-bottom-color: var(--vermilion); }
+  #advView .ev-stance { font-family: var(--mono); font-size: 9px; letter-spacing: .04em; padding: 0 5px; margin-left: 7px; border-radius: 1px; white-space: nowrap; vertical-align: 1px; }
+  #advView .ev-stance.s-证伪 { color: var(--vermilion); border: 1px solid var(--vermilion); }
+  #advView .ev-stance.s-佐证 { color: var(--own); border: 1px solid var(--own); }
+  #advView .ev-host { font-family: var(--mono); font-size: 9px; color: var(--ink-2); margin-left: 7px; }
+
+  #advView .undec-block { border: 1px dashed var(--vermilion); padding: 9px 11px; margin-bottom: 2px; }
+  #advView .ub-title { font-family: var(--serif-zh); font-size: 13px; color: var(--vermilion); font-weight: 600; letter-spacing: .04em; display: flex; align-items: baseline; gap: 7px; }
+  #advView .ub-title .stamp { font-family: var(--serif-zh); font-size: 10px; color: var(--paper); background: var(--vermilion); padding: 1px 6px; letter-spacing: .1em; flex: 0 0 auto; }
+  #advView .ub-hint { font-family: var(--kai); font-size: 12.5px; color: var(--ink-2); margin-top: 6px; letter-spacing: .03em; line-height: 1.55; }
+  #advView .ub-hint b { color: var(--vermilion); font-family: var(--serif-zh); }
+
+  #advView .fp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
+  #advView .mini-btn { font-family: var(--serif-zh); font-size: 12px; color: var(--ink-2); background: none; border: 1px solid var(--hair-strong); padding: 3px 11px; cursor: pointer; line-height: 1.5; transition: color .18s, border-color .18s; }
+  #advView .mini-btn:hover { color: var(--ink); border-color: var(--ink-2); }
+  #advView .mini-btn.diag { border-color: var(--vermilion); color: var(--vermilion); }
+  #advView .mini-btn.diag:hover { background: var(--vermilion); color: var(--paper); }
+
+  /* 无稿模式：单句主张居中 + 其下逐条批注 */
+  #advView .solo { display: none; }
+  #advView[data-mode="nodraft"] .solo { display: block; }
+  #advView[data-mode="nodraft"] #advDeskWrap { display: none; }
+  #advView .solo-inner { max-width: 720px; margin: 0 auto; padding: 40px 28px 80px; }
+  #advView .solo-eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); text-align: center; }
+  #advView .solo-claimbar { display: flex; justify-content: center; flex-wrap: wrap; gap: 2px; margin: 12px 0 18px; }
+  #advView .solo-chip { font-family: var(--serif-en); font-size: 14px; font-style: italic; color: var(--ink-2); background: none; border: 1px solid var(--hair-strong); padding: 3px 12px; cursor: pointer; }
+  #advView .solo-chip.on { color: var(--paper); background: var(--vermilion); border-color: var(--vermilion); }
+  #advView .dock { border: 1px solid var(--hair-strong); border-top: 3px solid var(--vermilion); padding: 20px 24px 18px; background: var(--paper); }
+  #advView .dock label { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); display: block; margin-bottom: 8px; }
+  #advView .dock-input { width: 100%; font-family: var(--serif-zh); font-size: 20px; line-height: 1.5; color: var(--ink); background: transparent; border: none; border-bottom: 1px solid var(--hair-strong); padding: 2px 0 8px; }
+  #advView .dock-input:focus { border-bottom-color: var(--vermilion); outline: none; }
+  #advView .dock-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+  #advView .send-card { font-family: var(--serif-zh); font-size: 13px; color: var(--vermilion); background: none; border: 1px solid var(--vermilion); padding: 4px 13px; cursor: pointer; }
+  #advView .send-card:hover { background: var(--vermilion); color: var(--paper); }
+  #advView .dock-count { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; color: var(--ink-2); }
+  #advView .dock-count b { color: var(--vermilion); }
+  #advView .solo-stack { margin-top: 26px; }
+
+  @keyframes adv-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes adv-fadein { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes adv-drawin { from { stroke-dashoffset: var(--len); } to { stroke-dashoffset: 0; } }
+  #advView .stagger { opacity: 0; animation: adv-rise .5s cubic-bezier(.2,.7,.3,1) forwards; }
+  #advView .attach { opacity: 0; animation: adv-fadein .5s ease forwards; }
+  @media (prefers-reduced-motion: reduce) {
+    #advView .stagger, #advView .attach { animation: none !important; opacity: 1; transform: none; }
+    #advView .leaders * { animation: none !important; }
+    #advView .live-strip, #advView .claim-sent, #advView .anchor-node, #advView .mini-btn { transition: none !important; }
+  }
+  @media (max-width: 1040px) {
+    #advView .desk { grid-template-columns: minmax(0, 760px); justify-content: center; }
+    #advView .leaders { display: none; }
+    #advView .rail { position: static; border-right: none; border-bottom: 1px solid var(--hair); padding: 22px 30px; }
+    #advView .margins { padding: 0 30px 50px; }
+    #advView .margin-head::before { content: "▾ "; color: var(--vermilion); }
+    #advView .anchor-node { display: none; }
+    #advView .fp-node { display: none; }
+  }
+  @media (max-width: 560px) {
+    #advView .flow { padding: 24px 22px 40px; }
+    #advView .rail { padding: 20px 22px; }
+    #advView .margins { padding: 0 22px 40px; }
+    #advView .solo-inner { padding: 30px 22px 60px; }
+  }
 </style>
 </head>
 <body>
@@ -872,7 +1076,7 @@
   <nav class="acts" aria-label="幕次切换">
     <button class="act-tab active" type="button" aria-current="page">构思幕</button>
     <span class="act-sep">·</span>
-    <button class="act-tab" type="button" disabled aria-disabled="true">对抗幕<span class="soon">即将上线</span></button>
+    <button class="act-tab" id="toAdv" type="button">对抗幕</button>
   </nav>
   <button id="productsTab" class="products-tab" type="button"
           aria-haspopup="dialog" aria-controls="drawer" aria-expanded="false"
@@ -937,6 +1141,106 @@
 
 </main>
 </div><!-- /wallView -->
+
+<!-- 对抗幕 · 红笔审稿（#10，adv-02 接线）：有稿=稿面朱批锚回句子；无稿=单句主张受审 -->
+<section id="advView" data-mode="draft" hidden aria-label="对抗幕 · 红笔审稿">
+  <header class="topbar">
+    <span class="wordmark"><b>论文构思者</b> · 对抗幕</span>
+    <div class="mode-seg" role="tablist" aria-label="审阅模式">
+      <button class="seg-btn active" id="advSegDraft" data-mode="draft" role="tab" aria-selected="true" type="button">有稿</button>
+      <button class="seg-btn" id="advSegNodraft" data-mode="nodraft" role="tab" aria-selected="false" type="button">无稿</button>
+    </div>
+    <button class="adv-run" id="advRun" type="button" title="让红队逐条开火">审</button>
+    <nav class="acts" aria-label="幕次切换">
+      <button class="act-tab" id="toIdeate" type="button">构思幕</button>
+      <span class="act-sep">·</span>
+      <button class="act-tab active" type="button" aria-current="page">对抗幕</button>
+    </nav>
+    <button id="advTheme" class="theme-btn" type="button" aria-label="切换明暗主题" title="切换明暗主题">☾</button>
+  </header>
+
+  <p class="live-strip" id="advLive" role="status" aria-live="polite"></p>
+
+  <main>
+    <!-- ══ 有稿模式 ══ -->
+    <div class="desk-wrap" id="advDeskWrap">
+      <svg class="leaders" id="advLeaders" aria-hidden="true" focusable="false"></svg>
+      <div class="desk">
+
+        <aside class="rail" aria-label="草稿与被告席">
+          <h2>草稿</h2>
+          <div id="advDraftList"><p class="draft-empty">载入草稿…</p></div>
+
+          <h2>被告席 · 中心主张</h2>
+          <ul class="claim-nav" id="advClaimNav"></ul>
+
+          <h2>识读图例</h2>
+          <div class="legend">
+            <div class="lg-row"><span class="sev-bar f"></span><span class="lg-k">致命</span>成立即塌</div>
+            <div class="lg-row"><span class="sev-bar m"></span><span class="lg-k">重大</span>需正面回应</div>
+            <div class="lg-row"><span class="sev-bar d"></span><span class="lg-k">存疑</span>留痕待议</div>
+            <div class="lg-row" style="margin-top:10px"><span class="lg-seal fal">已证伪</span>指控成立</div>
+            <div class="lg-row"><span class="lg-seal sup">有佐证</span>部分坐实</div>
+            <div class="lg-row"><span class="lg-seal und">未决</span>无证据·不放行</div>
+            <p class="note">未决 = 双面检索一无所获。无证据的「看起来没问题」不予放行——这是本幕的规矩。</p>
+          </div>
+        </aside>
+
+        <div class="flow">
+          <div class="flow-head">
+            <div class="eyebrow" id="advEyebrow">红队审查 · 动笔前干预</div>
+            <h1 id="advFlowTitle">红笔审稿</h1>
+            <p class="sub">红笔已落。<b>动笔之前</b>，先让最苛刻的审稿人过一遍稿面——每一处朱批都锚回某个具体句子；未决者，不放行。</p>
+          </div>
+          <hr class="flow-rule">
+          <div class="manuscript" id="advManuscript"></div>
+
+          <footer class="colophon">
+            <div class="colo-line">版记 · 对抗幕产物</div>
+            <div class="colo-meta" id="advColoMeta"></div>
+            <div class="colo-actions">
+              <button class="colo-primary" id="advColoPrimary" type="button">落 failure-points.md</button>
+              <span class="colo-warn" id="advColoWarn"></span>
+            </div>
+          </footer>
+        </div>
+
+        <div class="margins" id="advMarginWrap">
+          <div class="margin-head" id="advMarginHead">朱批 · 失败点</div>
+          <div class="margin-sub" id="advMarginSub"></div>
+          <div class="fp-stack" id="advMarginStack"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══ 无稿模式 ══ -->
+    <div class="solo" id="advSoloWrap">
+      <div class="solo-inner">
+        <div class="solo-eyebrow">无稿模式 · 单句主张受审</div>
+        <div class="solo-claimbar" id="advSoloClaimbar" role="group" aria-label="切换受审主张"></div>
+        <div class="dock">
+          <label for="advSoloInput">受审主张 · 被告席</label>
+          <input class="dock-input" id="advSoloInput" type="text" placeholder="输入一句最想被击穿的主线主张…" aria-label="受审主张输入框">
+          <div class="dock-foot">
+            <button class="send-card" id="advSendCard" type="button">← 从构思幕卡片送入</button>
+            <span class="dock-count" id="advSoloCount"></span>
+          </div>
+        </div>
+        <div class="fp-stack solo-stack" id="advSoloStack"></div>
+
+        <footer class="colophon">
+          <div class="colo-line">版记 · 对抗幕产物</div>
+          <div class="colo-meta" id="advColoMeta2"></div>
+          <div class="colo-actions">
+            <button class="colo-primary" id="advColoPrimary2" type="button">落 failure-points.md</button>
+            <span class="colo-warn" id="advColoWarn2"></span>
+          </div>
+        </footer>
+      </div>
+    </div>
+  </main>
+</section>
 
 <!-- 圆桌 · 对谈手稿（深挖一张卡进来；与卡片墙同一画布切换） -->
 <section id="rtView" hidden aria-label="圆桌深挖">
@@ -1529,7 +1833,7 @@ function drill(c){ enterRoundtable(c); }
 /* ══ 明暗切换（卡片墙与圆桌两个按钮同步） ══ */
 function applyThemeIcon(){
   const dark = document.documentElement.getAttribute("data-theme") === "dark";
-  ["#themeBtn", "#rtTheme"].forEach(sel => { const b = $(sel); if (b) b.textContent = dark ? "☀" : "☾"; });
+  ["#themeBtn", "#rtTheme", "#advTheme"].forEach(sel => { const b = $(sel); if (b) b.textContent = dark ? "☀" : "☾"; });
 }
 function toggleTheme(){
   const dark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -1823,6 +2127,7 @@ function roleMeta(role){
 function showView(which){
   $("#wallView").hidden = which !== "wall";
   $("#rtView").hidden = which !== "rt";
+  const av = $("#advView"); if (av) av.hidden = which !== "adv";
 }
 function rtSetPhase(txt, live){
   const el = $("#rtPhase"); el.textContent = txt; el.classList.toggle("live", !!live);
@@ -1981,6 +2286,353 @@ if (DEMO) {
 
 window.addEventListener("resize", positionMargins);
 document.addEventListener("toggle", positionMargins, true);
+
+/* ══════════════ 对抗幕 · 红笔审稿（#10，adv-02 接线；复用外层 $/esc/toast/CARDS/showView/toggleTheme） ══════════════ */
+(function(){
+  const advView = $("#advView");
+  if (!advView) return;
+  const A = { mode: "draft", claims: [], drafts: [], source: "", picked: null,
+              activeClaim: null, phase: "idle", _loaded: false };
+  let advPoll = null, streamTimer = null;
+  const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const isNarrow = () => window.matchMedia("(max-width: 1040px)").matches;
+  const SEV_META = { "致命": {cls:"sev-fatal",n:3}, "重大": {cls:"sev-major",n:2}, "存疑": {cls:"sev-doubt",n:1} };
+  const VERDICT_META = { "已证伪": "v-falsified", "有佐证": "v-supported", "未决": "v-undecided" };
+  const cnum = (id) => "①②③④⑤⑥⑦⑧⑨⑩".charAt(id - 1) || ("(" + id + ")");
+
+  function claimById(id){ return A.claims.find(c => c.id === id); }
+  function activeClaimObj(){ return claimById(A.activeClaim) || A.claims[0]; }
+  function countUndec(c){ return (c.failures || []).filter(f => f.verdict === "未决").length; }
+  function countFatal(c){ return (c.failures || []).filter(f => f.severity === "致命").length; }
+  function shortHost(url){ try { const h = new URL(url).hostname.replace(/^www\./, "");
+    if (h.includes("cnki")) return "cnki"; if (h.includes("doi")) return "doi"; if (h.includes("ssrn")) return "ssrn"; return h; } catch(e){ return ""; } }
+  function flash(msg){ const el = $("#advLive"); if (!el) return; el.textContent = msg; el.classList.add("show");
+    clearTimeout(flash._t); flash._t = setTimeout(() => el.classList.remove("show"), 2600); }
+
+  /* ── 双面密度 / 证据链（补挂前 verdict=null → 检索中） ── */
+  function densityHTML(fp){
+    if (fp.verdict == null) return `<span class="density"><span class="lab">双面检索</span><span class="null">检索中…</span></span>`;
+    const zh = (fp.zh_hits === null) ? `<span class="null">中文面未检 · 需 CNKI 会话</span>` : `中 ${fp.zh_hits}`;
+    return `<span class="density"><span class="lab">双面检索</span>英 ${fp.en_hits}<span class="arrow">·</span>${zh}</span>`;
+  }
+  function evidenceHTML(fp){
+    if (fp.verdict == null) return `<span class="ev-pending">证据检索中…</span>`;
+    if (fp.verdict === "未决")
+      return `<div class="undec-block"><div class="ub-title"><span class="stamp">不放行</span>未检得任何证据</div><div class="ub-hint">解锁：<b>补检索</b> · 换检索词 · 需 CNKI 会话补中文面</div></div>`;
+    const ev = fp.evidence || [];
+    if (!ev.length) return `<span class="ev-pending">（无证据条目）</span>`;
+    const items = ev.map(e => `<li class="ev-item"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title || e.url)}</a><span class="ev-stance s-${esc(e.stance)}">${esc(e.stance)}</span><span class="ev-host">${esc(shortHost(e.url))}</span></li>`).join("");
+    return `<details class="ev-fold"><summary>证据链 ${ev.length} · 呈</summary><ul class="ev-list">${items}</ul></details>`;
+  }
+  function sevDots(sev){
+    const n = (SEV_META[sev] || SEV_META["存疑"]).n; let s = "";
+    for (let k = 0; k < 3; k++) s += `<span class="dot ${k < n ? "on" : ""}"></span>`;
+    return `<span class="sev-meter" aria-hidden="true">${s}</span>`;
+  }
+  function fpCardHTML(fp, i, prefix){
+    const sev = SEV_META[fp.severity] || SEV_META["存疑"];
+    const pending = fp.verdict == null;
+    const verCls = pending ? "v-pending" : (VERDICT_META[fp.verdict] || "v-pending");
+    const verLabel = pending ? "审理中" : fp.verdict;
+    const undec = fp.verdict === "未决";
+    const footDelay = prefersReduced ? 0 : (i * 90 + 240);
+    return `<article class="fp-card ${sev.cls} ${undec ? "is-undec" : ""} stagger" id="${prefix}fp-${esc(fp.id)}" data-fp="${esc(fp.id)}" tabindex="0"
+        style="animation-delay:${prefersReduced ? 0 : i * 90}ms"
+        aria-label="失败点 ${esc(fp.id)}，${esc(fp.type)}，严重度${esc(fp.severity)}，裁决${esc(verLabel)}">
+      <span class="fp-node" aria-hidden="true"></span>
+      <div class="fp-head">
+        <span class="fp-idx">${esc(fp.id)}</span>
+        <span class="fp-type">${esc(fp.type)}</span>
+        <span class="fp-sev ${sev.cls}">${sevDots(fp.severity)}${esc(fp.severity)}</span>
+        <span class="fp-verdict ${verCls}">${esc(verLabel)}</span>
+      </div>
+      <p class="fp-statement">${esc(fp.statement)}</p>
+      ${fp.note ? `<p class="fp-note"><span class="byline"></span>${esc(fp.note)}</p>` : ""}
+      <div class="fp-foot attach" style="animation-delay:${footDelay}ms">
+        ${densityHTML(fp)}
+        ${evidenceHTML(fp)}
+        <div class="fp-actions">
+          <button class="mini-btn" type="button" data-act="送 to-prove · ${esc(fp.id)}">送 to-prove</button>
+          <button class="mini-btn diag" type="button" data-act="送 diagnose · ${esc(fp.id)}">diagnose</button>
+        </div>
+      </div>
+    </article>`;
+  }
+  function cardsHTML(prefix){ const c = activeClaimObj(); return c ? (c.failures || []).map((fp, i) => fpCardHTML(fp, i, prefix)).join("") : ""; }
+
+  /* ── 稿面：草稿全文 + 主张句按引擎回传的字符跨度就地高亮（不做前端模糊匹配） ── */
+  function claimFlags(c){
+    const nf = countFatal(c), nu = countUndec(c), tot = (c.failures || []).length;
+    return `<span class="claim-flags" aria-hidden="true"><span class="flag">失败点 ${tot}</span>${nf ? ` <span class="flag-fatal">致命 ${nf}</span>` : ""}${nu ? ` <span class="flag-undec">未决 ${nu}</span>` : ""}</span>`;
+  }
+  function claimSentInline(c, rawText){
+    const active = c.id === A.activeClaim ? "is-active" : "";
+    return `<span class="claim-sent ${active}" role="button" tabindex="0" data-claim="${c.id}" aria-controls="advMarginStack" aria-expanded="${c.id === A.activeClaim}" aria-label="中心主张：${esc(c.text)}，点按查看失败点">${esc(rawText)}${claimFlags(c)}<span class="anchor-node" data-anchor="${c.id}" aria-hidden="true"></span></span>`;
+  }
+  function splitBlocks(src){
+    const blocks = []; let i = 0;
+    for (const part of src.split(/(\n{2,})/)){
+      if (part === "") continue;
+      if (/^\n{2,}$/.test(part)) { i += part.length; continue; }
+      blocks.push({ text: part, start: i }); i += part.length;
+    }
+    return blocks;
+  }
+  function renderBlock(block, claims){
+    const t = block.text;
+    const head = t.match(/^(\s*#{1,6}\s+)(.*)$/);
+    if (head && !t.includes("\n")) return `<h2 class="ms-h">${esc(head[2].trim())}</h2>`;
+    const locals = [];
+    for (const c of claims){
+      if (!c.span) continue;
+      const o = c.span.offset, len = c.span.length;
+      if (o >= block.start && o + len <= block.start + t.length) locals.push({ o: o - block.start, len, claim: c });
+    }
+    locals.sort((a, b) => a.o - b.o);
+    let out = "", pos = 0;
+    for (const s of locals){
+      if (s.o < pos) continue;   // 跨度重叠：保守跳过后者
+      out += esc(t.slice(pos, s.o)).replace(/\n/g, "<br>");
+      out += claimSentInline(s.claim, t.substr(s.o, s.len));
+      pos = s.o + s.len;
+    }
+    out += esc(t.slice(pos)).replace(/\n/g, "<br>");
+    return `<p>${out}</p>`;
+  }
+  function renderManuscript(){
+    const box = $("#advManuscript");
+    const src = A.source || "";
+    if (!src){
+      box.innerHTML = `<p class="ms-empty">${A.phase === "reviewing" ? "红队正在通读草稿、抽取中心主张…" : "从左栏选一篇草稿，点顶栏「审」开始红笔审稿。"}</p>`;
+      return;
+    }
+    const blocks = splitBlocks(src);
+    box.innerHTML = blocks.map(b => renderBlock(b, A.claims || [])).join("") || `<p class="ms-empty">（草稿为空）</p>`;
+  }
+
+  /* ── 左栏 / 版记 / 无稿 ── */
+  function renderDraftList(){
+    const box = $("#advDraftList");
+    if (!A.drafts.length){ box.innerHTML = `<p class="draft-empty">未发现草稿 .md（$PAPER_MUSE_OUTPUT_DIR 下，含 01_成品稿/）。可切「无稿」直接输入主张。</p>`; return; }
+    box.innerHTML = A.drafts.map((d, i) => {
+      const on = d.name === A.picked ? "on" : "";
+      const meta = (d.name === A.picked && A.claims.length)
+        ? `主张 ${A.claims.length} · 失败点 ${A.claims.reduce((n, c) => n + (c.failures || []).length, 0)}`
+        : "点选 → 审";
+      return `<button class="draft-item ${on}" type="button" data-draft="${i}"><span class="dn">${esc(d.name)}</span><span class="dmeta">${meta}</span></button>`;
+    }).join("");
+  }
+  function renderClaimNav(){
+    $("#advClaimNav").innerHTML = (A.claims || []).map(c => {
+      const nf = countFatal(c), nu = countUndec(c), tot = (c.failures || []).length;
+      return `<li><button type="button" data-claim-btn="${c.id}" class="${c.id === A.activeClaim ? "on" : ""}" aria-pressed="${c.id === A.activeClaim}">
+        <span class="cn-row"><span class="cn-num">${cnum(c.id)}</span><span class="cn-txt">${esc(c.text)}</span></span>
+        <span class="cn-tags"><span>失败点 ${tot}</span>${nf ? `<span class="fatal">致命 ${nf}</span>` : ""}${nu ? `<span class="undec">未决 ${nu}</span>` : ""}</span>
+      </button></li>`;
+    }).join("");
+  }
+  function renderSoloChips(){
+    $("#advSoloClaimbar").innerHTML = (A.claims || []).map(c =>
+      `<button class="solo-chip ${c.id === A.activeClaim ? "on" : ""}" type="button" data-chip="${c.id}" aria-pressed="${c.id === A.activeClaim}">主张 ${cnum(c.id)}</button>`).join("");
+  }
+  function updateSolo(){
+    renderSoloChips();
+    const c = activeClaimObj();
+    $("#advSoloCount").innerHTML = c ? `失败点 ${(c.failures || []).length} · <b>未决 ${countUndec(c)}</b>` : "";
+  }
+  function renderColophon(){
+    const claims = A.claims || [];
+    const totalF = claims.reduce((n, c) => n + (c.failures || []).length, 0);
+    const totalU = claims.reduce((n, c) => n + countUndec(c), 0);
+    const pending = claims.reduce((n, c) => n + (c.failures || []).filter(f => f.verdict == null).length, 0);
+    const meta = claims.length
+      ? `${claims.length} 主张 · ${totalF} 失败点 · <b>${totalU} 未决</b> · 双面检索（英文 web + 中文/自有语料）· 轻量红队引擎（不套 Co-STORM）${pending ? ` · 检索中 ${pending}` : ""}`
+      : "尚未审查";
+    const warn = totalU ? `<b>${totalU} 项未决</b>随附「不放行」标注 · 补检索后方可清场` : (claims.length && !pending ? "无未决项 · 可清场" : "");
+    ["advColoMeta", "advColoMeta2"].forEach(id => { const el = $("#" + id); if (el) el.innerHTML = meta; });
+    ["advColoWarn", "advColoWarn2"].forEach(id => { const el = $("#" + id); if (el) el.innerHTML = warn; });
+  }
+
+  /* ── 锚线（右栏朱批 ⇠ 稿面主张句） ── */
+  function alignStack(){
+    const stack = $("#advMarginStack"); if (!stack) return;
+    stack.style.marginTop = "0px";
+    if (A.mode !== "draft" || isNarrow()) return;
+    const wrap = $("#advDeskWrap"); if (!wrap) return;
+    const wrapTop = wrap.getBoundingClientRect().top;
+    const claimEl = document.querySelector(`#advView .claim-sent[data-claim="${A.activeClaim}"]`);
+    if (!claimEl) return;
+    const claimTop = claimEl.getBoundingClientRect().top - wrapTop;
+    const stackTop = stack.getBoundingClientRect().top - wrapTop;
+    stack.style.marginTop = Math.max(0, Math.round(claimTop - stackTop)) + "px";
+  }
+  function drawLeaders(){
+    const svg = $("#advLeaders"); if (!svg) return;
+    if (A.mode !== "draft" || isNarrow()){ svg.innerHTML = ""; return; }
+    const wrap = $("#advDeskWrap"); const wr = wrap.getBoundingClientRect();
+    const W = wrap.clientWidth, H = wrap.scrollHeight;
+    svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const anchor = document.querySelector(`#advView .anchor-node[data-anchor="${A.activeClaim}"]`);
+    if (!anchor){ svg.innerHTML = ""; return; }
+    const a = anchor.getBoundingClientRect();
+    const ax = a.left - wr.left + a.width / 2, ay = a.top - wr.top + a.height / 2;
+    let paths = "";
+    $("#advMarginStack").querySelectorAll(".fp-card").forEach(card => {
+      const node = card.querySelector(".fp-node"); if (!node) return;
+      const r = node.getBoundingClientRect();
+      const bx = r.left - wr.left + r.width / 2, by = r.top - wr.top + r.height / 2;
+      const undec = card.classList.contains("is-undec") ? "undec" : "";
+      const c1x = ax + (bx - ax) * 0.42, c2x = ax + (bx - ax) * 0.62;
+      paths += `<path class="leader ${undec}" data-fp="${card.dataset.fp}" d="M ${ax} ${ay} C ${c1x} ${ay} ${c2x} ${by} ${bx} ${by}"/>`;
+    });
+    svg.innerHTML = paths;
+    if (!prefersReduced){
+      svg.querySelectorAll(".leader").forEach((p, i) => {
+        const len = p.getTotalLength(); p.style.setProperty("--len", len);
+        p.style.strokeDasharray = p.classList.contains("undec") ? "2 4" : len;
+        if (!p.classList.contains("undec")){ p.style.strokeDashoffset = len; p.style.animation = `adv-drawin .5s ease ${i * 90 + 120}ms forwards`; }
+      });
+    }
+  }
+  function wireLeaderHover(){
+    $("#advMarginStack").querySelectorAll(".fp-card").forEach(card => {
+      const set = on => { const p = $("#advLeaders").querySelector(`.leader[data-fp="${card.dataset.fp}"]`); if (p) p.classList.toggle("hot", on); };
+      card.addEventListener("mouseenter", () => set(true));
+      card.addEventListener("mouseleave", () => set(false));
+      card.addEventListener("focus", () => set(true));
+      card.addEventListener("blur", () => set(false));
+    });
+  }
+  function scheduleStream(){
+    if (streamTimer) clearTimeout(streamTimer);
+    const c = activeClaimObj(); const n = c ? (c.failures || []).length : 0;
+    const wait = prefersReduced ? 0 : (n * 90 + 620);
+    streamTimer = setTimeout(() => { alignStack(); drawLeaders(); if (A.mode === "draft" && !isNarrow()) wireLeaderHover(); }, wait);
+  }
+  function renderFailures(){
+    const c = activeClaimObj();
+    if (A.mode === "draft"){
+      $("#advMarginStack").innerHTML = c ? cardsHTML("m") : "";
+      $("#advSoloStack").innerHTML = "";
+      $("#advMarginSub").textContent = c ? `主张 ${cnum(c.id)} · 红队逐条抛出 ${(c.failures || []).length} 条` : "选草稿并「审」";
+    } else {
+      $("#advSoloStack").innerHTML = c ? cardsHTML("s") : "";
+      $("#advMarginStack").innerHTML = "";
+    }
+    scheduleStream();
+  }
+  function renderAll(){ renderDraftList(); renderClaimNav(); renderManuscript(); renderColophon(); updateSolo(); renderFailures(); }
+
+  /* ── 交互 ── */
+  function setClaim(id){
+    A.activeClaim = id;
+    renderClaimNav(); renderSoloChips(); updateSolo();
+    document.querySelectorAll("#advView .claim-sent").forEach(el => { const on = +el.dataset.claim === id; el.classList.toggle("is-active", on); el.setAttribute("aria-expanded", on); });
+    renderFailures();
+    flash(`受审主张切至 ${cnum(id)}`);
+  }
+  function setMode(mode){
+    if (mode === A.mode) return;
+    A.mode = mode; advView.dataset.mode = mode;
+    $("#advSegDraft").classList.toggle("active", mode === "draft");
+    $("#advSegNodraft").classList.toggle("active", mode === "nodraft");
+    $("#advSegDraft").setAttribute("aria-selected", mode === "draft");
+    $("#advSegNodraft").setAttribute("aria-selected", mode === "nodraft");
+    renderFailures();
+    flash(mode === "draft" ? "有稿模式 · 稿面为主体，朱批锚回句子" : "无稿模式 · 单句主张受审，逐条批注");
+  }
+  function sendCard(){
+    if (!Array.isArray(window.CARDS) || !window.CARDS.length){ flash("构思幕暂无卡片 · 先在构思幕扫描出切入点"); return; }
+    $("#advSoloInput").value = window.CARDS[0].name || "";
+    $("#advSoloInput").focus();
+    flash("已从构思幕送入切入点 · 可改词后「审」");
+  }
+
+  /* ── 起审 + 轮询增量 ── */
+  async function loadDrafts(){
+    try { const d = await (await fetch("/adversary/drafts")).json(); A.drafts = d.drafts || []; }
+    catch(e){ A.drafts = []; }
+    renderDraftList();
+  }
+  async function startReview(){
+    let body;
+    if (A.mode === "draft"){
+      if (!A.picked){ flash("先在左栏选一篇草稿"); return; }
+      body = { mode: "draft", draft: A.picked };
+    } else {
+      const line = ($("#advSoloInput").value || "").trim();
+      if (!line){ $("#advSoloInput").focus(); flash("先输入一句受审主张"); return; }
+      body = { mode: "line", line };
+    }
+    try {
+      const r = await fetch("/adversary", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ("HTTP " + r.status));
+      A.claims = []; A.activeClaim = null; A.source = (A.mode === "draft" ? "" : body.line); A.phase = "reviewing";
+      renderAll(); flash("红队开火 · 逐条抛出失败点…");
+      startAdvPoll();
+    } catch(e){ flash("起审失败：" + (e.message || e)); }
+  }
+  function startAdvPoll(){ clearInterval(advPoll); advPoll = setInterval(pollAdv, 1500); pollAdv(); }
+  async function pollAdv(){
+    try {
+      const s = await (await fetch("/adversary/status")).json();
+      A.claims = s.claims || [];
+      if (typeof s.source === "string") A.source = s.source;
+      A.phase = s.phase;
+      if (A.activeClaim == null && A.claims.length) A.activeClaim = A.claims[0].id;
+      renderAll();
+      if (s.phase === "done" || s.phase === "error"){
+        clearInterval(advPoll); advPoll = null;
+        flash(s.phase === "done" ? "审毕 · failure-points.md 已落盘" : ("出错：" + String(s.error || "").trim().split("\n").pop()));
+      }
+    } catch(e){ /* 瞬时网络错误，下次轮询再试 */ }
+  }
+  async function advEnter(){
+    showView("adv");
+    if (!A._loaded){ A._loaded = true; await loadDrafts(); }
+    try {   // 接管可能在跑/已完成的审查
+      const s = await (await fetch("/adversary/status")).json();
+      if (s && (s.phase !== "idle" || (s.claims && s.claims.length))){
+        A.claims = s.claims || []; A.source = (typeof s.source === "string" ? s.source : ""); A.phase = s.phase;
+        A.mode = (s.mode === "line") ? "nodraft" : "draft"; advView.dataset.mode = A.mode;
+        $("#advSegDraft").classList.toggle("active", A.mode === "draft");
+        $("#advSegNodraft").classList.toggle("active", A.mode === "nodraft");
+        if (A.claims.length) A.activeClaim = A.claims[0].id;
+        renderAll();
+        if (s.phase === "reviewing") startAdvPoll();
+        return;
+      }
+    } catch(e){}
+    renderAll();
+  }
+
+  advView.addEventListener("click", (e) => {
+    const claim = e.target.closest(".claim-sent"); if (claim){ setClaim(+claim.dataset.claim); return; }
+    const rc = e.target.closest("[data-claim-btn]"); if (rc){ setClaim(+rc.dataset.claimBtn); return; }
+    const chip = e.target.closest("[data-chip]"); if (chip){ setClaim(+chip.dataset.chip); return; }
+    const seg = e.target.closest(".seg-btn"); if (seg){ setMode(seg.dataset.mode); return; }
+    const dr = e.target.closest("[data-draft]"); if (dr){ A.picked = A.drafts[+dr.dataset.draft].name; renderDraftList(); flash("已选 " + A.picked + " · 点「审」开始"); return; }
+    const mini = e.target.closest(".mini-btn"); if (mini){ toast(mini.dataset.act + " → 见 failure-points.md（to-prove/diagnose 消费）"); return; }
+    const send = e.target.closest("#advSendCard"); if (send){ sendCard(); return; }
+    const run = e.target.closest("#advRun"); if (run){ startReview(); return; }
+    const colo = e.target.closest(".colo-primary"); if (colo){ toast(A.phase === "done" ? "failure-points.md 已随审查落盘" : "审查完成后自动落 failure-points.md"); return; }
+    const idea = e.target.closest("#toIdeate"); if (idea){ showView("wall"); return; }
+  });
+  advView.addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.classList && e.target.classList.contains("claim-sent")){ e.preventDefault(); setClaim(+e.target.dataset.claim); }
+  });
+  const soloInput = $("#advSoloInput");
+  if (soloInput) soloInput.addEventListener("keydown", (e) => { if (e.key === "Enter") startReview(); });
+  document.addEventListener("toggle", (e) => {
+    if (e.target.classList && e.target.classList.contains("ev-fold") && !advView.hidden){ alignStack(); drawLeaders(); if (!isNarrow()) wireLeaderHover(); }
+  }, true);
+  const advThemeBtn = $("#advTheme");
+  if (advThemeBtn) advThemeBtn.addEventListener("click", () => { toggleTheme(); requestAnimationFrame(() => { alignStack(); drawLeaders(); }); });
+  const toAdvBtn = $("#toAdv");
+  if (toAdvBtn) toAdvBtn.addEventListener("click", advEnter);
+  let arz;
+  window.addEventListener("resize", () => { if (advView.hidden) return; clearTimeout(arz); arz = setTimeout(() => { alignStack(); drawLeaders(); if (A.mode === "draft" && !isNarrow()) wireLeaderHover(); }, 140); });
+})();
 </script>
 </body>
 </html>

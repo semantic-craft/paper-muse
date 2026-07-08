@@ -18,6 +18,10 @@
     GET  /scan/status   → {phase: idle|scanning|done|error, cards: [...], output_dir, error?, has_profile}
                           has_profile=false（无画像参照系）→ webui 明示「发现力打折」
     POST /scan/feedback {name, verdict: 已知|新但不适用|新且值得深挖} 三键反馈（喂抑制表）
+    GET  /adversary/drafts?output_dir= → {dir, drafts:[{name,path}]} 有稿模式草稿选择器（扫 *.md 含 01_成品稿/）
+    POST /adversary     {mode: draft|line, draft?, line?, from_card?, output_dir?} 起对抗审查，轮询 /adversary/status
+    GET  /adversary/status → {phase: idle|reviewing|done|error, mode, claims:[{text,span,failures:[...]}], output_dir, error?}
+                             失败点带 verdict(已证伪|有佐证|未决)＋evidence；未决=无据不放行。落 failure-points.md
 """
 
 import json
@@ -52,6 +56,7 @@ from knowledge_storm.rm import (
 from knowledge_storm.utils import load_api_key
 
 import blindspot
+import adversary
 
 
 def sanitize_topic(topic):
@@ -96,6 +101,12 @@ SCAN = {"phase": "idle", "topic": None, "cards": [], "output_dir": None, "error"
         "has_profile": False}  # 本次扫描是否有画像参照系；无 → webui 出「发现力打折」警示（#4）
 SCAN_LOCK = threading.Lock()
 
+# 对抗幕单会话（同 SCAN：个人工具一次一场审查，全局 dict + 一把锁）。mode = draft|line。
+# source = 受审文本（有稿=草稿全文，供②稿面渲染 + 主张跨度定位；无稿=主线句）。
+ADV = {"phase": "idle", "mode": None, "topic": None, "claims": [], "source": None,
+       "output_dir": None, "error": None}
+ADV_LOCK = threading.Lock()
+
 app = FastAPI()
 
 # web 画布：muse_server 同源静态托管 webui/（WKWebView 加载 /ui/，fetch /scan 无跨域）
@@ -134,6 +145,14 @@ class ProfileReq(BaseModel):
 class FeedbackReq(BaseModel):
     name: str
     verdict: str  # 已知 | 新但不适用 | 新且值得深挖
+
+
+class AdversaryReq(BaseModel):
+    mode: str = "line"              # draft=有稿（读 draft 草稿）| line=无稿（攻击 line 主线句）
+    draft: str | None = None        # 有稿：草稿 .md（相对 output_dir 或绝对路径）
+    line: str | None = None         # 无稿：主线句
+    from_card: bool = False         # 无稿来源=构思幕卡片一键送入（仅标注 from）
+    output_dir: str | None = None
 
 
 def turn_to_dict(turn):
@@ -454,6 +473,101 @@ def scan_feedback(req: FeedbackReq):
         raise HTTPException(400, "verdict 必须是 已知/新但不适用/新且值得深挖")
     blindspot.record_feedback(SCAN["output_dir"], req.name, req.verdict)
     return {"ok": True}
+
+
+# ---- 对抗幕（spec §6）：/scan 系的孪生——单会话一把锁，POST 起 + status 轮询增量 ----
+
+def _adv_base(output_dir=None):
+    return output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(ROOT / "results")
+
+
+def _list_drafts(base):
+    """扫 base 下 *.md 草稿（含 01_成品稿/ 子目录），跳过 docs/agents/muse 产物与 costorm_* 报告。"""
+    root = Path(base)
+    if not root.exists():
+        return []
+    drafts = []
+    for p in sorted(root.rglob("*.md")):
+        parts = p.relative_to(root).parts
+        if ("agents" in parts and "muse" in parts) or any(x.startswith("costorm_") for x in parts):
+            continue
+        drafts.append({"name": str(p.relative_to(root)), "path": str(p)})
+    return drafts
+
+
+def _resolve_draft(base, name):
+    p = Path(name)
+    if not p.is_absolute():
+        p = Path(base) / name
+    p = p.resolve()
+    if p.suffix != ".md" or not p.exists():
+        raise RuntimeError(f"草稿不存在或非 .md：{name}")
+    return p.read_text(encoding="utf-8")
+
+
+def adversary_bg(req: AdversaryReq):
+    try:
+        load_api_key(toml_file_path=str(ROOT / "secrets.toml"))
+        review_llm = adversary.real_review_llm()
+
+        def on_claim(claim):
+            with ADV_LOCK:
+                ADV["claims"].append(claim)
+
+        base = ADV["output_dir"]
+        if req.mode == "draft":
+            source, has_draft, from_ = _resolve_draft(base, req.draft), True, "draft"
+        else:
+            source, has_draft = (req.line or "").strip(), False
+            from_ = "card" if req.from_card else "input"
+        with ADV_LOCK:
+            ADV["source"] = source   # ② 稿面渲染 + 跨度定位靠它（轮询期即可读到）
+        adversary.run_review(
+            source_text=source, has_draft=has_draft, output_dir=base, review_llm=review_llm,
+            falsify_search=adversary.real_falsify_search(),   # #8 = gpt-researcher sidecar（隔离 venv）
+            on_claim=on_claim, from_=from_)
+        ADV["phase"] = "done"
+    except Exception:
+        ADV["error"] = traceback.format_exc()
+        ADV["phase"] = "error"
+
+
+@app.get("/adversary/drafts")
+def adversary_drafts(output_dir: str | None = None):
+    """有稿模式草稿选择器：扫 output_dir（缺省 PAPER_MUSE_OUTPUT_DIR）下的 .md 草稿。"""
+    base = _adv_base(output_dir)
+    return {"dir": base, "drafts": _list_drafts(base)}
+
+
+@app.post("/adversary")
+def start_adversary(req: AdversaryReq):
+    if req.mode not in ("draft", "line"):
+        raise HTTPException(400, "mode 必须是 draft（有稿）或 line（无稿）")
+    if req.mode == "draft" and not (req.draft or "").strip():
+        raise HTTPException(400, "有稿模式需指定 draft 草稿")
+    if req.mode == "line" and not (req.line or "").strip():
+        raise HTTPException(400, "无稿模式需输入主线句 line")
+    base = _adv_base(req.output_dir)
+    # 同 /scan：相位检查与置位原子，堵并发 /adversary 双双通过检查各起一场审查
+    with ADV_LOCK:
+        if ADV["phase"] == "reviewing":
+            raise HTTPException(409, "对抗审查进行中")
+        ADV.update(phase="reviewing", mode=req.mode, claims=[], source=None, error=None,
+                   output_dir=base, topic=(req.line or req.draft or "").strip())
+    threading.Thread(target=adversary_bg, args=(req,), daemon=True).start()
+    return {"ok": True, "output_dir": base, "mode": req.mode}
+
+
+@app.get("/adversary/status")
+def adversary_status():
+    # 流式快照：主张/失败点原地补挂（只换预置键的值），浅拷贝快照序列化安全（同 /scan/status）
+    with ADV_LOCK:
+        claims = list(ADV["claims"])
+        phase, mode, topic, source, output_dir, error = (
+            ADV["phase"], ADV["mode"], ADV["topic"], ADV["source"], ADV["output_dir"],
+            ADV["error"])
+    return {"phase": phase, "mode": mode, "topic": topic, "source": source,
+            "claims": claims, "output_dir": output_dir, "error": error}
 
 
 if __name__ == "__main__":
