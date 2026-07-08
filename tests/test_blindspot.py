@@ -244,6 +244,53 @@ def test_enumerate_cards_drops_malformed_entries():
     assert len(cards) == 1 and cards[0]["name"] == "X"
 
 
+from blindspot import normalize_vs_profile
+
+
+def test_normalize_vs_profile_coerces_labels_and_drops_junk():
+    raw = [
+        {"element": "立场", "note": "你默认\n权利本位"},   # 中文标签 → key，note 换行折叠
+        {"element": "field", "note": "跨到信息论"},          # 直接给键也接受
+        {"element": "血型", "note": "非画像要素"},           # 未知 element → 丢
+        {"element": "熟悉", "note": "   "},                  # note 空 → 丢
+        "not-a-dict",                                        # 非对象 → 丢
+    ]
+    out = normalize_vs_profile(raw)
+    assert out == [
+        {"element": "stance", "note": "你默认 权利本位"},
+        {"element": "field", "note": "跨到信息论"},
+    ]
+    # 单对象也收进列表；非列表/非对象回 []
+    assert normalize_vs_profile({"element": "领域", "note": "n"}) == [{"element": "field", "note": "n"}]
+    assert normalize_vs_profile(None) == [] and normalize_vs_profile("x") == []
+
+
+def _enum_reply(vs_profile):
+    card = {"type": "学科视角", "name": "熵与信息", "mechanism": "m",
+            "why_nonobvious": "w", "steelman": "s", "questions": ["q"]}
+    if vs_profile is not None:
+        card["vs_profile"] = vs_profile
+    return json.dumps({"cards": [card]})
+
+
+def test_enumerate_cards_emits_normalized_vs_profile_with_profile():
+    llm = FakeLLM([_enum_reply([{"element": "立场", "note": "你受法教义学训练"}])])
+    cards = enumerate_cards("平台责任", ["根1"], "立场：权利本位", "gemini", llm)
+    assert cards[0]["vs_profile"] == [{"element": "stance", "note": "你受法教义学训练"}]
+    # 有画像时提示词才要 vs_profile，schema 里带该字段
+    assert "vs_profile" in ENUM_SCHEMA_HINT
+    assert "相对画像哪一条" in llm.prompts[0]
+
+
+def test_enumerate_cards_strips_vs_profile_without_profile():
+    # 无画像：即便 LLM 硬塞 vs_profile，也剥掉（无参照系不许凭空绑），且提示词不索取
+    llm = FakeLLM([_enum_reply([{"element": "立场", "note": "凭空绑"}])])
+    cards = enumerate_cards("平台责任", ["根1"], "", "gemini", llm)
+    assert "vs_profile" not in cards[0]
+    assert "相对画像哪一条" not in llm.prompts[0]
+    assert "未提供" in llm.prompts[0]
+
+
 from blindspot import run_scan, load_suppressed, record_feedback
 
 

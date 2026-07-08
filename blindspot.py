@@ -24,6 +24,12 @@ FIRST_PRINCIPLES_PERSONA = (
 
 CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 
+# 研究者画像三要素：既是机器级 researcher.md 的键，也是卡片 vs_profile 绑定的目标（#4）。
+# key = 机器/UI 用的稳定标识；label = 中文面（喂 LLM、researcher.md 文本、UI 标签）。
+PROFILE_ELEMENTS = [("field", "领域"), ("stance", "立场"), ("familiar", "熟悉")]
+_LABEL_TO_KEY = {label: key for key, label in PROFILE_ELEMENTS}
+_PROFILE_KEYS = {key for key, _ in PROFILE_ELEMENTS}
+
 
 # ---- 纯函数层 ----
 
@@ -118,11 +124,33 @@ def classify_novelty(en_hits, zh_hits):
 ENUM_SCHEMA_HINT = (
     '只输出 JSON：{"cards": [{"type": "学科视角|理论框架|研究方法", "name": "...", '
     '"mechanism": "一句话机制", "why_nonobvious": "为什么对该研究者非显而易见", '
+    '"vs_profile": [{"element": "领域|立场|熟悉", "note": "相对画像这一条为何非显而易见（有画像才填）"}], '
     '"steelman": "最强反驳：哪类审稿人会怎么打", "feasibility": "方法卡必填：数据从哪来", '
     '"questions": ["1-2个拷问句"]}]}'
 )
 
 REQUIRED_CARD_FIELDS = {"type", "name", "mechanism", "why_nonobvious", "steelman", "questions"}
+
+
+def normalize_vs_profile(raw) -> list:
+    """卡片 vs_profile → 规整的 [{element, note}]（#4 结构化「因你」）。
+    element 归一为画像键（field/stance/familiar，容错 LLM 写中文标签或直接写键两种）；
+    note 空白折叠。element 不在三要素内或 note 空 → 丢弃该条（绝不编造绑定）。
+    单对象也收（LLM 常只绑一条），统一进列表；无有效绑定回 []。"""
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        el = str(item.get("element", "")).strip()
+        key = el if el in _PROFILE_KEYS else _LABEL_TO_KEY.get(el)
+        note = re.sub(r"\s+", " ", str(item.get("note", ""))).strip()
+        if key and note:
+            out.append({"element": key, "note": note})
+    return out
 
 
 def decompose_topic(topic: str, profile: str, llm_call, puzzle: str = "") -> list:
@@ -143,11 +171,20 @@ def decompose_topic(topic: str, profile: str, llm_call, puzzle: str = "") -> lis
 
 def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str, llm_call,
                     puzzle: str = "") -> list:
+    has_profile = bool((profile or "").strip())
+    profile_line = (
+        f"研究者画像（『非显而易见』以此为参照系）：{profile}\n" if has_profile
+        else "研究者画像：未提供（无参照系，vs_profile 留空）\n"
+    )
+    vs_line = (
+        "每张卡必须给出 vs_profile：指明它相对画像哪一条（领域/立场/熟悉）构成非显而易见，附一句为什么。\n"
+        if has_profile else ""
+    )
     prompt = (
         "你要为一篇中文法学论文勘探非显而易见的切入点。跨学科越远越好，但必须论证适配性。\n"
         f"主题：{topic}\n根本问题：{json.dumps(fundamentals, ensure_ascii=False)}\n"
         + (f"本次困惑（扫描应朝此发力，切入点优先解此惑）：{puzzle}\n" if puzzle else "")
-        + f"研究者画像（『非显而易见』以此为参照系）：{profile or '未提供'}\n\n"
+        + profile_line + vs_line + "\n"
         "硬性配额：三类卡各至少 2 张——学科视角（其他学科怎么看这个问题）、"
         "理论框架（具体理论及其机制）、研究方法（实证/比较法/计算法学等，必附 feasibility 数据来源）。"
         "卡片之间必须彼此截然不同（学科、方法论、规范/实证、时间尺度错开），拒绝同一角度的变体。\n"
@@ -161,6 +198,12 @@ def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str
             dropped += 1
             continue
         c["source_models"] = [model_tag]
+        # vs_profile 只在有画像时有意义（无画像＝无参照系，不让 LLM 凭空绑），归一后按有无回填
+        vp = normalize_vs_profile(c.get("vs_profile")) if has_profile else []
+        if vp:
+            c["vs_profile"] = vp
+        else:
+            c.pop("vs_profile", None)
         cards.append(c)
     if dropped:
         logging.info(f"enumerate_cards[{model_tag}]: 丢弃缺字段卡 {dropped}/{len(raw)}")
@@ -380,11 +423,9 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
 
 # ---- 真实接线（引擎之外的薄层）----
 
-# 研究者画像 = 机器级配置，跨所有论文/扫描复用（ADR-0001）。三要素、不含困惑（CONTEXT.md）。
-# 存 `${XDG_CONFIG_HOME:-~/.config}/paper-muse/researcher.md`，扫描时物化只读快照为论文 profile.md。
-# 键值块格式与 profile.md 一致 → 下游（grill-with-docs 等）读法无感。
-PROFILE_ELEMENTS = [("field", "领域"), ("stance", "立场"), ("familiar", "熟悉")]
-_LABEL_TO_KEY = {label: key for key, label in PROFILE_ELEMENTS}
+# 研究者画像 = 机器级配置，跨所有论文/扫描复用（ADR-0001）。三要素（PROFILE_ELEMENTS，见顶部）、
+# 不含困惑（CONTEXT.md）。存 `${XDG_CONFIG_HOME:-~/.config}/paper-muse/researcher.md`，
+# 扫描时物化只读快照为论文 profile.md。键值块格式与 profile.md 一致 → 下游（grill-with-docs 等）读法无感。
 
 
 def researcher_md_path() -> Path:
