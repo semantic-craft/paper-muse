@@ -22,6 +22,7 @@
     POST /adversary     {mode: draft|line, draft?, line?, from_card?, output_dir?} 起对抗审查，轮询 /adversary/status
     GET  /adversary/status → {phase: idle|reviewing|done|error, mode, claims:[{text,span,failures:[...]}], output_dir, error?}
                              失败点带 verdict(已证伪|有佐证|未决)＋evidence；未决=无据不放行。落 failure-points.md
+    GET  /perf/status   → 本进程检索缓存、sidecar 调用等性能计数（供 tools/perf_smoke.py 读数）
 """
 
 import json
@@ -98,13 +99,14 @@ SESSION = {
 RUNNER_LOCK = threading.Lock()
 
 SCAN = {"phase": "idle", "topic": None, "cards": [], "output_dir": None, "error": None,
+        "version": 0,
         "has_profile": False}  # 本次扫描是否有画像参照系；无 → webui 出「发现力打折」警示（#4）
 SCAN_LOCK = threading.Lock()
 
 # 对抗幕单会话（同 SCAN：个人工具一次一场审查，全局 dict + 一把锁）。mode = draft|line。
 # source = 受审文本（有稿=草稿全文，供②稿面渲染 + 主张跨度定位；无稿=主线句）。
 ADV = {"phase": "idle", "mode": None, "topic": None, "claims": [], "source": None,
-       "output_dir": None, "error": None}
+       "source_version": 0, "version": 0, "output_dir": None, "error": None}
 ADV_LOCK = threading.Lock()
 
 app = FastAPI()
@@ -153,6 +155,48 @@ class AdversaryReq(BaseModel):
     line: str | None = None         # 无稿：主线句
     from_card: bool = False         # 无稿来源=构思幕卡片一键送入（仅标注 from）
     output_dir: str | None = None
+
+
+def _scan_bump_locked():
+    SCAN["version"] += 1
+
+
+def _scan_update(**fields):
+    with SCAN_LOCK:
+        SCAN.update(fields)
+        _scan_bump_locked()
+
+
+def _scan_append_card(card):
+    with SCAN_LOCK:
+        SCAN["cards"].append(card)
+        _scan_bump_locked()
+
+
+def _scan_touch(_card=None):
+    with SCAN_LOCK:
+        _scan_bump_locked()
+
+
+def _adv_bump_locked():
+    ADV["version"] += 1
+
+
+def _adv_update(**fields):
+    with ADV_LOCK:
+        ADV.update(fields)
+        _adv_bump_locked()
+
+
+def _adv_append_claim(claim):
+    with ADV_LOCK:
+        ADV["claims"].append(claim)
+        _adv_bump_locked()
+
+
+def _adv_touch(_claim=None):
+    with ADV_LOCK:
+        _adv_bump_locked()
 
 
 def turn_to_dict(turn):
@@ -381,22 +425,20 @@ def scan_bg(req: ScanReq):
             raise RuntimeError("没有任何可用的 LLM key（DEEPSEEK/OPENAI/GOOGLE）")
 
         def on_card(card):
-            with SCAN_LOCK:
-                SCAN["cards"].append(card)
+            _scan_append_card(card)
 
         # 机器级 researcher.md 为画像源头；run_scan 物化只读快照为该论文 profile.md（ADR-0001）
         profile = blindspot.profile_text_from_dict(blindspot.load_researcher_profile())
         # 记本次是否有画像参照系——供 /scan/status 透出、webui 无画像时明示「发现力打折」（#4）
-        SCAN["has_profile"] = bool(profile.strip())
+        _scan_update(has_profile=bool(profile.strip()))
         blindspot.run_scan(
             topic=req.topic, profile=profile, puzzle=req.puzzle, output_dir=SCAN["output_dir"],
             providers=provs, decompose_llm=blindspot.pick_decompose_llm(provs),
             en_search=blindspot.real_en_search(), zh_search=blindspot.real_cnki_search(),
-            own_search=blindspot.real_own_search(), on_card=on_card)
-        SCAN["phase"] = "done"
+            own_search=blindspot.real_own_search(), on_card=on_card, on_update=_scan_touch)
+        _scan_update(phase="done")
     except Exception:
-        SCAN["error"] = traceback.format_exc()
-        SCAN["phase"] = "error"
+        _scan_update(error=traceback.format_exc(), phase="error")
 
 
 @app.get("/profile")
@@ -424,18 +466,25 @@ def start_scan(req: ScanReq):
             raise HTTPException(409, "扫描进行中")
         SCAN.update(phase="scanning", topic=topic, cards=[], error=None, output_dir=base,
                     has_profile=False)  # scan_bg 载入画像后据实置位
+        _scan_bump_locked()
     threading.Thread(target=scan_bg, args=(req,), daemon=True).start()
     return {"ok": True, "output_dir": base}
 
 
 @app.get("/scan/status")
-def scan_status():
+def scan_status(since: int | None = None):
     with SCAN_LOCK:
+        version = SCAN["version"]
+        phase, topic, output_dir, error = (
+            SCAN["phase"], SCAN["topic"], SCAN["output_dir"], SCAN["error"])
+        if since is not None and since == version:
+            return {"version": version, "unchanged": True, "phase": phase,
+                    "topic": topic, "output_dir": output_dir, "error": error}
         cards = list(SCAN["cards"])
         has_profile = SCAN["has_profile"]
-    return {"phase": SCAN["phase"], "topic": SCAN["topic"], "cards": cards,
-            "output_dir": SCAN["output_dir"], "error": SCAN["error"],
-            "has_profile": has_profile}
+    return {"phase": phase, "topic": topic, "cards": cards,
+            "output_dir": output_dir, "error": error,
+            "has_profile": has_profile, "version": version, "unchanged": False}
 
 
 # 产物抽屉：docs/agents/muse/ 下 7 件的存在状态 + 绝对路径（打开/在访达用）。
@@ -511,8 +560,7 @@ def adversary_bg(req: AdversaryReq):
         review_llm = adversary.real_review_llm()
 
         def on_claim(claim):
-            with ADV_LOCK:
-                ADV["claims"].append(claim)
+            _adv_append_claim(claim)
 
         base = ADV["output_dir"]
         if req.mode == "draft":
@@ -522,14 +570,15 @@ def adversary_bg(req: AdversaryReq):
             from_ = "card" if req.from_card else "input"
         with ADV_LOCK:
             ADV["source"] = source   # ② 稿面渲染 + 跨度定位靠它（轮询期即可读到）
+            ADV["source_version"] = ADV["version"] + 1
+            _adv_bump_locked()
         adversary.run_review(
             source_text=source, has_draft=has_draft, output_dir=base, review_llm=review_llm,
             falsify_search=adversary.real_falsify_search(),   # #8 = gpt-researcher sidecar（隔离 venv）
-            on_claim=on_claim, from_=from_)
-        ADV["phase"] = "done"
+            on_claim=on_claim, from_=from_, on_update=_adv_touch)
+        _adv_update(phase="done")
     except Exception:
-        ADV["error"] = traceback.format_exc()
-        ADV["phase"] = "error"
+        _adv_update(error=traceback.format_exc(), phase="error")
 
 
 @app.get("/adversary/drafts")
@@ -553,21 +602,38 @@ def start_adversary(req: AdversaryReq):
         if ADV["phase"] == "reviewing":
             raise HTTPException(409, "对抗审查进行中")
         ADV.update(phase="reviewing", mode=req.mode, claims=[], source=None, error=None,
-                   output_dir=base, topic=(req.line or req.draft or "").strip())
+                   source_version=ADV["version"] + 1, output_dir=base,
+                   topic=(req.line or req.draft or "").strip())
+        _adv_bump_locked()
     threading.Thread(target=adversary_bg, args=(req,), daemon=True).start()
     return {"ok": True, "output_dir": base, "mode": req.mode}
 
 
 @app.get("/adversary/status")
-def adversary_status():
+def adversary_status(since: int | None = None):
     # 流式快照：主张/失败点原地补挂（只换预置键的值），浅拷贝快照序列化安全（同 /scan/status）
     with ADV_LOCK:
+        version = ADV["version"]
+        phase, mode, topic, output_dir, error = (
+            ADV["phase"], ADV["mode"], ADV["topic"], ADV["output_dir"], ADV["error"])
+        if since is not None and since == version:
+            return {"version": version, "unchanged": True, "phase": phase, "mode": mode,
+                    "topic": topic, "output_dir": output_dir, "error": error}
         claims = list(ADV["claims"])
-        phase, mode, topic, source, output_dir, error = (
-            ADV["phase"], ADV["mode"], ADV["topic"], ADV["source"], ADV["output_dir"],
-            ADV["error"])
+        source = None if since is not None and since >= ADV["source_version"] else ADV["source"]
+        source_version = ADV["source_version"]
     return {"phase": phase, "mode": mode, "topic": topic, "source": source,
-            "claims": claims, "output_dir": output_dir, "error": error}
+            "source_version": source_version, "claims": claims, "output_dir": output_dir,
+            "error": error, "version": version, "unchanged": False}
+
+
+@app.get("/perf/status")
+def perf_status():
+    return {
+        "retrieval_cache": blindspot.retrieval_cache_stats(),
+        "sidecar": adversary.sidecar_stats(),
+        "llm_cache": {"available": False, "note": "LiteLLM cache hits are not exposed here"},
+    }
 
 
 if __name__ == "__main__":

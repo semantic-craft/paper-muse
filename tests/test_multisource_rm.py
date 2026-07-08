@@ -1,12 +1,40 @@
 import os
+import sys
+import types
 
 import pytest
 
-from knowledge_storm.rm import JinaFullTextRM, MixedRM, PerplexitySearchRM
+from knowledge_storm.rm import JinaFullTextRM, MixedRM, PerplexitySearchRM, TavilySearchRM
 
 needs_pplx = pytest.mark.skipif(
     not os.environ.get("PERPLEXITY_API_KEY"), reason="需要 PERPLEXITY_API_KEY"
 )
+
+
+def test_tavily_rm_passes_budget_parameters(monkeypatch):
+    calls = []
+
+    class FakeTavilyClient:
+        def __init__(self, api_key):
+            self.api_key = api_key
+
+        def search(self, **kwargs):
+            calls.append(kwargs)
+            return {"results": [{"url": "https://example.com", "title": "T", "content": "C"}]}
+
+    monkeypatch.setitem(
+        sys.modules, "tavily", types.SimpleNamespace(TavilyClient=FakeTavilyClient)
+    )
+    rm = TavilySearchRM(tavily_search_api_key="tvly-test", k=7, include_raw_content=True)
+
+    results = rm.forward("平台责任")
+
+    assert results and calls == [{
+        "query": "平台责任",
+        "max_results": 7,
+        "include_raw_content": True,
+        "search_depth": "basic",
+    }]
 
 
 @needs_pplx

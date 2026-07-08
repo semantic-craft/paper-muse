@@ -299,6 +299,38 @@ def test_run_review_no_draft_line_mode(tmp_path):
     assert claims[0]["failures"][0]["id"] == "1a" and claims[0]["failures"][0]["verdict"] == "未决"
 
 
+def test_run_review_uses_batch_falsify_when_available(tmp_path):
+    draft = "A 主张句。B 主张句。"
+    extract = json.dumps({"claims": [
+        {"text": "A 主张", "quote": "A 主张句"},
+        {"text": "B 主张", "quote": "B 主张句"},
+    ]})
+    redteam_a = json.dumps({"failures": [{"statement": "A 失败点", "severity": "重大"}]})
+    redteam_b = json.dumps({"failures": [{"statement": "B 失败点", "severity": "重大"}]})
+    calls = {"single": 0, "batch": 0}
+
+    def single(claim_text, failures):
+        calls["single"] += 1
+        return {}
+
+    def batch(claims):
+        calls["batch"] += 1
+        return {c["id"]: {"sources": [], "en_hits": 0, "zh_hits": 0} for c in claims}
+
+    single.search_many = batch
+
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam_a, redteam_b]),
+        classify_llm=lambda p: json.dumps({"evidence": []}),
+        falsify_search=single, on_claim=lambda c: None,
+    )
+
+    assert [c["id"] for c in claims] == [1, 2]
+    assert calls == {"single": 0, "batch": 1}
+    assert all(f["verdict"] == "未决" for c in claims for f in c["failures"])
+
+
 def test_run_review_empty_source_raises(tmp_path):
     with pytest.raises(RuntimeError, match="未能"):
         run_review("   ", has_draft=False, output_dir=str(tmp_path),
@@ -341,6 +373,35 @@ def test_real_falsify_search_degrades_on_subprocess_error(monkeypatch):
 
     monkeypatch.setattr(A.subprocess, "run", boom)
     assert real_falsify_search()("主张", []) == {}   # 空池 → 上层判未决
+
+
+def test_real_falsify_search_batch_parses_subprocess_once(monkeypatch):
+    import adversary as A
+    A.reset_sidecar_stats()
+    calls = []
+
+    class R:
+        stdout = ('__GPTR_RESULT__{"ok": true, "claims": ['
+                  '{"id": 1, "ok": true, "sources": [{"title": "T1", "url": "https://x1"}], "en_hits": 2, "zh_hits": 1, "memo": "m1"},'
+                  '{"id": 2, "ok": true, "sources": [{"title": "T2", "url": "https://x2"}], "en_hits": 3, "zh_hits": 0, "memo": "m2"}'
+                  ']}')
+        stderr = ""
+
+    def fake_run(*args, **kwargs):
+        calls.append(json.loads(kwargs["input"]))
+        return R
+
+    monkeypatch.setattr(A.subprocess, "run", fake_run)
+    search = real_falsify_search()
+    pools = search.search_many([
+        {"id": 1, "text": "主张一", "failures": [{"id": "1a", "statement": "s1"}]},
+        {"id": 2, "text": "主张二", "failures": [{"id": "2a", "statement": "s2"}]},
+    ])
+
+    assert len(calls) == 1 and len(calls[0]["claims"]) == 2
+    assert pools[1]["sources"][0]["url"] == "https://x1"
+    assert pools[2]["zh_hits"] == 0
+    assert A.sidecar_stats() == {"single_invocations": 0, "batch_invocations": 1, "claims_requested": 2}
 
 
 def test_pick_review_llm_prefers_strong():
