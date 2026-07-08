@@ -15,7 +15,8 @@
     GET  /profile       → {field, stance, familiar} 机器级研究者画像（缺文件回全空）
     POST /profile       {field?, stance?, familiar?} 写机器级 researcher.md（不含困惑）
     POST /scan          {topic, puzzle?, output_dir?} 起盲区扫描（画像取自 researcher.md，困惑本次传），轮询 /scan/status
-    GET  /scan/status   → {phase: idle|scanning|done|error, cards: [...], output_dir, error?}
+    GET  /scan/status   → {phase: idle|scanning|done|error, cards: [...], output_dir, error?, has_profile}
+                          has_profile=false（无画像参照系）→ webui 明示「发现力打折」
     POST /scan/feedback {name, verdict: 已知|新但不适用|新且值得深挖} 三键反馈（喂抑制表）
 """
 
@@ -91,7 +92,8 @@ SESSION = {
 }
 RUNNER_LOCK = threading.Lock()
 
-SCAN = {"phase": "idle", "topic": None, "cards": [], "output_dir": None, "error": None}
+SCAN = {"phase": "idle", "topic": None, "cards": [], "output_dir": None, "error": None,
+        "has_profile": False}  # 本次扫描是否有画像参照系；无 → webui 出「发现力打折」警示（#4）
 SCAN_LOCK = threading.Lock()
 
 app = FastAPI()
@@ -365,6 +367,8 @@ def scan_bg(req: ScanReq):
 
         # 机器级 researcher.md 为画像源头；run_scan 物化只读快照为该论文 profile.md（ADR-0001）
         profile = blindspot.profile_text_from_dict(blindspot.load_researcher_profile())
+        # 记本次是否有画像参照系——供 /scan/status 透出、webui 无画像时明示「发现力打折」（#4）
+        SCAN["has_profile"] = bool(profile.strip())
         blindspot.run_scan(
             topic=req.topic, profile=profile, puzzle=req.puzzle, output_dir=SCAN["output_dir"],
             providers=provs, decompose_llm=blindspot.pick_decompose_llm(provs),
@@ -399,7 +403,8 @@ def start_scan(req: ScanReq):
     with SCAN_LOCK:
         if SCAN["phase"] == "scanning":
             raise HTTPException(409, "扫描进行中")
-        SCAN.update(phase="scanning", topic=topic, cards=[], error=None, output_dir=base)
+        SCAN.update(phase="scanning", topic=topic, cards=[], error=None, output_dir=base,
+                    has_profile=False)  # scan_bg 载入画像后据实置位
     threading.Thread(target=scan_bg, args=(req,), daemon=True).start()
     return {"ok": True, "output_dir": base}
 
@@ -408,8 +413,10 @@ def start_scan(req: ScanReq):
 def scan_status():
     with SCAN_LOCK:
         cards = list(SCAN["cards"])
+        has_profile = SCAN["has_profile"]
     return {"phase": SCAN["phase"], "topic": SCAN["topic"], "cards": cards,
-            "output_dir": SCAN["output_dir"], "error": SCAN["error"]}
+            "output_dir": SCAN["output_dir"], "error": SCAN["error"],
+            "has_profile": has_profile}
 
 
 # 产物抽屉：docs/agents/muse/ 下 7 件的存在状态 + 绝对路径（打开/在访达用）。

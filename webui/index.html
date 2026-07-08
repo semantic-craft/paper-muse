@@ -696,6 +696,31 @@
   }
   .becuz-tag .to { font-family: var(--mono); font-size: 9px; letter-spacing: .06em; opacity: .8; }
 
+  /* ══ 扩展面 A：无画像「发现力打折」警示（#4 · 参照系缺失）══ */
+  .discount {
+    display: flex; align-items: flex-start; gap: 11px;
+    margin: 16px 0 2px; padding: 12px 16px;
+    border: 1px solid var(--vermilion); border-left: 3px solid var(--vermilion);
+    background: var(--sel-wash);
+  }
+  .discount[hidden] { display: none; }
+  .discount .d-mark {
+    font-family: var(--serif-zh); font-size: 12px; color: var(--vermilion);
+    border: 1px solid var(--vermilion); border-radius: 1px;
+    width: 20px; height: 20px; line-height: 18px; text-align: center;
+    flex: 0 0 auto; margin-top: 1px;
+  }
+  .discount .d-text {
+    font-family: var(--serif-zh); font-size: 13.5px; line-height: 1.7; color: var(--ink);
+  }
+  .discount .d-text b { color: var(--vermilion); font-weight: 600; }
+  .discount .d-cta {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+    color: var(--vermilion); background: none; border: none; cursor: pointer;
+    text-decoration: underline; padding: 0; margin-left: 4px;
+  }
+  .discount .d-cta:hover { color: var(--ink); }
+
   /* ══ 扩展面 B：产物抽屉入口扣（参照 products mock A）══ */
   .products-tab {
     font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
@@ -898,6 +923,12 @@
       <p class="sub">三家模型合议出的非显而易见切入点。右侧<b>朱批</b>为新颖性与密度旁注；缩进<b>按语</b>为最强反驳。</p>
     </div>
     <hr class="flow-rule">
+    <div id="discountBanner" class="discount" hidden role="note">
+      <span class="d-mark" aria-hidden="true">折</span>
+      <div class="d-text">
+        <b>发现力打折</b>——本次扫描未设研究者画像，参照系缺失。卡片的「非显而易见」只能相对模型语料判定，不是相对<b>你</b>。<button type="button" class="d-cta" id="discountCta">补一版画像 →</button>
+      </div>
+    </div>
     <div id="entries"></div>
   </div>
 
@@ -975,6 +1006,10 @@ const DEMO_CARDS = [
   {
     id: 1, type: "学科视角",
     name: "热力学熵增与信息不对称的负熵逻辑",
+    vs_profile: [
+      { element: "stance", note: "你受法教义学训练、把数据垄断当市场结构问题；熵视角重述为「信息势差的热力学必然」，绕开静态市场界定" },
+      { element: "field", note: "你的数据法/反垄断框架里没有热力学量纲；负熵把「聚合」变成可测过程" },
+    ],
     mechanism: "把平台对用户数据的聚合视为局部负熵积累，用熵增框架解释信息不对称如何自我强化。",
     why_nonobvious: "你的框架把数据垄断当作市场结构问题；熵视角把它重述为「信息势差的热力学必然」，绕开了反垄断的静态市场界定。",
     steelman: "物理隐喻派审稿人会打——「熵在社会科学是修辞不是机制」，要求你给出可测量的熵定义，否则视为伪类比。",
@@ -994,6 +1029,9 @@ const DEMO_CARDS = [
   {
     id: 2, type: "理论框架",
     name: "组织社会学的制度同构（DiMaggio & Powell）",
+    vs_profile: [
+      { element: "field", note: "你的反垄断框架默认平台差异来自竞争；制度同构预测趋同，把「规则雷同」从巧合变可解释因变量" },
+    ],
     mechanism: "用强制/模仿/规范三种同构压力，解释为何各大平台的治理规则趋同——趋同本身即规制失灵的信号。",
     why_nonobvious: "你默认平台差异来自竞争；制度同构预测它们会趋同，把「规则雷同」从巧合变成可解释的因变量。",
     steelman: "法教义学审稿人会打——「社会学描述性理论进不了规范分析，法律要的是应然不是实然趋同」。",
@@ -1010,6 +1048,9 @@ const DEMO_CARDS = [
   {
     id: 3, type: "研究方法",
     name: "裁判文书大样本量化分析",
+    vs_profile: [
+      { element: "stance", note: "你惯做规范推演；量化把应然论证锚到实然裁判分布上，能证伪「法院实际如何规制」" },
+    ],
     mechanism: "抓取裁判文书网数据监管相关判决，编码争点与裁量结果，用回归揭示裁判的隐性规制偏好。",
     why_nonobvious: "你打算做规范推演；量化能证伪或证实「法院实际上如何规制」，把应然论证锚到实然分布上。",
     steelman: "实证法学审稿人会打——「裁判文书网选择性公开 + 撤诉不上网，样本偏差足以颠覆任何回归结论」。",
@@ -1029,6 +1070,9 @@ const DEMO_CARDS = [
   {
     id: 4, type: "理论框架",
     name: "福柯的规训权力与平台生命政治",
+    vs_profile: [
+      { element: "field", note: "你的反垄断话语聚焦价格与市场份额；规训视角把权力重定位到「行为塑造」，解释免费服务为何仍是权力关系" },
+    ],
     mechanism: "平台不靠禁止而靠「可见性架构」规训用户行为，数据垄断是全景敞视的当代形态。",
     why_nonobvious: "反垄断话语聚焦价格与市场份额；规训视角把权力重定位到「行为塑造」，解释了免费服务为何仍是权力关系。",
     steelman: "分析法学审稿人会打——「福柯太软，无法生成可操作的裁判规则，只能做批判不能做教义」。",
@@ -1044,6 +1088,9 @@ const DEMO_CARDS = [
   {
     id: 5, type: "学科视角",
     name: "科斯交易成本视角下的数据确权",
+    vs_profile: [
+      { element: "familiar", note: "你从个人信息保护的人格权/财产权二分入手；科斯把问题转成「怎样分配最省成本」，可能消解确权之争本身" },
+    ],
     mechanism: "数据权属不清的真问题不是归谁，而是交易成本过高导致的配置失灵；确权应最小化谈判成本而非追求道德归属。",
     why_nonobvious: "你从人格权/财产权二分入手；科斯把问题从「谁应拥有」转成「怎样分配最省成本」，可能消解确权之争本身。",
     steelman: "权利本位审稿人会打——「把人格数据还原成成本计算，抹掉了尊严维度，法律不能纯效率导向」。",
@@ -1063,6 +1110,9 @@ const DEMO_CARDS = [
   {
     id: 6, type: "研究方法",
     name: "平台间数据流动的社会网络分析",
+    vs_profile: [
+      { element: "field", note: "你看合同双方；网络分析看整个生态拓扑，真正的权力节点可能在合同之外的「结构洞」上" },
+    ],
     mechanism: "把平台、数据、监管者建成网络图，用中心性与结构洞指标定位真正的数据权力节点。",
     why_nonobvious: "法律看合同双方；网络分析看整个生态的拓扑，可能发现权力集中在合同之外的「结构洞」上。",
     steelman: "方法论审稿人会打——「网络指标漂亮但缺因果，结构洞 ≠ 法律责任，你怎么从拓扑跳到归责？」。",
@@ -1078,6 +1128,9 @@ const DEMO_CARDS = [
   {
     id: 7, type: "学科视角",
     name: "复杂适应系统与监管的涌现失灵",
+    vs_profile: [
+      { element: "familiar", note: "你熟悉比例原则、假设好规则能预防危害；复杂系统指出涌现不可预测，规制目标应是韧性而非预防" },
+    ],
     mechanism: "平台生态是复杂适应系统，事前规则在涌现行为前必然滞后；规制应从「设定规则」转向「调节系统参数」。",
     why_nonobvious: "你假设好规则能预防危害；复杂系统视角指出涌现不可预测，规制目标应是韧性而非预防。",
     steelman: "法治主义审稿人会打——「『调参数』式规制违反法的明确性与可预期性，等于给监管者空白授权」。",
@@ -1102,6 +1155,7 @@ let PROFILE = DEMO_PROFILE;
 // 研究者画像 live 态：真界面起空；DEMO 态用 DEMO_PROFILE 预填以便预览（见启动 init）
 let PROFILE_DATA = { field: "", stance: "", familiar: "" };  // 画像三要素，困惑不在此列（#3）
 let PROFILE_LOADED = false;  // GET /profile 成功前不落盘，防空态 blur 覆写清空机器级画像（审核 F1）
+let HAS_PROFILE = null;   // 本次扫描是否有画像（/scan/status 给）；null=未扫/未知，false=无画像 → 出「发现力打折」（#4）
 let TOTAL = 0;             // 顶部「手稿 NN / TOTAL」计数
 let shownCount = 0;        // 已入场动画的卡数（增量 stagger 只动新卡）
 let pollTimer = null;
@@ -1143,8 +1197,8 @@ const PROFILE_FIELDS = [
     formLabel: "熟悉的理论 / 概念", formPh: "你已经会的，逗号分隔",
     hint: "这些不会再当新知端上来——只报你没见过的。" },
 ];
-// puzzle 保留标签供卡上「因你·困惑」小标用（困惑虽非画像字段，仍可回指困惑输入行）
-const PROFILE_KEY_LABEL = { field: "领域", stance: "立场", familiar: "熟悉", puzzle: "困惑" };
+// vs_profile 小标的字段标签（#4：仅画像三要素；困惑不参与「因你」，只喂扫描）
+const PROFILE_KEY_LABEL = { field: "领域", stance: "立场", familiar: "熟悉" };
 
 // 三要素 → POST /profile 载荷（写机器级 researcher.md）
 function profilePayload(){
@@ -1241,13 +1295,8 @@ function wireFirstRunPortrait(){
   });
 }
 
-// 点卡上「因你」小标 → 高亮左栏对应字段
+// 点卡上「因你」小标 → 高亮左栏对应画像字段（key ∈ field/stance/familiar）
 function pingProfileField(key){
-  if (key === "puzzle") {   // 困惑非画像字段 → 回指顶栏下「本次困惑」输入行
-    const pin = $("#puzzle");
-    if (pin) { pin.scrollIntoView({ block: "center" }); pin.focus(); }
-    return;
-  }
   const details = document.querySelector(".profile");
   if (details && !details.open) details.open = true;
   const pf = document.querySelector(`#profileFields .pfield[data-field="${key}"]`);
@@ -1308,42 +1357,21 @@ function sealsHTML(c){
   return out.join("");
 }
 
-/* ══ 卡上「因你」回指（降级 presentational + 透明启发式）══
-   HEURISTIC：若某画像字段的显著词真的出现在该卡 why_nonobvious / steelman 里，
-   才挂「因你 · {字段}」小标 —— 只在真有文字呼应时挂，绝不编造。画像已喂进扫描
-   prompt（blindspot.enumerate_cards 以画像为「非显而易见」参照系），故 why/steelman
-   常回响画像用词，这匹配是真的。待引擎给结构化 tag 后可升级为精确来源。 */
-const BECUZ_STOP = new Set(["的","了","和","与","或","在","是","不","有","这","那","个","中","法","学","论"]);
-function salientTerms(raw){
-  // 从字段值切出候选词：顿号/逗号/空格分段，再取 ≥2 字的中文/词块，过滤停用单字
-  return String(raw || "")
-    .split(/[，,、；;。\s／\/·]+/)
-    .map(s => s.trim())
-    .filter(s => s.length >= 2 && !BECUZ_STOP.has(s));
-}
-function becuzMatches(c){
-  const hay = `${c.why_nonobvious || ""}\n${c.steelman || ""}`;
-  const out = [];
-  for (const f of PROFILE_FIELDS){
-    const v = (PROFILE_DATA[f.key] || "").trim();
-    if (!v) continue;
-    const hit = salientTerms(v).some(term => hay.includes(term));
-    if (hit) out.push(f.key);
-  }
-  // 困惑（本次输入，非画像字段）也参与「因你」呼应 → 小标回指顶栏困惑行
-  const pz = puzzleValue();
-  if (pz && salientTerms(pz).some(term => hay.includes(term))) out.push("puzzle");
-  return out;
-}
+/* ══ 卡上「因你」回指（引擎结构化 vs_profile，#4）══
+   引擎合议时给每张卡绑定 vs_profile: [{element, note}]，element ∈ 画像键
+   （field/stance/familiar），note = 相对画像这一条为何非显而易见。弃旧的词面启发式
+   （不再从 why/steelman 猜词），只认引擎给的结构化来源。无画像时引擎不产 vs_profile
+   → 无小标，改由「发现力打折」警示提示参照系缺失。点小标 → 高亮左栏对应字段。 */
 function becuzTagsHTML(c){
-  const keys = becuzMatches(c);
-  if (!keys.length) return "";
-  return keys.map(k => {
-    const label = PROFILE_KEY_LABEL[k];
-    const dest = k === "puzzle" ? "困惑行" : "左栏画像";
-    return `<button class="becuz-tag" type="button" data-target="${k}"
-        aria-label="因你 · ${esc(label)}：跳到${esc(dest)}并高亮">
-      <span class="stamp">因</span><span>因你 · ${esc(label)}</span><span class="to">↳ ${k === "puzzle" ? "困惑" : "画像"}</span>
+  const vp = Array.isArray(c.vs_profile) ? c.vs_profile : [];
+  return vp.map(b => {
+    const label = PROFILE_KEY_LABEL[b.element];
+    if (!label) return "";                    // 未知 element 不挂（引擎已归一，双保险）
+    const note = b.note || "";
+    return `<button class="becuz-tag" type="button" data-target="${esc(b.element)}"
+        title="${esc(note)}"
+        aria-label="因你 · ${esc(label)}：${esc(note)}（跳到左栏画像并高亮）">
+      <span class="stamp">因</span><span>因你 · ${esc(label)}</span><span class="to">↳ 画像</span>
     </button>`;
   }).join(" ");
 }
@@ -1534,10 +1562,19 @@ function setStatus(phase, err){
   }
 }
 
+/* 无画像「发现力打折」警示：本次扫描确未用画像（has_profile=false）且已出卡才显。
+   空态/未扫时首次开笔卡本就在讲参照系，不叠警示；demo 恒有画像不显。 */
+function updateDiscountBanner(){
+  const el = $("#discountBanner");
+  if (!el) return;
+  el.hidden = !(!DEMO && HAS_PROFILE === false && CARDS.length > 0);
+}
+
 /* ══ 主渲染 ══ */
 function render(){
   TOTAL = CARDS.length;
   const box = $("#entries");
+  updateDiscountBanner();
   if (CARDS.length === 0) {
     // live 且未扫描且非 demo → 首次开笔卡；否则维持原空态提示
     if (!DEMO) {
@@ -1604,6 +1641,7 @@ async function pollOnce(){
   try {
     const s = await (await fetch("/scan/status")).json();
     ingest(s.cards);
+    if ("has_profile" in s) HAS_PROFILE = s.has_profile;   // 无画像 → render 出「发现力打折」（#4）
     render();
     setStatus(s.phase, s.error);
     if (s.phase === "done" || s.phase === "error") { clearInterval(pollTimer); pollTimer = null; }
@@ -1903,6 +1941,7 @@ wireDrawer();
 $(".scan-btn").addEventListener("click", startScan);
 $("#topic").addEventListener("keydown", e => { if (e.key === "Enter") startScan(); });
 $("#puzzle").addEventListener("keydown", e => { if (e.key === "Enter") startScan(); });
+$("#discountCta").addEventListener("click", () => pingProfileField("field"));  // 「补一版画像」→ 左栏领域
 
 if (DEMO) {
   $("#topic").value = DEMO_TOPIC;
@@ -1933,6 +1972,7 @@ if (DEMO) {
   // 接管可能已在进行/完成的扫描
   fetch("/scan/status").then(r => r.json()).then(s => {
     if (!s) return;
+    if ("has_profile" in s) HAS_PROFILE = s.has_profile;   // 接管态也据实出/收「打折」警示
     if (s.cards && s.cards.length) { ingest(s.cards); render(); }
     setStatus(s.phase, s.error);
     if (s.phase === "scanning") startPolling();
