@@ -1,0 +1,15 @@
+# 对抗幕·证伪检索 sidecar 的**隔离环境**（issue #8）。
+#
+# 为什么隔离：gpt-researcher 0.15.1 会强升 numpy→2.x / openai→2.x（＋langchain/unstructured/…共 100+ 包），
+# 与主 venv 的 knowledge_storm（storm/co-storm 驱动构思幕扫描＋圆桌）冲突，装进主 venv 大概率搞崩已绿底座。
+# 故重依赖只进独立 .venv-gptr，主引擎经子进程调 gptr_sidecar.py（stdin/stdout JSON）跨环境通信。
+#
+# 建（本机 / Metis 各自重建，不跨机同步 venv）：
+#   uv venv .venv-gptr --python 3.12
+#   VIRTUAL_ENV="$PWD/.venv-gptr" uv pip install -r requirements-gptr.txt
+#
+# 主引擎入口：adversary.real_falsify_search() → .venv-gptr/bin/python gptr_sidecar.py
+# 需要的 key（从主进程 env 继承）：OPENAI_API_KEY、TAVILY_API_KEY。CNKI 需 Chrome 会话（opencli），
+# 无会话时该面降级明示（zh 面退到 zsearch）。OPENAI_BASE_URL 由 sidecar 显式钉官方端点。
+
+gpt-researcher==0.15.1
