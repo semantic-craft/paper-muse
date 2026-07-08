@@ -12,6 +12,7 @@ import re
 import subprocess
 import threading
 from contextlib import nullcontext
+from copy import deepcopy
 from pathlib import Path
 
 import json_repair
@@ -23,6 +24,67 @@ FIRST_PRINCIPLES_PERSONA = (
 )
 
 CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
+
+_CACHE_VERSION = "retrieval-v1"
+_CACHE_STATS = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def _cache_base_dir() -> Path:
+    base = (
+        os.environ.get("PAPER_MUSE_CACHE_DIR")
+        or os.environ.get("XDG_CACHE_HOME")
+        or os.path.join(os.path.expanduser("~"), ".cache")
+    )
+    return Path(base) / "paper-muse"
+
+
+def _normalize_query_text(query: str) -> str:
+    return re.sub(r"\s+", " ", (query or "").strip())
+
+
+def _bump_cache_stat(name: str, field: str):
+    with _CACHE_LOCK:
+        stats = _CACHE_STATS.setdefault(name, {"hits": 0, "misses": 0, "stores": 0})
+        stats[field] += 1
+
+
+def reset_retrieval_cache_stats():
+    with _CACHE_LOCK:
+        _CACHE_STATS.clear()
+
+
+def retrieval_cache_stats():
+    with _CACHE_LOCK:
+        by_retriever = deepcopy(_CACHE_STATS)
+    totals = {"hits": 0, "misses": 0, "stores": 0, "errors": 0}
+    for stats in by_retriever.values():
+        for field in ("hits", "misses", "stores"):
+            totals[field] += int(stats.get(field, 0) or 0)
+    return {**totals, "by_retriever": by_retriever, **by_retriever}
+
+
+def _cached_search(name: str, limit: int, mode: str, ttl: int, search):
+    """Disk-cache stable retrieval results. Exceptions are never cached."""
+    try:
+        import diskcache
+    except Exception:
+        return search
+    cache = diskcache.Cache(str(_cache_base_dir() / "retrieval"))
+
+    def wrapped(query):
+        norm = _normalize_query_text(query)
+        key = (_CACHE_VERSION, name, limit, mode, norm)
+        if key in cache:
+            _bump_cache_stat(name, "hits")
+            return deepcopy(cache[key])
+        _bump_cache_stat(name, "misses")
+        result = search(query)
+        cache.set(key, deepcopy(result), expire=ttl)
+        _bump_cache_stat(name, "stores")
+        return result
+
+    return wrapped
 
 # 研究者画像三要素：既是机器级 researcher.md 的键，也是卡片 vs_profile 绑定的目标（#4）。
 # key = 机器/UI 用的稳定标识；label = 中文面（喂 LLM、researcher.md 文本、UI 标签）。
@@ -334,7 +396,7 @@ def _write_outputs(output_dir, topic, profile, cards):
 
 
 def run_scan(topic, profile, output_dir, providers, decompose_llm,
-             en_search, zh_search, on_card, own_search=None, puzzle=""):
+             en_search, zh_search, on_card, own_search=None, puzzle="", on_update=None):
     """providers: {model_tag: llm_call}。流式两段出卡（spec §4.1/§9，冒烟 #15）：
     单家枚举完成即合并上墙（on_card，无徽标），新颖性三面每卡起线程异步补挂——
     卡对象原地更新（只换预置键的值，不加键），/scan/status 轮询快照自然可见。
@@ -362,7 +424,7 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
 
     def emit_family(cards):
         """单家枚举结果并入墙：新卡上墙＋起新颖性线程；重名卡只并 source_models。"""
-        fresh = []
+        fresh, touched = [], []
         with lock:
             for c in cards:
                 key = normalize_name(c["name"])
@@ -371,6 +433,7 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
                 if key in wall:
                     prev = wall[key]
                     prev["source_models"] = sorted(set(prev["source_models"]) | set(c["source_models"]))
+                    touched.append(prev)
                 else:
                     c = dict(c)
                     # 徽标字段占位：上墙后原地更新只换值不加键（快照序列化安全）
@@ -381,11 +444,17 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
                     fresh.append(c)
         for c in fresh:
             on_card(c)
-            t = threading.Thread(target=_novelty_for,
-                                 args=(c, topic, en_search, zh_search, own_search,
-                                       zh_gate, own_gate, zh_keyword), daemon=True)
+            def enrich(card=c):
+                _novelty_for(card, topic, en_search, zh_search, own_search,
+                             zh_gate, own_gate, zh_keyword)
+                if on_update:
+                    on_update(card)
+            t = threading.Thread(target=enrich, daemon=True)
             t.start()
             enrich_ts.append(t)
+        if on_update:
+            for c in touched:
+                on_update(c)
 
     threads_out = {}
 
@@ -412,6 +481,8 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
     # 离群 = 全家到齐后仅一家提出（早标会闪烁误导，故与其他徽标同为异步补挂）
     with lock:
         mark_outliers([wall[k] for k in order])
+    if on_update:
+        on_update(None)
 
     for t in enrich_ts:
         t.join()
@@ -529,7 +600,7 @@ def real_en_search(k: int = 5):
     def search(query):
         return rm.forward(query)
 
-    return search
+    return _cached_search("en", k, "perplexity", ttl=7 * 24 * 3600, search=search)
 
 
 def real_cnki_search(limit: int = 5):
@@ -558,7 +629,7 @@ def real_cnki_search(limit: int = 5):
         rows = data.get("data") if isinstance(data, dict) else data
         return rows or []
 
-    return search
+    return _cached_search("cnki", limit, "CSSCI", ttl=3 * 24 * 3600, search=search)
 
 
 def real_own_search(limit: int = 8):
@@ -576,7 +647,7 @@ def real_own_search(limit: int = 8):
         rows = json.loads(r.stdout)
         return [{"title": row.get("title", ""), "url": row.get("url", "")} for row in rows[:limit]]
 
-    return search
+    return _cached_search("own", limit, "zsearch", ttl=7 * 24 * 3600, search=search)
 
 
 if __name__ == "__main__":

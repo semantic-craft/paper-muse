@@ -80,10 +80,12 @@ def test_zh_name_core_shapes():
     assert _zh_name_core("Purely English") == "Purely English"  # 中文核心为空 → 回退原名
 
 
-def test_cnki_empty_result_is_zero_hits(monkeypatch):
+def test_cnki_empty_result_is_zero_hits(monkeypatch, tmp_path):
     # EMPTY_RESULT（零命中）≠ 未检：回 [] 让交叉空白/金矿判据可触发。
     # 真实形态（冒烟实证）：stdout 为空、YAML 错误块走 stderr、exit 66
     import blindspot as B
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
 
     class R:
         stdout = ""
@@ -93,8 +95,10 @@ def test_cnki_empty_result_is_zero_hits(monkeypatch):
     assert B.real_cnki_search()("任意查询") == []
 
 
-def test_cnki_session_error_still_raises(monkeypatch):
+def test_cnki_session_error_still_raises(monkeypatch, tmp_path):
     import blindspot as B
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
 
     class R:
         stdout = ""
@@ -387,6 +391,71 @@ def test_run_scan_all_providers_failing_raises(tmp_path):
             decompose_llm=lambda p: json.dumps({"fundamentals": ["f"]}),
             en_search=lambda q: [], zh_search=lambda q: [], on_card=lambda c: None,
         )
+
+
+# ---- 检索缓存（#19）----
+
+def test_cached_search_normalizes_query_and_tracks_stats(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
+    calls = []
+
+    def search(q):
+        calls.append(q)
+        return [{"title": "T", "url": "https://e"}]
+
+    cached = B._cached_search("en", 5, "test", ttl=60, search=search)
+
+    assert cached(" 平台   责任 ") == [{"title": "T", "url": "https://e"}]
+    assert cached("平台 责任") == [{"title": "T", "url": "https://e"}]
+    assert calls == [" 平台   责任 "]
+    assert B.retrieval_cache_stats()["en"] == {"hits": 1, "misses": 1, "stores": 1}
+
+
+def test_cnki_true_empty_is_cached_but_session_errors_are_not(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
+    calls = []
+
+    class Empty:
+        stdout = ""
+        stderr = "ok: false\nerror:\n  code: EMPTY_RESULT\n"
+
+    def empty_run(*args, **kwargs):
+        calls.append("empty")
+        return Empty
+
+    monkeypatch.setattr(B.subprocess, "run", empty_run)
+    search = B.real_cnki_search(limit=3)
+    assert search("不存在的题") == []
+    assert search("不存在的题") == []
+    assert calls == ["empty"]
+    assert B.retrieval_cache_stats()["cnki"] == {"hits": 1, "misses": 1, "stores": 1}
+
+    class NoSession:
+        stdout = ""
+        stderr = "ok: false\nerror:\n  code: NO_BROWSER_SESSION\n"
+
+    calls.clear()
+
+    def no_session_run(*args, **kwargs):
+        calls.append("no-session")
+        return NoSession
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache2"))
+    B.reset_retrieval_cache_stats()
+    monkeypatch.setattr(B.subprocess, "run", no_session_run)
+    search = B.real_cnki_search(limit=3)
+    with pytest.raises(RuntimeError):
+        search("需要浏览器")
+    with pytest.raises(RuntimeError):
+        search("需要浏览器")
+    assert calls == ["no-session", "no-session"]
+    assert B.retrieval_cache_stats()["cnki"] == {"hits": 0, "misses": 2, "stores": 0}
 
 
 # ---- 机器级画像 researcher.md（ADR-0001 / #3）----

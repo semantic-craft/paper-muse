@@ -59,6 +59,23 @@ def test_scan_status_exposes_has_profile_field(monkeypatch, tmp_path):
     assert "has_profile" in body and isinstance(body["has_profile"], bool)
 
 
+def test_scan_status_returns_unchanged_for_current_version(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(muse_server.app)
+    with muse_server.SCAN_LOCK:
+        muse_server.SCAN.update(phase="scanning", topic="t", cards=[{"name": "A"}],
+                                output_dir=str(tmp_path), error=None, has_profile=False,
+                                version=42)
+    body = client.get("/scan/status?since=42").json()
+    assert body["unchanged"] is True and body["version"] == 42
+    assert "cards" not in body
+    changed = client.get("/scan/status?since=41").json()
+    assert changed["unchanged"] is False and changed["cards"] == [{"name": "A"}]
+    restarted_or_stale_client = client.get("/scan/status?since=43").json()
+    assert restarted_or_stale_client["unchanged"] is False
+
+
 # ---- 对抗幕接口（#10）：只 stub LLM/检索叶子，放真 run_review 跑通 server→引擎 全链 ----
 import json
 from pathlib import Path
@@ -137,3 +154,41 @@ def test_start_adversary_validates_bad_mode_and_empty(monkeypatch, tmp_path):
     # status 形状（未起审查时 idle）
     body = client.get("/adversary/status").json()
     assert body["phase"] in ("idle", "reviewing", "done", "error") and "claims" in body
+
+
+def test_adversary_status_does_not_resend_known_source(tmp_path):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(muse_server.app)
+    with muse_server.ADV_LOCK:
+        muse_server.ADV.update(
+            phase="reviewing", mode="draft", topic="draft.md",
+            claims=[{"id": 1, "text": "c", "failures": []}],
+            source="很长的草稿", source_version=3, version=5,
+            output_dir=str(tmp_path), error=None,
+        )
+    body = client.get("/adversary/status?since=3").json()
+    assert body["unchanged"] is False and body["source"] is None
+    assert body["claims"][0]["text"] == "c"
+    unchanged = client.get("/adversary/status?since=5").json()
+    assert unchanged["unchanged"] is True and "claims" not in unchanged and "source" not in unchanged
+    stale_client = client.get("/adversary/status?since=6").json()
+    assert stale_client["unchanged"] is False
+
+
+def test_perf_status_exposes_observability_counters():
+    from fastapi.testclient import TestClient
+
+    blindspot.reset_retrieval_cache_stats()
+    adversary.reset_sidecar_stats()
+    client = TestClient(muse_server.app)
+
+    body = client.get("/perf/status").json()
+
+    assert body["retrieval_cache"]["hits"] == 0
+    assert body["retrieval_cache"]["misses"] == 0
+    assert body["retrieval_cache"]["stores"] == 0
+    assert body["retrieval_cache"]["errors"] == 0
+    assert body["retrieval_cache"]["by_retriever"] == {}
+    assert body["sidecar"] == {"single_invocations": 0, "batch_invocations": 0, "claims_requested": 0}
+    assert body["llm_cache"]["available"] is False
