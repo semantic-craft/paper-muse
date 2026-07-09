@@ -14,6 +14,7 @@
     POST /report   生成报告并落盘 report.md / conversation.md / instance_dump.json / log.json
     GET  /profile       → {field, stance, familiar} 机器级研究者画像（缺文件回全空）
     POST /profile       {field?, stance?, familiar?} 写机器级 researcher.md（不含困惑）
+    GET  /topic/suggest → {topic?, path?} 从 PAPER_MUSE_OUTPUT_DIR 最近 md 标题预填主题
     POST /scan          {topic, puzzle?, output_dir?} 起盲区扫描（画像取自 researcher.md，困惑本次传），轮询 /scan/status
     GET  /scan/status   → {phase: idle|scanning|done|error, cards: [...], output_dir, error?, has_profile}
                           has_profile=false（无画像参照系）→ webui 明示「发现力打折」
@@ -84,6 +85,32 @@ import adversary
 def sanitize_topic(topic):
     topic = re.sub(r"[^\w-]", "_", topic.strip()).strip("_")
     return topic or "unnamed_topic"
+
+
+def _first_markdown_title(path: Path):
+    try:
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                title = line.strip().lstrip("\ufeff")
+                if title.startswith("#"):
+                    return title.lstrip("#").strip()
+    except OSError:
+        return None
+    return None
+
+
+def _suggest_topic_from_output_dir(output_dir=None):
+    raw = output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR")
+    if not raw:
+        return {"topic": "", "path": None}
+    base = Path(raw).expanduser()
+    if not base.is_dir():
+        return {"topic": "", "path": None}
+    for path in sorted(base.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)[:30]:
+        title = _first_markdown_title(path)
+        if title:
+            return {"topic": title, "path": str(path)}
+    return {"topic": "", "path": None}
 
 
 class ProgressCallback(BaseCallbackHandler):
@@ -828,6 +855,11 @@ def scan_bg(req: ScanReq):
 def get_profile():
     """机器级研究者画像（三要素）。缺文件回全空 → webui 起空画像/首填。跨两篇论文复用免重填。"""
     return blindspot.load_researcher_profile()
+
+
+@app.get("/topic/suggest")
+def topic_suggest():
+    return _suggest_topic_from_output_dir()
 
 
 @app.post("/profile")

@@ -522,6 +522,13 @@
   .rt-warm li.done::before { content: "◑"; color: var(--vermilion); }
   .rt-warm li.now { color: var(--ink); }
   .rt-warm li.now::before { content: "◐"; color: var(--vermilion); animation: rtpulse 1.2s infinite; }
+  .rt-error {
+    margin: 12px 0 20px; padding: 13px 15px;
+    border-left: 3px solid var(--vermilion); background: var(--sel-wash);
+    font-family: var(--serif-zh); font-size: 14px; line-height: 1.65; color: var(--ink);
+  }
+  .rt-error[hidden] { display: none; }
+  .rt-error .acts { margin-top: 10px; display: flex; gap: 9px; }
   /* 对谈条目 */
   .rt-turn { padding: 18px 0; border-bottom: 1px solid var(--hair); }
   .rt-turn:last-child { border-bottom: none; }
@@ -1261,6 +1268,13 @@
           <li data-k="3">构建思维导图</li>
           <li data-k="4">生成圆桌开场</li>
         </ol>
+      </div>
+      <div class="rt-error" id="rtError" hidden role="alert">
+        <div id="rtErrorText"></div>
+        <div class="acts">
+          <button class="rt-btn primary" id="rtRetry" type="button">重试热身</button>
+          <button class="rt-btn" id="rtExit" type="button">回卡片墙</button>
+        </div>
       </div>
       <div id="rtTurns"></div>
       <div class="rt-busy" id="rtBusy" hidden>圆桌思考中…</div>
@@ -2137,6 +2151,16 @@ function showView(which){
 function rtSetPhase(txt, live){
   const el = $("#rtPhase"); el.textContent = txt; el.classList.toggle("live", !!live);
 }
+function rtSetError(msg){
+  $("#rtWarm").hidden = true;
+  $("#rtErrorText").textContent = msg;
+  $("#rtError").hidden = false;
+  rtSetPhase("热身失败", false);
+}
+function rtClearError(){
+  $("#rtError").hidden = true;
+  $("#rtErrorText").textContent = "";
+}
 function rtRenderTurns(){
   $("#rtTurns").innerHTML = RT.turns.map(t => {
     const m = roleMeta(t.role);
@@ -2171,7 +2195,7 @@ function enterRoundtable(card){
   $("#rtSeed").textContent = card.name;
   $("#rtSeedline").textContent = `以「${card.name}」为种子 · Co-STORM 圆桌`;
   const rb = $("#rtReport"); rb.textContent = "结束出报告"; delete rb.dataset.reveal;
-  rtRenderTurns(); showView("rt");
+  rtClearError(); rtRenderTurns(); showView("rt");
   if (DEMO) { $("#rtWarm").hidden = true; rtSetPhase("进行中", false); RT.turns = DEMO_TURNS.slice(); rtRenderTurns(); return; }
   rtStartSession(card);
 }
@@ -2180,24 +2204,28 @@ function backToWall(){
   showView("wall");
 }
 async function rtStartSession(card){
-  rtSetPhase("热身中", true); rtWarm(1);
+  rtClearError(); rtSetPhase("热身中", true); rtWarm(1);
   const topic = card.mechanism ? `${card.name}：${card.mechanism}` : card.name;
   try {
     const r = await fetch("/session", { method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ topic }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ("HTTP " + r.status));
     rtPollWarm();
-  } catch (e) { rtSetPhase("热身失败", false); toast("圆桌启动失败：" + (e.message || e)); }
+  } catch (e) { rtSetError("圆桌启动失败：" + (e.message || e)); }
 }
 function rtPollWarm(){
   clearInterval(RT.poll);
   RT.poll = setInterval(async () => {
     try {
       const s = await (await fetch("/status")).json();
-      if (s.phase === "error") { clearInterval(RT.poll); RT.poll = null; rtSetPhase("热身失败", false); toast("热身失败，检查服务端日志"); return; }
+      if (s.phase === "error") {
+        clearInterval(RT.poll); RT.poll = null;
+        rtSetError(String(s.error || "热身失败，检查服务端日志").split("\n").filter(Boolean).slice(-1)[0]);
+        return;
+      }
       if (s.phase === "ready") {
         clearInterval(RT.poll); RT.poll = null;
-        $("#rtWarm").hidden = true; rtSetPhase("进行中", false);
+        $("#rtWarm").hidden = true; rtClearError(); rtSetPhase("进行中", false);
         RT.turns = s.turns || []; rtRenderTurns();
       } else {
         rtWarm(warmStepOf((s.progress || []).slice(-1)[0] || ""));
@@ -2237,6 +2265,8 @@ function rtRevealReport(){
 }
 function wireRoundtable(){
   $("#rtBack").addEventListener("click", backToWall);
+  $("#rtRetry").addEventListener("click", () => { if (RT.seed) rtStartSession(RT.seed); });
+  $("#rtExit").addEventListener("click", backToWall);
   $("#rtStep").addEventListener("click", () => rtStep(""));
   const inject = () => { const v = $("#rtInput").value.trim(); if (v) { $("#rtInput").value = ""; rtStep(v); } };
   $("#rtInject").addEventListener("click", inject);
@@ -2278,6 +2308,10 @@ if (DEMO) {
     PROFILE_LOADED = true;                  // 拿到机器级真态后，后续编辑才允许落盘（F1）
     renderProfile();                       // 收进左栏
     if (CARDS.length === 0) render();       // 仍空态 → 重画开笔卡，字段预填（免重填）
+  }).catch(() => {});
+  fetch("/topic/suggest").then(r => r.json()).then(d => {
+    if (($("#topic").value || "").trim()) return;
+    if (d && d.topic) $("#topic").value = d.topic;
   }).catch(() => {});
   // 接管可能已在进行/完成的扫描
   fetch("/scan/status").then(r => r.json()).then(s => {
