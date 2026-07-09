@@ -23,6 +23,7 @@ from pathlib import Path
 
 import blindspot
 from blindspot import extract_json  # 复用带围栏/多对象/json_repair 兜底的 JSON 抠取
+from prompt_assets import ADVERSARY_METHOD_PROMPT
 
 # ---- persona（转述占位；用户提供「对抗式审查」原文后整体替换本常量，见 issue #2）----
 # 仿 blindspot.FIRST_PRINCIPLES_PERSONA 的要旨转述版，**非最终版**，勿当用户原文。
@@ -240,6 +241,7 @@ def red_team(claim_text: str, llm_call, persona: str = ADVERSARIAL_REVIEW_PERSON
     note = 「哪类审稿人会怎么打」的朱批嗓音，不是中性 checklist。"""
     prompt = (
         f"{persona}\n\n"
+        f"{ADVERSARY_METHOD_PROMPT}\n\n"
         f"中心主张（被告席）：{claim_text}\n\n"
         f"给出 {min_f}-{max_f} 个最可能让这个主张崩塌的失败点。每个失败点：\n"
         "- statement：一句话点出哪里会崩；\n"
