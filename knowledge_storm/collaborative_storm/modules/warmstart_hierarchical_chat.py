@@ -17,6 +17,10 @@ from .callback import BaseCallbackHandler
 from .collaborative_storm_utils import _get_answer_question_module_instance
 from .expert_generation import GenerateExpertModule
 from .grounded_question_answering import AnswerQuestionModule
+from .roundtable_personas import (
+    warmstart_experts_to_process,
+    with_fixed_roundtable_experts,
+)
 from ...dataclass import ConversationTurn, KnowledgeBase
 from ...interface import LMConfigs
 from ...logging_wrapper import LoggingWrapper
@@ -162,7 +166,9 @@ class WarmStartConversation(dspy.Module):
             background_info=background_info,
             num_experts=self.max_num_experts,
         )
-        return gen_expert_output.experts, background_seeking_dialogue
+        return with_fixed_roundtable_experts(
+            gen_expert_output.experts
+        ), background_seeking_dialogue
 
     def get_background_info(self, topic: str):
         question = f"Background information about {topic}"
@@ -246,7 +252,7 @@ class WarmStartConversation(dspy.Module):
         ) as executor:
             futures = [
                 executor.submit(process_expert, expert)
-                for expert in experts[: min(len(experts), self.max_num_experts)]
+                for expert in warmstart_experts_to_process(experts, self.max_num_experts)
             ]
             concurrent.futures.wait(futures)
 

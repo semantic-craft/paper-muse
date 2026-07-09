@@ -12,6 +12,7 @@ from .modules.co_storm_agents import (
     CoStormExpert,
 )
 from .modules.expert_generation import GenerateExpertModule
+from .modules.roundtable_personas import with_fixed_roundtable_experts
 from .modules.warmstart_hierarchical_chat import WarmStartModule
 from ..dataclass import ConversationTurn, KnowledgeBase
 from ..encoder import Encoder
@@ -451,6 +452,7 @@ class DiscourseManager:
             focus=focus,
             num_experts=self.runner_argument.max_num_round_table_experts,
         ).experts
+        expert_names = with_fixed_roundtable_experts(expert_names)
         self.experts = self._parse_expert_names_to_agent(expert_names)
 
     def _is_last_turn_questioning(self, conversation_history: List[ConversationTurn]):
@@ -611,7 +613,7 @@ class CoStormRunner:
                 )
                 self.discourse_manager.experts = (
                     self.discourse_manager._parse_expert_names_to_agent(
-                        warmstart_experts
+                        with_fixed_roundtable_experts(warmstart_experts)
                     )
                 )
                 self.discourse_manager.next_turn_moderator_override = True
