@@ -12,6 +12,8 @@ from adversary import (
     extract_claims,
     red_team,
     classify_evidence,
+    author_rebuttal,
+    meta_review,
     run_review,
     ADVERSARIAL_REVIEW_PERSONA,
     SEVERITIES,
@@ -179,6 +181,48 @@ def test_classify_evidence_empty_hits_shortcircuits():
     assert ev == [] and not called   # 无命中直接返回，不浪费 LLM 调用
 
 
+# ---- 作者答辩 + 仲裁（不拥有最终裁决权）----
+
+def test_author_rebuttal_parses_stance_and_no_evidence_prompt():
+    llm = FakeLLM([json.dumps({
+        "stance": "驳",
+        "argument": "该失败点把规范必要性误读为经验必要性。",
+        "needed_evidence": "需要比较法反例。",
+    })])
+
+    out = author_rebuttal(
+        "确权是前提",
+        {"statement": "存在反例"},
+        [],
+        llm,
+    )
+
+    assert out["stance"] == "驳"
+    assert "比较法反例" in out["needed_evidence"]
+    assert "无直接证据" in llm.prompts[0]
+
+
+def test_meta_review_cannot_release_undecided_without_evidence():
+    llm = FakeLLM([json.dumps({
+        "decision": "缓和",
+        "reason": "作者说得有道理，可以放行。",
+        "revision": "弱化表述。",
+    })])
+
+    out = meta_review(
+        "确权是前提",
+        {"statement": "存在反例"},
+        [],
+        {"stance": "驳", "argument": "反例不适用"},
+        "未决",
+        llm,
+    )
+
+    assert out["decision"] == "维持"
+    assert out["final_verdict"] == "未决"
+    assert "代码裁决：未决" in llm.prompts[0]
+
+
 # ---- run_review 端到端离线 ----
 
 def _draft_with_claim():
@@ -226,6 +270,37 @@ def test_run_review_draft_end_to_end_offline(tmp_path):
     assert "确权是破解垄断的前提" in fp and quote in fp
     assert "已证伪" in fp and "https://doi.org/e1" in fp
     assert "证伪备忘录" in fp
+
+
+def test_run_review_optional_rebuttal_and_meta_review_are_written(tmp_path):
+    draft, quote, extract, redteam = _draft_with_claim()
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]),
+        redteam_llm=FakeLLM([redteam]),
+        classify_llm=lambda p: json.dumps({"evidence": [{"n": 1, "stance": "证伪"}]}),
+        author_llm=FakeLLM([
+            json.dumps({"stance": "驳", "argument": "DMA 反例不等同于中国法路径。", "needed_evidence": "补中文法文献"}),
+            json.dumps({"stance": "认", "argument": "确有机制反向风险。", "needed_evidence": ""}),
+        ]),
+        meta_llm=FakeLLM([
+            json.dumps({"decision": "维持", "reason": "已有反证，维持击穿。", "revision": "改成条件命题"}),
+            json.dumps({"decision": "加重", "reason": "作者承认机制风险。", "revision": "补反向机制段"}),
+        ]),
+        falsify_search=_pool(
+            [{"title": "反例文献", "url": "https://doi.org/e1", "content": "DMA 无确权亦规制"}],
+            en_hits=5, zh_hits=3),
+        on_claim=lambda c: None,
+    )
+
+    first = claims[0]["failures"][0]
+    assert first["author_rebuttal"]["stance"] == "驳"
+    assert first["meta_review"]["decision"] == "维持"
+    assert first["meta_review"]["final_verdict"] == "已证伪"
+    fp = (tmp_path / "docs" / "agents" / "muse" / "failure-points.md").read_text(encoding="utf-8")
+    assert "作者答辩：驳" in fp
+    assert "仲裁：维持" in fp
+    assert "修订建议：改成条件命题" in fp
 
 
 def test_run_review_no_evidence_is_undecided_not_pass(tmp_path):

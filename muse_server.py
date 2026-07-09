@@ -1100,7 +1100,9 @@ def adversary_bg(req: AdversaryReq):
         adversary.run_review(
             source_text=source, has_draft=has_draft, output_dir=base, review_llm=review_llm,
             falsify_search=adversary.real_falsify_search(),   # #8 = gpt-researcher sidecar（隔离 venv）
-            on_claim=on_claim, from_=from_, on_update=_adv_touch)
+            on_claim=on_claim, from_=from_,
+            author_llm=review_llm, meta_llm=review_llm,
+            on_update=_adv_touch)
         _adv_update(phase="done")
     except Exception:
         _adv_update(error=traceback.format_exc(), phase="error")
