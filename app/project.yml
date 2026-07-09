@@ -7,6 +7,16 @@ targets:
     platform: macOS
     deploymentTarget: "14.0"
     sources: [Sources, Assets.xcassets]
+    postBuildScripts:
+      - name: Stage release server assets
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$CONFIGURATION" = "Release" ]; then
+            /usr/bin/python3 "$SRCROOT/../tools/release_assets.py" stage --output "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/server"
+            /usr/bin/python3 "$SRCROOT/../tools/release_assets.py" scan "$TARGET_BUILD_DIR/$WRAPPER_NAME"
+          else
+            rm -rf "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/server"
+          fi
     info:
       path: Info.plist
       properties:
