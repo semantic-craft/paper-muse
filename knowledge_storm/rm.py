@@ -1257,9 +1257,13 @@ class PerplexitySearchRM(dspy.Retrieve):
     响应 results[] 含 title/url/snippet。返回值与 TavilySearchRM 同构。
     """
 
-    def __init__(self, perplexity_api_key=None, k: int = 3, is_valid_source: Callable = None):
+    def __init__(
+        self, perplexity_api_key=None, k: int = 3, is_valid_source: Callable = None
+    ):
         super().__init__(k=k)
-        self.perplexity_api_key = perplexity_api_key or os.environ.get("PERPLEXITY_API_KEY")
+        self.perplexity_api_key = perplexity_api_key or os.environ.get(
+            "PERPLEXITY_API_KEY"
+        )
         if not self.perplexity_api_key:
             raise RuntimeError(
                 "You must supply perplexity_api_key or set environment variable PERPLEXITY_API_KEY"
@@ -1273,9 +1277,13 @@ class PerplexitySearchRM(dspy.Retrieve):
         self.usage = 0
         return {"PerplexitySearchRM": usage}
 
-    def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []):
+    def forward(
+        self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
+    ):
         queries = (
-            [query_or_queries] if isinstance(query_or_queries, str) else query_or_queries
+            [query_or_queries]
+            if isinstance(query_or_queries, str)
+            else query_or_queries
         )
         collected_results = []
         for query in queries:
@@ -1319,7 +1327,11 @@ class JinaFullTextRM(dspy.Retrieve):
     MAX_CHUNKS = 3
 
     def __init__(
-        self, base_rm, top_n: int = 3, max_tokens: int = 1200, jina_api_key=None,
+        self,
+        base_rm,
+        top_n: int = 3,
+        max_tokens: int = 1200,
+        jina_api_key=None,
         max_workers: int = 3,
     ):  # 对齐保留预算 SNIPPET_CHUNK*MAX_CHUNKS≈3000 字符
         super().__init__(k=base_rm.k)
@@ -1353,7 +1365,9 @@ class JinaFullTextRM(dspy.Retrieve):
         resp.raise_for_status()
         return resp.text
 
-    def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []):
+    def forward(
+        self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
+    ):
         results = self.base_rm.forward(query_or_queries, exclude_urls)
         selected = results[: self.top_n]
 
@@ -1364,13 +1378,17 @@ class JinaFullTextRM(dspy.Retrieve):
                     limit = self.SNIPPET_CHUNK * self.MAX_CHUNKS
                     return r, [
                         full_text[i : i + self.SNIPPET_CHUNK]
-                        for i in range(0, min(len(full_text), limit), self.SNIPPET_CHUNK)
+                        for i in range(
+                            0, min(len(full_text), limit), self.SNIPPET_CHUNK
+                        )
                     ]
             except Exception as e:
                 logging.warning(f"JinaFullTextRM read failed for {r.get('url')}: {e}")
             return r, None
 
-        with ThreadPoolExecutor(max_workers=min(self.max_workers, len(selected)) or 1) as executor:
+        with ThreadPoolExecutor(
+            max_workers=min(self.max_workers, len(selected)) or 1
+        ) as executor:
             futures = [executor.submit(enrich, r) for r in selected]
             for future in as_completed(futures):
                 r, snippets = future.result()
@@ -1400,7 +1418,9 @@ class MixedRM(dspy.Retrieve):
             merged.update(rm.get_usage_and_reset())
         return merged
 
-    def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []):
+    def forward(
+        self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
+    ):
         per_source = [[] for _ in self.rms]
 
         def call(i, rm):
@@ -1410,7 +1430,9 @@ class MixedRM(dspy.Retrieve):
                 logging.error(f"MixedRM sub-retriever {type(rm).__name__} failed: {e}")
                 return i, []
 
-        with ThreadPoolExecutor(max_workers=min(self.max_workers, len(self.rms))) as executor:
+        with ThreadPoolExecutor(
+            max_workers=min(self.max_workers, len(self.rms))
+        ) as executor:
             futures = [executor.submit(call, i, rm) for i, rm in enumerate(self.rms)]
             for future in as_completed(futures):
                 i, results = future.result()
