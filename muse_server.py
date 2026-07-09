@@ -199,6 +199,14 @@ def _adv_touch(_claim=None):
         _adv_bump_locked()
 
 
+def _turn_has_utterance(turn):
+    return bool(str(getattr(turn, "utterance", "") or "").strip())
+
+
+def _visible_roundtable_turns(turns):
+    return [t for t in turns if _turn_has_utterance(t)]
+
+
 def turn_to_dict(turn):
     return {"role": turn.role, "utterance": turn.utterance}
 
@@ -313,7 +321,7 @@ def status():
     runner = SESSION["runner"]
     turns = []
     if runner is not None and SESSION["phase"] in ("ready", "stepping"):
-        turns = [turn_to_dict(t) for t in runner.conversation_history]
+        turns = [turn_to_dict(t) for t in _visible_roundtable_turns(runner.conversation_history)]
     return {
         "phase": SESSION["phase"],
         "topic": SESSION["topic"],
@@ -341,7 +349,8 @@ def step(req: StepReq):
                 runner.step(user_utterance=utterance)
                 new_turns.append({"role": "你", "utterance": utterance})
             turn = runner.step()
-            new_turns.append(turn_to_dict(turn))
+            if _turn_has_utterance(turn):
+                new_turns.append(turn_to_dict(turn))
             return {"turns": new_turns}
         except Exception as e:
             raise HTTPException(500, f"本轮发言失败：{e}")
@@ -393,9 +402,10 @@ def report():
             article = runner.generate_report()
             with open(os.path.join(output_dir, "report.md"), "w", encoding="utf-8") as f:
                 f.write(article)
+            visible_turns = _visible_roundtable_turns(runner.conversation_history)
             with open(os.path.join(output_dir, "conversation.md"), "w", encoding="utf-8") as f:
                 f.write(f"# 圆桌讨论记录：{SESSION['topic']}\n\n")
-                for t in runner.conversation_history:
+                for t in visible_turns:
                     f.write(f"**{t.role}**: {t.utterance}\n\n")
             with open(os.path.join(output_dir, "instance_dump.json"), "w", encoding="utf-8") as f:
                 json.dump(runner.to_dict(), f, indent=2, ensure_ascii=False)
@@ -404,7 +414,7 @@ def report():
             files = ["report.md", "conversation.md", "instance_dump.json", "log.json"]
             try:
                 _merge_roundtable_into_muse(os.path.dirname(output_dir), SESSION["topic"],
-                                            article, runner.conversation_history)
+                                            article, visible_turns)
                 files += ["../docs/agents/muse/mindmap.md", "../docs/agents/muse/questions.md(+圆桌)"]
             except Exception:
                 traceback.print_exc()  # 并入失败不该让已生成的报告 500
