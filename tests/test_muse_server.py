@@ -142,6 +142,34 @@ def test_setup_status_reports_missing_required_keys(monkeypatch, tmp_path):
     assert "首次设置未完成" in body["message"]
 
 
+def test_topic_suggest_uses_newest_markdown_heading(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    older = tmp_path / "old.md"
+    newer = tmp_path / "nested" / "new.md"
+    newer.parent.mkdir()
+    older.write_text("# 旧主题\n", encoding="utf-8")
+    newer.write_text("\n# 新主题\n", encoding="utf-8")
+    os.utime(older, (1, 1))
+    os.utime(newer, (2, 2))
+    monkeypatch.setenv("PAPER_MUSE_OUTPUT_DIR", str(tmp_path))
+    client = TestClient(muse_server.app)
+
+    body = client.get("/topic/suggest").json()
+
+    assert body["topic"] == "新主题"
+    assert body["path"] == str(newer)
+
+
+def test_topic_suggest_is_empty_without_output_dir(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.delenv("PAPER_MUSE_OUTPUT_DIR", raising=False)
+    client = TestClient(muse_server.app)
+
+    assert client.get("/topic/suggest").json() == {"topic": "", "path": None}
+
+
 def test_release_health_reports_runtime_missing(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
