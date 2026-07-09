@@ -19,8 +19,10 @@ PUBLIC_FILES = [
     "muse_server.py",
     "blindspot.py",
     "adversary.py",
+    "paperqa_bridge.py",
     "gptr_sidecar.py",
     "requirements.txt",
+    "requirements-paperqa.txt",
     "requirements-gptr.txt",
     "secrets.toml.example",
     "tools/runtime_bootstrap.py",
@@ -34,10 +36,12 @@ REQUIRED_PATHS = [
     "muse_server.py",
     "blindspot.py",
     "adversary.py",
+    "paperqa_bridge.py",
     "knowledge_storm/__init__.py",
     "webui/index.html",
     "tools/runtime_bootstrap.py",
     "requirements.txt",
+    "requirements-paperqa.txt",
     MANIFEST,
 ]
 
@@ -124,6 +128,7 @@ def _manifest(root: Path) -> dict:
             "compatible_server_schema": 1,
             "python": "3.12",
             "main_requirements": "requirements.txt",
+            "paperqa_requirements": "requirements-paperqa.txt",
             "sidecar_requirements": "requirements-gptr.txt",
         },
         "sidecar_runtime": {

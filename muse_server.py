@@ -19,6 +19,8 @@
     GET  /scan/status   → {phase: idle|scanning|done|error, cards: [...], output_dir, error?, has_profile}
                           has_profile=false（无画像参照系）→ webui 明示「发现力打折」
     POST /scan/feedback {name, verdict: 已知|新但不适用|新且值得深挖} 三键反馈（喂抑制表）
+    GET  /evidence/status?pdf_dir= → PaperQA2 自有 PDF 库证据层可用性（可选能力，缺失不阻断启动）
+    POST /evidence/ask {question, pdf_dir?, output_dir?, timeout?} 调 PaperQA2 深挖自有库并追加 sources.md
     GET  /adversary/drafts?output_dir= → {dir, drafts:[{name,path}]} 有稿模式草稿选择器（扫 *.md 含 01_成品稿/）
     POST /adversary     {mode: draft|line, draft?, line?, from_card?, output_dir?} 起对抗审查，轮询 /adversary/status
     GET  /adversary/status → {phase: idle|reviewing|done|error, mode, claims:[{text,span,failures:[...]}], output_dir, error?}
@@ -80,6 +82,7 @@ from knowledge_storm.utils import load_api_key
 
 import blindspot
 import adversary
+import paperqa_bridge
 
 
 def sanitize_topic(topic):
@@ -348,7 +351,12 @@ def _optional_capabilities():
     return {
         "cnki": _optional_tool_status("cnki", "opencli"),
         "zsearch": _optional_tool_status("zsearch", "zsearch"),
+        "paperqa": paperqa_bridge.paperqa_status(),
     }
+
+
+def _optional_degraded(status):
+    return status.get("state") not in {"available", "ready"}
 
 
 def _developer_path_warnings():
@@ -396,7 +404,7 @@ def release_health_status():
     elif setup["missing_required_keys"]:
         state = "missing_required_key"
         blocking = True
-    elif any(v["state"] == "unavailable" for v in optional.values()) or sidecar["state"] != "ready":
+    elif any(_optional_degraded(v) for v in optional.values()) or sidecar["state"] != "ready":
         state = "ready_degraded"
         blocking = False
     else:
@@ -559,6 +567,13 @@ class ProfileReq(BaseModel):
 class FeedbackReq(BaseModel):
     name: str
     verdict: str  # 已知 | 新但不适用 | 新且值得深挖
+
+
+class EvidenceAskReq(BaseModel):
+    question: str
+    pdf_dir: str | None = None
+    output_dir: str | None = None
+    timeout: int = paperqa_bridge.DEFAULT_TIMEOUT
 
 
 class AdversaryReq(BaseModel):
@@ -738,6 +753,39 @@ def sidecar_status():
 @app.post("/sidecar/bootstrap")
 def sidecar_bootstrap():
     return {"ok": True, "sidecar": _start_sidecar_bootstrap()}
+
+
+@app.get("/evidence/status")
+def evidence_status(pdf_dir: str | None = None):
+    return paperqa_bridge.paperqa_status(pdf_dir=pdf_dir)
+
+
+def _current_evidence_output_dir(explicit=None):
+    if explicit:
+        return explicit
+    with SCAN_LOCK:
+        scan_dir = SCAN["output_dir"]
+    if scan_dir:
+        return scan_dir
+    with ADV_LOCK:
+        return ADV["output_dir"]
+
+
+@app.post("/evidence/ask")
+def evidence_ask(req: EvidenceAskReq):
+    try:
+        load_api_key(toml_file_path=str(_secrets_path()))
+        payload = paperqa_bridge.ask_self_library(
+            req.question,
+            pdf_dir=req.pdf_dir,
+            output_dir=_current_evidence_output_dir(req.output_dir),
+            timeout=max(30, min(int(req.timeout), 3600)),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"PaperQA 证据问答失败：{e}")
+    return payload
 
 
 @app.post("/session")

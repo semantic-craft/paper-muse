@@ -20,6 +20,13 @@
 > cp secrets.toml frontend/demo_light/.streamlit/secrets.toml   # 前端单独读一份
 > ```
 >
+> **可选：启用自有 PDF 库证据问答（PaperQA2）**。这层不进主 venv，避免升级 `litellm/openai` 等默认运行时依赖：
+> ```bash
+> uv venv .venv-paperqa --python 3.12
+> VIRTUAL_ENV="$PWD/.venv-paperqa" uv pip install -r requirements-paperqa.txt
+> ```
+> 然后在 `secrets.toml` 里设置 `PAPER_MUSE_PDF_DIR=/path/to/zotero/pdf/export`，并按需设置 `PAPER_MUSE_PAPERQA_LLM` / `PAPER_MUSE_PAPERQA_EMBEDDING` / `PQA_HOME`。
+>
 > **3. 启动**——两种方式任选：
 > - **网页版（推荐）**：Finder 双击 `start.command`，浏览器自动打开 → 输主题 → 点 **Research** → 实时看检索/提问/写作过程，几分钟出成品。关掉弹出的终端窗口即停止。
 > - **命令行**（可控参数、批量）：

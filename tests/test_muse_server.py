@@ -53,6 +53,14 @@ def _clear_runtime_env(monkeypatch):
         "PAPER_MUSE_SECRETS_FILE",
         "PAPER_MUSE_SIDECAR_PYTHON",
         "PAPER_MUSE_SIDECAR_SCRIPT",
+        "PAPER_MUSE_PAPERQA_PYTHON",
+        "PAPER_MUSE_PAPERQA_LLM",
+        "PAPER_MUSE_PAPERQA_SUMMARY_LLM",
+        "PAPER_MUSE_PAPERQA_AGENT_LLM",
+        "PAPER_MUSE_PAPERQA_EMBEDDING",
+        "PAPER_MUSE_PDF_DIR",
+        "PAPER_MUSE_ZOTERO_PDF_DIR",
+        "PQA_HOME",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -283,6 +291,50 @@ def test_sidecar_bootstrap_endpoint_reports_installing(monkeypatch, tmp_path):
 
     assert body["ok"] is True
     assert body["sidecar"]["state"] == "installing"
+
+
+def test_evidence_status_endpoint_reports_optional_paperqa(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(
+        muse_server.paperqa_bridge,
+        "paperqa_status",
+        lambda pdf_dir=None: {"state": "pdf_dir_missing", "optional": True, "pdf_dir": pdf_dir},
+    )
+    client = TestClient(muse_server.app)
+
+    body = client.get("/evidence/status", params={"pdf_dir": str(tmp_path)}).json()
+
+    assert body["state"] == "pdf_dir_missing"
+    assert body["pdf_dir"] == str(tmp_path)
+
+
+def test_evidence_ask_uses_current_scan_output_dir(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    captured = {}
+    monkeypatch.setattr(muse_server, "load_api_key", lambda **_kw: None)
+
+    def fake_ask(question, **kwargs):
+        captured["question"] = question
+        captured.update(kwargs)
+        return {"ok": True, "question": question, "status": {"state": "ready"}}
+
+    monkeypatch.setattr(muse_server.paperqa_bridge, "ask_self_library", fake_ask)
+    with muse_server.SCAN_LOCK:
+        muse_server.SCAN.update(output_dir=str(tmp_path / "paper"))
+    client = TestClient(muse_server.app)
+
+    body = client.post(
+        "/evidence/ask",
+        json={"question": "自有库里有没有反例？", "pdf_dir": str(tmp_path / "pdfs"), "timeout": 45},
+    ).json()
+
+    assert body["ok"] is True
+    assert captured["question"] == "自有库里有没有反例？"
+    assert captured["pdf_dir"] == str(tmp_path / "pdfs")
+    assert captured["output_dir"] == str(tmp_path / "paper")
+    assert captured["timeout"] == 45
 
 
 def test_session_returns_setup_required_when_keys_missing(monkeypatch, tmp_path):

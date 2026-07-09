@@ -11,6 +11,8 @@ def test_release_assets_stage_manifest_and_scan(tmp_path):
     release_assets.stage(out)
 
     assert (out / "muse_server.py").exists()
+    assert (out / "paperqa_bridge.py").exists()
+    assert (out / "requirements-paperqa.txt").exists()
     assert (out / "webui" / "index.html").exists()
     assert not (out / "secrets.toml").exists()
     assert not (out / "results").exists()
@@ -22,11 +24,14 @@ def test_release_assets_stage_manifest_and_scan(tmp_path):
     assert manifest["runtime"]["install_dir"] == "main"
     assert manifest["runtime"]["asset_url"]
     assert manifest["runtime"]["sha256"]
+    assert manifest["runtime"]["paperqa_requirements"] == "requirements-paperqa.txt"
     assert manifest["sidecar_runtime"]["optional"] is True
     assert manifest["sidecar_runtime"]["entrypoint"] == "sidecar/bin/python"
     assert manifest["sidecar_runtime"]["install_dir"] == "sidecar"
     assert manifest["sidecar_runtime"]["requirements"] == "requirements-gptr.txt"
     assert "webui/index.html" in manifest["required_paths"]
+    assert "paperqa_bridge.py" in manifest["required_paths"]
+    assert "requirements-paperqa.txt" in manifest["required_paths"]
     assert "tools/runtime_bootstrap.py" in manifest["required_paths"]
     assert any(f["path"] == "muse_server.py" and f["sha256"] for f in manifest["files"])
 

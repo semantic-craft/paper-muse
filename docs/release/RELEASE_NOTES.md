@@ -35,6 +35,7 @@ These integrations are optional. Missing tools degrade the related evidence surf
 
 - CNKI evidence: requires `opencli` with a usable CNKI/Chrome session.
 - Zotero/local corpus evidence: requires `zsearch`.
+- Self-library evidence QA: optional PaperQA2 runtime from `requirements-paperqa.txt`, plus `PAPER_MUSE_PDF_DIR` pointing at a Zotero/PDF export directory. `PQA_HOME` can move PaperQA indexes outside the app bundle.
 - Adversary deep evidence sidecar: optional `gpt-researcher` sidecar runtime; the app reports `missing`, `installing`, `failed`, `installed`, or `ready`.
 
 Paid/API smoke is not run automatically. Any paid smoke must be started explicitly by a human.
@@ -57,6 +58,7 @@ No-cost release smoke can read:
 
 - `GET /health`
 - `GET /release/health`
+- `GET /evidence/status`
 - `GET /perf/status`
 
 `/release/health` distinguishes runtime bootstrap state, server import readiness, missing required keys, optional capability degradation, sidecar status, and accidental developer-path usage.
