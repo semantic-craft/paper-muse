@@ -18,6 +18,12 @@ class _Turn:
         self.utterance = utterance
 
 
+def _fake_python(path, version="Python 3.12.0"):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"#!/bin/sh\necho '{version}'\n", encoding="utf-8")
+    path.chmod(0o755)
+
+
 def _stub_scan_externals(monkeypatch, captured):
     """把 scan_bg 里会联网/落盘的接线全部换成惰性桩，只保留 has_profile 判据路径。"""
     monkeypatch.setattr(muse_server, "load_api_key", lambda **k: None)
@@ -35,6 +41,7 @@ def _stub_scan_externals(monkeypatch, captured):
 
 
 def _clear_runtime_env(monkeypatch):
+    monkeypatch.setattr(muse_server, "RELEASE_MODE", False)
     for name in (
         "PAPER_MUSE_SERVER_ROOT",
         "PAPER_MUSE_APP_DATA_DIR",
@@ -44,6 +51,8 @@ def _clear_runtime_env(monkeypatch):
         "PAPER_MUSE_LOGS_DIR",
         "PAPER_MUSE_OUTPUT_DIR",
         "PAPER_MUSE_SECRETS_FILE",
+        "PAPER_MUSE_SIDECAR_PYTHON",
+        "PAPER_MUSE_SIDECAR_SCRIPT",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -131,6 +140,86 @@ def test_setup_status_reports_missing_required_keys(monkeypatch, tmp_path):
     assert "DEEPSEEK_API_KEY" in body["missing_required_keys"]
     assert body["paths"]["secrets_file"] == str(secrets.resolve())
     assert "首次设置未完成" in body["message"]
+
+
+def test_release_health_reports_runtime_missing(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    _clear_provider_env(monkeypatch)
+    secrets = tmp_path / "empty-secrets.toml"
+    secrets.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PAPER_MUSE_SECRETS_FILE", str(secrets))
+    monkeypatch.setenv("PAPER_MUSE_RUNTIME_DIR", str(tmp_path / "runtime"))
+    client = TestClient(muse_server.app)
+
+    body = client.get("/release/health").json()
+
+    assert body["state"] == "runtime_missing"
+    assert body["blocking"] is True
+    assert body["components"]["runtime"]["state"] == "runtime_missing"
+    assert body["components"]["sidecar"]["state"] == "missing"
+
+
+def test_release_health_reports_missing_required_key(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    _clear_provider_env(monkeypatch)
+    runtime_dir = tmp_path / "runtime"
+    _fake_python(runtime_dir / "main" / "bin" / "python")
+    secrets = tmp_path / "empty-secrets.toml"
+    secrets.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PAPER_MUSE_SECRETS_FILE", str(secrets))
+    monkeypatch.setenv("PAPER_MUSE_RUNTIME_DIR", str(runtime_dir))
+    client = TestClient(muse_server.app)
+
+    body = client.get("/release/health").json()
+
+    assert body["state"] == "missing_required_key"
+    assert "DEEPSEEK_API_KEY" in body["components"]["setup"]["missing_required_keys"]
+
+
+def test_release_health_reports_optional_degraded_not_blocking(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    runtime_dir = tmp_path / "runtime"
+    _fake_python(runtime_dir / "main" / "bin" / "python")
+    monkeypatch.setenv("PAPER_MUSE_RUNTIME_DIR", str(runtime_dir))
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-realish")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-realish")
+    monkeypatch.setenv("ENCODER_API_TYPE", "openai")
+    monkeypatch.setattr(muse_server.shutil, "which", lambda _command: None)
+    client = TestClient(muse_server.app)
+
+    body = client.get("/release/health").json()
+
+    assert body["state"] == "ready_degraded"
+    assert body["blocking"] is False
+    assert body["components"]["optional_capabilities"]["cnki"]["state"] == "unavailable"
+    assert body["components"]["sidecar"]["state"] == "missing"
+
+
+def test_release_health_warns_on_developer_path_in_release_mode(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    runtime_dir = tmp_path / "runtime"
+    _fake_python(runtime_dir / "main" / "bin" / "python")
+    monkeypatch.setenv("PAPER_MUSE_RUNTIME_DIR", str(runtime_dir))
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-realish")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-realish")
+    monkeypatch.setenv("ENCODER_API_TYPE", "openai")
+    monkeypatch.setattr(muse_server, "RELEASE_MODE", True)
+    monkeypatch.setattr(muse_server.shutil, "which", lambda _command: "/usr/bin/true")
+    client = TestClient(muse_server.app)
+
+    body = client.get("/release/health").json()
+
+    assert body["state"] == "developer_path"
+    assert body["blocking"] is True
+    assert body["components"]["developer_paths"]["warnings"]
 
 
 def test_sidecar_status_endpoint_reports_missing_and_failed(monkeypatch, tmp_path):

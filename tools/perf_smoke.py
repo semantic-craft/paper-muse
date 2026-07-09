@@ -133,6 +133,8 @@ def main() -> int:
     result: dict[str, Any] = {"base_url": args.base_url}
     health, health_err = _safe_request(args.base_url, "GET", "/health", timeout=10)
     result["health"] = {"error": health_err} if health_err else health
+    release_health, release_health_err = _safe_request(args.base_url, "GET", "/release/health", timeout=10)
+    result["release_health"] = {"error": release_health_err} if release_health_err else release_health
     before = _perf(args.base_url)
     result["perf_before"] = before
     if health_err:
