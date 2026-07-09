@@ -70,3 +70,11 @@ def test_adversary_ui_renders_rebuttal_and_meta_review():
     assert "author_rebuttal" in html
     assert "meta_review" in html
     assert "作者答辩" in html and "仲裁" in html
+
+
+def test_release_launch_does_not_write_bytecode_into_signed_bundle():
+    source = (release_assets.ROOT / "app" / "Sources" / "MuseServer.swift").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"PYTHONDONTWRITEBYTECODE": "1"' in source
