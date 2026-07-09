@@ -93,6 +93,31 @@ def test_runtime_bootstrap_installs_isolated_sidecar_runtime(tmp_path):
     assert (runtime_dir / "sidecar" / "bin" / "python").exists()
 
 
+def test_runtime_bootstrap_tar_extract_supports_system_python(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeTar:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def extractall(self, dest, **kwargs):
+            calls.append((dest, kwargs))
+            if "filter" in kwargs:
+                raise TypeError("unexpected keyword argument 'filter'")
+
+    monkeypatch.setattr(runtime_bootstrap.tarfile, "open", lambda *_args, **_kw: FakeTar())
+
+    runtime_bootstrap._extract(tmp_path / "runtime.tar.gz", "tar.gz", tmp_path / "out")
+
+    assert calls == [
+        (tmp_path / "out", {"filter": "data"}),
+        (tmp_path / "out", {}),
+    ]
+
+
 def test_runtime_bootstrap_rejects_checksum_and_cleans_partial_install(tmp_path):
     archive = _runtime_archive(tmp_path)
     manifest = _manifest(tmp_path, archive)
