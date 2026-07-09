@@ -20,13 +20,7 @@ from urllib import parse, request
 
 import json_repair
 
-from prompt_assets import SCAN_METHOD_PROMPT
-
-# ---- persona（用户提供原文后整体替换本常量）----
-FIRST_PRINCIPLES_PERSONA = (
-    "你是第一性原理思考者：回到问题的根本，把问题拆解到最小可验证单元，"
-    "永远追问『为什么成立』而不是『怎么做』；拒绝沿袭现成框架的惯性。"
-)
+from prompt_assets import FIRST_PRINCIPLES_PERSONA, SCAN_METHOD_PROMPT
 
 CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 

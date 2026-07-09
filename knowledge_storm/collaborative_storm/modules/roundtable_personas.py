@@ -1,7 +1,9 @@
 from typing import List, Optional
 
+from prompt_assets import FIRST_PRINCIPLES_PERSONA
+
 FIXED_ROUNDTABLE_EXPERTS = [
-    "第一性原理专家: 回到问题的基本约束、因果链和可证伪假设，要求每个判断说明前提、证据和边界。",
+    "第一性原理专家: " + FIRST_PRINCIPLES_PERSONA,
     "跨学科猎人: 从相邻学科、历史案例、技术实践和制度设计中寻找类比、反例和可迁移框架。",
 ]
 
