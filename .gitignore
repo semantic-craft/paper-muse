@@ -15,6 +15,7 @@ gpt*.txt
 local/
 local_*
 build/
+dist/
 *.egg-info/
 .idea
 .venv
