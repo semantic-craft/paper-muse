@@ -5,8 +5,10 @@
 纯引擎，LM 与检索全部依赖注入，便于离线测试；真实接线见文件末尾 real_* 系列与 CLI。
 """
 
+import hashlib
 import json
 import logging
+import math
 import os
 import re
 import subprocess
@@ -124,6 +126,34 @@ def _same_angle(left: str, right: str) -> bool:
     return len(short) >= 4 and short in long
 
 
+def _merge_unique(seq, incoming):
+    seen = {json.dumps(v, ensure_ascii=False, sort_keys=True) for v in seq}
+    out = list(seq)
+    for item in incoming:
+        key = json.dumps(item, ensure_ascii=False, sort_keys=True)
+        if key not in seen:
+            seen.add(key)
+            out.append(item)
+    return out
+
+
+def _merge_card_into(base: dict, incoming: dict, similarity=None) -> dict:
+    models = set(base.get("source_models") or []) | set(incoming.get("source_models") or [])
+    base["source_models"] = sorted(models)
+    if incoming.get("name") and incoming["name"] != base.get("name"):
+        aliases = base.setdefault("merged_angles", [])
+        if incoming["name"] not in aliases:
+            aliases.append(incoming["name"])
+    base["questions"] = _merge_unique(base.get("questions") or [], incoming.get("questions") or [])
+    base["anchors"] = _merge_unique(base.get("anchors") or [], incoming.get("anchors") or [])
+    if not base.get("feasibility") and incoming.get("feasibility"):
+        base["feasibility"] = incoming["feasibility"]
+    base["cluster_size"] = int(base.get("cluster_size") or 1) + int(incoming.get("cluster_size") or 1)
+    if similarity is not None:
+        base["cluster_similarity"] = max(float(base.get("cluster_similarity") or 0.0), round(similarity, 3))
+    return base
+
+
 def extract_json(text: str):
     """从可能带说明文字/代码围栏的模型输出里抠出 JSON 对象。
     优先 ```json 围栏；否则花括号平衡扫描收集全部可解析对象、取最大者
@@ -174,17 +204,136 @@ def dedupe_cards(cards: list) -> list:
     for c in cards:
         key = next((k for k in merged if _same_angle(c["name"], merged[k]["name"])), normalize_name(c["name"]))
         if key in merged:
-            models = merged[key]["source_models"]
-            merged[key]["source_models"] = sorted(set(models) | set(c["source_models"]))
+            _merge_card_into(merged[key], c)
         else:
-            merged[key] = dict(c)
+            item = dict(c)
+            item.setdefault("cluster_size", 1)
+            merged[key] = item
     return list(merged.values())
 
 
+def _card_quality_points(card: dict) -> float:
+    novelty = card.get("novelty")
+    points = 0.0
+    points += 80 if card.get("gold") else 0
+    points += {"交叉空白": 45, "边缘有人做": 20, "中文面未检": -5, "主流": -30}.get(novelty, 0)
+    points += min(int(card.get("en_hits") or 0), 20) * 1.5
+    points += min(int(card.get("own_hits") or 0), 8) * 2
+    if card.get("type") == "研究方法" and card.get("feasibility"):
+        points += 8
+    points += min(len(card.get("questions") or []), 3) * 2
+    return points
+
+
+def _elo_scores(cards: list, k: int = 32) -> list:
+    ratings = [1500.0 for _ in cards]
+    quality = [_card_quality_points(c) for c in cards]
+    for i in range(len(cards)):
+        for j in range(i + 1, len(cards)):
+            diff = quality[i] - quality[j]
+            actual_i = 0.5 if abs(diff) < 4 else (1.0 if diff > 0 else 0.0)
+            expected_i = 1 / (1 + 10 ** ((ratings[j] - ratings[i]) / 400))
+            delta = k * (actual_i - expected_i)
+            ratings[i] += delta
+            ratings[j] -= delta
+    return [int(round(r)) for r in ratings]
+
+
 def mark_outliers(cards: list) -> list:
-    for c in cards:
-        c["outlier"] = len(c["source_models"]) == 1
+    scores = _elo_scores(cards)
+    floor = min(1500, sorted(scores)[len(scores) // 2]) if scores else 1500
+    for i, c in enumerate(cards):
+        score = scores[i] if i < len(scores) else 1500
+        isolated = len(c.get("source_models") or []) == 1 and int(c.get("cluster_size") or 1) == 1
+        high_elo = score >= floor
+        c["elo_score"] = score
+        c["outlier_reason"] = (
+            f"Elo {score}；"
+            f"{'簇内孤立' if isolated else '已有近邻/多模型共识'}；"
+            f"{'高于本轮基准' if high_elo else '低于本轮基准'}"
+        )
+        c["outlier"] = isolated and high_elo
     return cards
+
+
+def _card_embedding_text(card: dict) -> str:
+    parts = [
+        card.get("name", ""),
+        card.get("type", ""),
+        card.get("mechanism", ""),
+        card.get("why_nonobvious", ""),
+        card.get("steelman", ""),
+    ]
+    return "\n".join(str(p) for p in parts if p)
+
+
+def _text_features(text: str) -> list:
+    raw = normalize_name(text)
+    features = re.findall(r"[a-z]+", raw)
+    for n in (2, 3):
+        features += [raw[i:i + n] for i in range(max(0, len(raw) - n + 1))]
+    return features or [raw]
+
+
+def _local_embedding(texts: list, dims: int = 128) -> list:
+    vectors = []
+    for text in texts:
+        vec = [0.0] * dims
+        for feat in _text_features(text):
+            h = int.from_bytes(hashlib.blake2b(feat.encode("utf-8"), digest_size=4).digest(), "big")
+            vec[h % dims] += 1.0
+        vectors.append(vec)
+    return vectors
+
+
+def _cosine(left, right) -> float:
+    a = [float(x) for x in left]
+    b = [float(x) for x in right]
+    if len(a) != len(b) or not a:
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def _card_vectors(cards: list, embedding_fn=None):
+    texts = [_card_embedding_text(c) for c in cards] if embedding_fn else [c.get("name", "") for c in cards]
+    try:
+        vectors = (embedding_fn or _local_embedding)(texts)
+    except Exception as e:
+        logging.warning(f"embedding 去重失败，退回名称去重：{e}")
+        return None
+    if len(vectors) != len(cards):
+        logging.warning("embedding 去重失败：向量数量与卡片数量不一致")
+        return None
+    return vectors
+
+
+def finalize_card_quality(cards: list, embedding_fn=None, embedding_threshold: float = 0.88) -> list:
+    """Final async #6 pass: embedding-neighbor merge, then Elo outlier basis."""
+    merged = dedupe_cards(cards)
+    vectors = _card_vectors(merged, embedding_fn)
+    if vectors:
+        kept, kept_vecs = [], []
+        for card, vec in zip(merged, vectors):
+            best_i, best_sim = None, 0.0
+            for i, old_vec in enumerate(kept_vecs):
+                sim = _cosine(vec, old_vec)
+                if sim > best_sim:
+                    best_i, best_sim = i, sim
+            if best_i is not None and best_sim >= embedding_threshold:
+                _merge_card_into(kept[best_i], card, similarity=best_sim)
+            else:
+                card.setdefault("cluster_size", 1)
+                kept.append(card)
+                kept_vecs.append(vec)
+        merged = kept
+    for i, card in enumerate(merged, start=1):
+        card["cluster_id"] = i
+        card.setdefault("cluster_size", 1)
+    mark_outliers(merged)
+    return merged
 
 
 def apply_suppression(cards: list, suppressed: set) -> list:
@@ -427,6 +576,8 @@ def _write_outputs(output_dir, topic, profile, cards):
             f"- 为什么非显而易见：{c['why_nonobvious']}",
             f"- 最强反驳：{c['steelman']}",
         ]
+        if c.get("outlier_reason"):
+            lines.append(f"- 离群依据：{c['outlier_reason']}")
         if c.get("feasibility"):
             lines.append(f"- 可行性/数据：{c['feasibility']}")
         lines.append(f"- 提出方：{'、'.join(c['source_models'])}；英文命中 {c.get('en_hits')}，中文学界命中 {c.get('zh_hits')}，自有库命中 {c.get('own_hits')}")
@@ -439,7 +590,8 @@ def _write_outputs(output_dir, topic, profile, cards):
 
 
 def run_scan(topic, profile, output_dir, providers, decompose_llm,
-             en_search, zh_search, on_card, own_search=None, puzzle="", on_update=None):
+             en_search, zh_search, on_card, own_search=None, puzzle="", on_update=None,
+             embedding_fn=None):
     """providers: {model_tag: llm_call}。流式两段出卡（spec §4.1/§9，冒烟 #15）：
     单家枚举完成即合并上墙（on_card，无徽标），新颖性三面每卡起线程异步补挂——
     卡对象原地更新（只换预置键的值，不加键），/scan/status 轮询快照自然可见。
@@ -470,19 +622,21 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
         fresh, touched = [], []
         with lock:
             for c in cards:
-                key = normalize_name(c["name"])
-                if key in suppressed:
+                if any(_same_angle(c["name"], known) for known in suppressed):
                     continue
+                key = next((k for k in wall if _same_angle(c["name"], wall[k]["name"])), normalize_name(c["name"]))
                 if key in wall:
                     prev = wall[key]
-                    prev["source_models"] = sorted(set(prev["source_models"]) | set(c["source_models"]))
+                    _merge_card_into(prev, c)
                     touched.append(prev)
                 else:
                     c = dict(c)
                     # 徽标字段占位：上墙后原地更新只换值不加键（快照序列化安全）
                     c.update(id=len(order) + 1, outlier=None, novelty=None, gold=None,
                              en_hits=None, en_source=None, en_degraded=None,
-                             zh_hits=None, own_hits=None, anchors=[])
+                             zh_hits=None, own_hits=None, anchors=[],
+                             elo_score=None, outlier_reason=None,
+                             cluster_id=None, cluster_size=1, cluster_similarity=None)
                     wall[key] = c
                     order.append(key)
                     fresh.append(c)
@@ -531,7 +685,11 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
     for t in enrich_ts:
         t.join()
 
-    all_cards = [wall[k] for k in order]
+    all_cards = finalize_card_quality([wall[k] for k in order], embedding_fn=embedding_fn)
+    for i, card in enumerate(all_cards, start=1):
+        card["id"] = i
+    if on_update:
+        on_update(None)
     _write_outputs(output_dir, topic, profile, all_cards)
     return all_cards
 

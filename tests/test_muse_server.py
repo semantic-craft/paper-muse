@@ -349,6 +349,29 @@ def test_scan_bg_sets_has_profile_false_without_researcher(monkeypatch, tmp_path
     assert captured["puzzle"] == "卡在跨学科切入"      # 困惑仍单独喂扫描
 
 
+def test_scan_bg_replaces_streamed_cards_with_final_cards(monkeypatch, tmp_path):
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(muse_server, "load_api_key", lambda **k: None)
+    monkeypatch.setattr(blindspot, "real_providers", lambda: {"x": (lambda p: "")})
+    monkeypatch.setattr(blindspot, "pick_decompose_llm", lambda provs: (lambda p: ""))
+    monkeypatch.setattr(blindspot, "real_en_search", lambda: (lambda q: []))
+    monkeypatch.setattr(blindspot, "real_cnki_search", lambda: (lambda q: []))
+    monkeypatch.setattr(blindspot, "real_own_search", lambda: (lambda q: []))
+    muse_server.SCAN.update(output_dir=str(tmp_path / "out"), cards=[], phase="idle", version=0)
+
+    def fake_run_scan(**kw):
+        kw["on_card"]({"name": "streamed"})
+        return [{"name": "final", "source_models": ["x"], "outlier": False}]
+
+    monkeypatch.setattr(blindspot, "run_scan", fake_run_scan)
+
+    muse_server.scan_bg(ScanReq(topic="平台数据权力", puzzle=""))
+
+    assert muse_server.SCAN["phase"] == "done"
+    assert muse_server.SCAN["cards"] == [{"name": "final", "source_models": ["x"], "outlier": False}]
+
+
 def test_scan_status_exposes_has_profile_field(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
