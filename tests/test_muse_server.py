@@ -579,7 +579,12 @@ def test_adversary_bg_draft_mode_reads_md_and_locates_span(monkeypatch, tmp_path
     draft.write_text(f"引言。\n本文主张：{quote}。\n下文展开。", encoding="utf-8")
     review = json.dumps({"claims": [{"text": "确权是前提", "quote": quote}]})
     # 有稿：review_llm 先抽主张（回 claims），红队再攻击——同一 stub 按调用序返回
-    replies = [review, json.dumps({"failures": [{"statement": "反例", "severity": "重大"}]})]
+    replies = [
+        review,
+        json.dumps({"failures": [{"statement": "反例", "severity": "重大"}]}),
+        json.dumps({"stance": "存疑", "argument": "需要补证。", "needed_evidence": "中文法文献"}),
+        json.dumps({"decision": "维持", "reason": "无证据，维持未决。", "revision": "补证"}),
+    ]
     monkeypatch.setattr(muse_server, "load_api_key", lambda **k: None)
     monkeypatch.setattr(adversary, "real_review_llm", lambda: (lambda p: replies.pop(0)))
     monkeypatch.setattr(adversary, "real_falsify_search",
@@ -592,6 +597,8 @@ def test_adversary_bg_draft_mode_reads_md_and_locates_span(monkeypatch, tmp_path
     assert muse_server.ADV["phase"] == "done"
     c = muse_server.ADV["claims"][0]
     assert c["from"] == "draft" and c["span"] is not None   # 稿面跨度就位（②高亮靠它）
+    assert c["failures"][0]["author_rebuttal"]["stance"] == "存疑"
+    assert c["failures"][0]["meta_review"]["final_verdict"] == "未决"
 
 
 def test_list_drafts_skips_generated_products(tmp_path):
