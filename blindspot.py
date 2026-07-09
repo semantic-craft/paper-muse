@@ -107,6 +107,23 @@ def normalize_name(name: str) -> str:
     return s
 
 
+def _angle_core(name: str) -> str:
+    s = normalize_name(name)
+    for suffix in ("研究视角", "理论框架", "方法路径", "分析框架", "学科视角", "视角", "理论", "框架", "方法"):
+        if s.endswith(suffix):
+            return s[: -len(suffix)] or s
+    return s
+
+
+def _same_angle(left: str, right: str) -> bool:
+    a, b = _angle_core(left), _angle_core(right)
+    if a == b:
+        return True
+    short, long = sorted((a, b), key=len)
+    # ponytail: O(n^2) substring merge is enough for current 10-30 card walls; use embeddings when #6 needs real clusters.
+    return len(short) >= 4 and short in long
+
+
 def extract_json(text: str):
     """从可能带说明文字/代码围栏的模型输出里抠出 JSON 对象。
     优先 ```json 围栏；否则花括号平衡扫描收集全部可解析对象、取最大者
@@ -155,7 +172,7 @@ def extract_json(text: str):
 def dedupe_cards(cards: list) -> list:
     merged = {}
     for c in cards:
-        key = normalize_name(c["name"])
+        key = next((k for k in merged if _same_angle(c["name"], merged[k]["name"])), normalize_name(c["name"]))
         if key in merged:
             models = merged[key]["source_models"]
             merged[key]["source_models"] = sorted(set(models) | set(c["source_models"]))
@@ -171,7 +188,11 @@ def mark_outliers(cards: list) -> list:
 
 
 def apply_suppression(cards: list, suppressed: set) -> list:
-    return [c for c in cards if normalize_name(c["name"]) not in suppressed]
+    return [
+        c
+        for c in cards
+        if not any(_same_angle(c["name"], known) for known in suppressed)
+    ]
 
 
 def classify_novelty(en_hits, zh_hits):

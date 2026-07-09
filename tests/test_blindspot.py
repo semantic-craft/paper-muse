@@ -37,6 +37,18 @@ def test_dedupe_merges_source_models():
     assert set(cards[0]["source_models"]) == {"deepseek", "gemini"}
 
 
+def test_dedupe_merges_angle_name_variants():
+    cards = dedupe_cards(
+        [
+            _card("进化生物学", "deepseek"),
+            _card("物种进化生物学（Evolutionary Biology）视角", "gemini"),
+        ]
+    )
+
+    assert len(cards) == 1
+    assert set(cards[0]["source_models"]) == {"deepseek", "gemini"}
+
+
 def test_mark_outliers_only_single_proposer():
     cards = dedupe_cards([_card("A", "deepseek"), _card("A", "gemini"), _card("B", "openai")])
     cards = mark_outliers(cards)
@@ -48,6 +60,13 @@ def test_apply_suppression_filters_known():
     cards = [_card("A"), _card("B")]
     kept = apply_suppression(cards, suppressed={normalize_name("A")})
     assert [c["name"] for c in kept] == ["B"]
+
+
+def test_apply_suppression_filters_angle_variants():
+    cards = [_card("物种进化生物学（Evolutionary Biology）视角"), _card("交易成本理论")]
+    kept = apply_suppression(cards, suppressed={normalize_name("进化生物学")})
+
+    assert [c["name"] for c in kept] == ["交易成本理论"]
 
 
 def test_extract_json_repairs_cjk_quote_and_missing_brace():
