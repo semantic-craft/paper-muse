@@ -80,6 +80,94 @@ def test_zh_name_core_shapes():
     assert _zh_name_core("Purely English") == "Purely English"  # 中文核心为空 → 回退原名
 
 
+def test_academic_en_search_uses_openalex_count_without_s2_key(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.delenv("SEMANTIC_SCHOLAR_API_KEY", raising=False)
+    monkeypatch.delenv("S2_API_KEY", raising=False)
+    B.reset_retrieval_cache_stats()
+    seen = []
+
+    def fake_http(url, headers=None, timeout=20):
+        seen.append(url)
+        assert "api.openalex.org/works" in url
+        assert "search=%E5%B9%B3%E5%8F%B0%E6%95%B0%E6%8D%AE" in url
+        return {
+            "meta": {"count": 42},
+            "results": [{"title": "OpenAlex paper", "doi": "https://doi.org/oa"}],
+        }
+
+    monkeypatch.setattr(B, "_http_json", fake_http)
+    out = B.real_en_search(k=2)("平台数据")
+
+    assert out["hits"] == 42
+    assert out["results"] == [{"title": "OpenAlex paper", "url": "https://doi.org/oa"}]
+    assert out["source"] == "openalex"
+    assert out["query"] == "Has anyone studied 平台数据?"
+    assert "semantic_scholar" in out["degraded"]
+    assert len(seen) == 1
+
+
+def test_academic_en_search_combines_s2_and_openalex(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "s2-test")
+    monkeypatch.delenv("S2_API_KEY", raising=False)
+    B.reset_retrieval_cache_stats()
+    seen = []
+
+    def fake_http(url, headers=None, timeout=20):
+        seen.append((url, headers or {}))
+        if "semanticscholar.org" in url:
+            assert (headers or {}).get("x-api-key") == "s2-test"
+            return {
+                "total": 7,
+                "data": [{"title": "S2 paper", "url": "https://s2"}],
+            }
+        if "api.openalex.org/works" in url:
+            return {
+                "meta": {"count": 11},
+                "results": [{"title": "OpenAlex paper", "id": "https://openalex/W1"}],
+            }
+        raise AssertionError(url)
+
+    monkeypatch.setattr(B, "_http_json", fake_http)
+    out = B.real_en_search(k=3)("平台数据")
+
+    assert out["hits"] == 11
+    assert out["source"] == "semantic_scholar+openalex"
+    assert out["degraded"] is None
+    assert [r["url"] for r in out["results"]] == ["https://s2", "https://openalex/W1"]
+    assert len(seen) == 2
+
+
+def test_novelty_uses_academic_total_not_anchor_count():
+    import blindspot as B
+
+    card = {"name": "复杂系统治理"}
+    B._novelty_for(
+        card,
+        "平台治理",
+        en_search=lambda _q: {
+            "hits": 47,
+            "results": [{"title": "A", "url": "u1"}, {"title": "B", "url": "u2"}],
+            "source": "openalex",
+            "degraded": "semantic_scholar: missing key",
+        },
+        zh_search=lambda _q: [],
+        own_search=None,
+        zh_keyword="著作权",
+    )
+
+    assert card["en_hits"] == 47
+    assert card["en_source"] == "openalex"
+    assert card["en_degraded"] == "semantic_scholar: missing key"
+    assert card["anchors"] == [{"title": "A", "url": "u1"}, {"title": "B", "url": "u2"}]
+    assert card["gold"] is True
+
+
 def test_cnki_empty_result_is_zero_hits(monkeypatch, tmp_path):
     # EMPTY_RESULT（零命中）≠ 未检：回 [] 让交叉空白/金矿判据可触发。
     # 真实形态（冒烟实证）：stdout 为空、YAML 错误块走 stderr、exit 66
