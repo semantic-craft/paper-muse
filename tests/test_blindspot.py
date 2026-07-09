@@ -414,6 +414,13 @@ def test_cached_search_normalizes_query_and_tracks_stats(monkeypatch, tmp_path):
     assert B.retrieval_cache_stats()["en"] == {"hits": 1, "misses": 1, "stores": 1}
 
 
+def test_cache_base_dir_honors_paper_muse_cache_dir_exact(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    assert B._cache_base_dir() == tmp_path / "cache"
+
+
 def test_cnki_true_empty_is_cached_but_session_errors_are_not(monkeypatch, tmp_path):
     import blindspot as B
 
@@ -469,8 +476,15 @@ from blindspot import (
 
 
 def test_researcher_md_path_honors_xdg(monkeypatch, tmp_path):
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert researcher_md_path() == tmp_path / "paper-muse" / "researcher.md"
+
+
+def test_researcher_md_path_honors_paper_muse_config_dir(monkeypatch, tmp_path):
+    monkeypatch.setenv("PAPER_MUSE_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert researcher_md_path() == tmp_path / "config" / "researcher.md"
 
 
 def test_profile_text_dict_roundtrip_excludes_empty_and_puzzle():
@@ -484,6 +498,7 @@ def test_profile_text_dict_roundtrip_excludes_empty_and_puzzle():
 
 
 def test_researcher_profile_save_load_roundtrip(monkeypatch, tmp_path):
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert load_researcher_profile() == {"field": "", "stance": "", "familiar": ""}  # 缺文件回全空
     save_researcher_profile({"field": "数据法", "stance": "法教义学", "familiar": "反垄断法"})
