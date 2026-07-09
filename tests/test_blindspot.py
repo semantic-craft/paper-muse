@@ -378,6 +378,7 @@ def test_decompose_returns_fundamentals_and_uses_persona():
     out = decompose_topic("平台责任", profile="我熟悉法教义学", llm_call=llm)
     assert out == ["根1", "根2", "根3"]
     assert "第一性原理" in llm.prompts[0] and "我熟悉法教义学" in llm.prompts[0]
+    assert "这个任务到底要解决什么问题" in llm.prompts[0]
 
 
 def test_enumerate_cards_parses_and_tags_model():
