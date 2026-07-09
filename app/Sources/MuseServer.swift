@@ -169,6 +169,8 @@ final class MuseServer {
             ],
             currentDirectory: serverRoot,
             environment: [
+                // The bundle is code-signed and must never be mutated by Python imports.
+                "PYTHONDONTWRITEBYTECODE": "1",
                 "PAPER_MUSE_SERVER_ROOT": serverRoot.path,
                 "PAPER_MUSE_APP_DATA_DIR": dataDir.path,
                 "PAPER_MUSE_CONFIG_DIR": configDir.path,
