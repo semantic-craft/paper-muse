@@ -5,6 +5,7 @@ import pytest
 from blindspot import (
     normalize_name,
     dedupe_cards,
+    finalize_card_quality,
     mark_outliers,
     apply_suppression,
     classify_novelty,
@@ -37,17 +38,69 @@ def test_dedupe_merges_source_models():
     assert set(cards[0]["source_models"]) == {"deepseek", "gemini"}
 
 
+def test_dedupe_merges_angle_name_variants():
+    cards = dedupe_cards(
+        [
+            _card("进化生物学", "deepseek"),
+            _card("物种进化生物学（Evolutionary Biology）视角", "gemini"),
+        ]
+    )
+
+    assert len(cards) == 1
+    assert set(cards[0]["source_models"]) == {"deepseek", "gemini"}
+
+
+def test_finalize_quality_embedding_merges_near_duplicates():
+    cards = [
+        _card("制度扩散理论", "deepseek"),
+        _card("政策扩散框架", "gemini"),
+        _card("交易成本理论", "openai"),
+    ]
+
+    def fake_embed(texts):
+        assert len(texts) == 3
+        return [[1, 0], [0.98, 0.02], [0, 1]]
+
+    merged = finalize_card_quality(cards, embedding_fn=fake_embed, embedding_threshold=0.9)
+
+    assert [c["name"] for c in merged] == ["制度扩散理论", "交易成本理论"]
+    assert set(merged[0]["source_models"]) == {"deepseek", "gemini"}
+    assert merged[0]["cluster_size"] == 2
+    assert merged[0]["merged_angles"] == ["政策扩散框架"]
+    assert merged[0]["outlier"] is False
+
+
 def test_mark_outliers_only_single_proposer():
     cards = dedupe_cards([_card("A", "deepseek"), _card("A", "gemini"), _card("B", "openai")])
     cards = mark_outliers(cards)
     by = {c["name"]: c["outlier"] for c in cards}
     assert by["B"] is True and by["A"] is False
+    assert "Elo" in cards[1]["outlier_reason"]
+
+
+def test_mark_outliers_requires_high_elo_and_isolation():
+    cards = [
+        _card("英热中冷强卡", "deepseek", novelty="交叉空白", gold=True, en_hits=12, zh_hits=0),
+        _card("主流弱卡", "gemini", novelty="主流", gold=False, en_hits=1, zh_hits=9),
+    ]
+    mark_outliers(cards)
+
+    assert cards[0]["elo_score"] > cards[1]["elo_score"]
+    assert cards[0]["outlier"] is True
+    assert cards[1]["outlier"] is False
 
 
 def test_apply_suppression_filters_known():
     cards = [_card("A"), _card("B")]
     kept = apply_suppression(cards, suppressed={normalize_name("A")})
     assert [c["name"] for c in kept] == ["B"]
+
+
+def test_apply_suppression_filters_angle_variants():
+    cards = [_card("物种进化生物学（Evolutionary Biology）视角"), _card("交易成本理论")]
+    kept = apply_suppression(cards, suppressed={normalize_name("进化生物学")})
+
+    assert [c["name"] for c in kept] == ["交易成本理论"]
 
 
 def test_extract_json_repairs_cjk_quote_and_missing_brace():
@@ -80,10 +133,100 @@ def test_zh_name_core_shapes():
     assert _zh_name_core("Purely English") == "Purely English"  # 中文核心为空 → 回退原名
 
 
-def test_cnki_empty_result_is_zero_hits(monkeypatch):
+def test_academic_en_search_uses_openalex_count_without_s2_key(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.delenv("SEMANTIC_SCHOLAR_API_KEY", raising=False)
+    monkeypatch.delenv("S2_API_KEY", raising=False)
+    B.reset_retrieval_cache_stats()
+    seen = []
+
+    def fake_http(url, headers=None, timeout=20):
+        seen.append(url)
+        assert "api.openalex.org/works" in url
+        assert "search=%E5%B9%B3%E5%8F%B0%E6%95%B0%E6%8D%AE" in url
+        return {
+            "meta": {"count": 42},
+            "results": [{"title": "OpenAlex paper", "doi": "https://doi.org/oa"}],
+        }
+
+    monkeypatch.setattr(B, "_http_json", fake_http)
+    out = B.real_en_search(k=2)("平台数据")
+
+    assert out["hits"] == 42
+    assert out["results"] == [{"title": "OpenAlex paper", "url": "https://doi.org/oa"}]
+    assert out["source"] == "openalex"
+    assert out["query"] == "Has anyone studied 平台数据?"
+    assert "semantic_scholar" in out["degraded"]
+    assert len(seen) == 1
+
+
+def test_academic_en_search_combines_s2_and_openalex(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "s2-test")
+    monkeypatch.delenv("S2_API_KEY", raising=False)
+    B.reset_retrieval_cache_stats()
+    seen = []
+
+    def fake_http(url, headers=None, timeout=20):
+        seen.append((url, headers or {}))
+        if "semanticscholar.org" in url:
+            assert (headers or {}).get("x-api-key") == "s2-test"
+            return {
+                "total": 7,
+                "data": [{"title": "S2 paper", "url": "https://s2"}],
+            }
+        if "api.openalex.org/works" in url:
+            return {
+                "meta": {"count": 11},
+                "results": [{"title": "OpenAlex paper", "id": "https://openalex/W1"}],
+            }
+        raise AssertionError(url)
+
+    monkeypatch.setattr(B, "_http_json", fake_http)
+    out = B.real_en_search(k=3)("平台数据")
+
+    assert out["hits"] == 11
+    assert out["source"] == "semantic_scholar+openalex"
+    assert out["degraded"] is None
+    assert [r["url"] for r in out["results"]] == ["https://s2", "https://openalex/W1"]
+    assert len(seen) == 2
+
+
+def test_novelty_uses_academic_total_not_anchor_count():
+    import blindspot as B
+
+    card = {"name": "复杂系统治理"}
+    B._novelty_for(
+        card,
+        "平台治理",
+        en_search=lambda _q: {
+            "hits": 47,
+            "results": [{"title": "A", "url": "u1"}, {"title": "B", "url": "u2"}],
+            "source": "openalex",
+            "degraded": "semantic_scholar: missing key",
+        },
+        zh_search=lambda _q: [],
+        own_search=None,
+        zh_keyword="著作权",
+    )
+
+    assert card["en_hits"] == 47
+    assert card["en_source"] == "openalex"
+    assert card["en_degraded"] == "semantic_scholar: missing key"
+    assert card["anchors"] == [{"title": "A", "url": "u1"}, {"title": "B", "url": "u2"}]
+    assert card["gold"] is True
+
+
+def test_cnki_empty_result_is_zero_hits(monkeypatch, tmp_path):
     # EMPTY_RESULT（零命中）≠ 未检：回 [] 让交叉空白/金矿判据可触发。
     # 真实形态（冒烟实证）：stdout 为空、YAML 错误块走 stderr、exit 66
     import blindspot as B
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
 
     class R:
         stdout = ""
@@ -93,8 +236,10 @@ def test_cnki_empty_result_is_zero_hits(monkeypatch):
     assert B.real_cnki_search()("任意查询") == []
 
 
-def test_cnki_session_error_still_raises(monkeypatch):
+def test_cnki_session_error_still_raises(monkeypatch, tmp_path):
     import blindspot as B
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
 
     class R:
         stdout = ""
@@ -146,6 +291,37 @@ def test_run_scan_streaming_merge_and_enrich(tmp_path, monkeypatch):
     assert a["en_hits"] == 4 and a["zh_hits"] == 0 and a["own_hits"] == 1
     assert a["novelty"] == "交叉空白" and a["gold"] is True  # en 热 × zh 真零 = 金标
     assert len(a["anchors"]) == 3
+
+
+def test_run_scan_merges_angle_variants_in_live_wall(tmp_path, monkeypatch):
+    import blindspot as B
+
+    monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
+    monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "著作权")
+    emitted = []
+    cards = B.run_scan(
+        "主题", "", str(tmp_path),
+        providers={
+            "deepseek": lambda p: json.dumps({"cards": [
+                {"type": "学科视角", "name": "进化生物学", "mechanism": "m",
+                 "why_nonobvious": "w", "steelman": "s", "questions": ["q"]}
+            ]}),
+            "gemini": lambda p: json.dumps({"cards": [
+                {"type": "学科视角", "name": "物种进化生物学视角", "mechanism": "m",
+                 "why_nonobvious": "w", "steelman": "s", "questions": ["q2"]}
+            ]}),
+        },
+        decompose_llm=lambda p: "",
+        en_search=lambda q: [],
+        zh_search=lambda q: [],
+        own_search=None,
+        on_card=emitted.append,
+    )
+
+    assert len(emitted) == 1
+    assert len(cards) == 1
+    assert set(cards[0]["source_models"]) == {"deepseek", "gemini"}
+    assert cards[0]["outlier"] is False
 
 
 def test_run_scan_suppression_blocks_emit(tmp_path, monkeypatch):
@@ -328,10 +504,12 @@ def test_run_scan_end_to_end_offline(tmp_path):
         own_search=lambda q: [1, 2] if "交易成本" in q else [],
         on_card=emitted.append,
     )
-    # 去重后 5 张；交易成本双模型共识、其余离群
+    # 去重后 5 张；交易成本双模型共识，离群需同时满足孤立 + Elo 本轮高位
     assert len(cards) == 5 and len(emitted) == 5
     byname = {c["name"]: c for c in cards}
-    assert byname["交易成本"]["outlier"] is False and byname["STS"]["outlier"] is True
+    assert byname["交易成本"]["outlier"] is False
+    assert byname["文书量化"]["outlier"] is True and byname["STS"]["outlier"] is False
+    assert "Elo" in byname["文书量化"]["outlier_reason"]
     # 自有语料面独立于新颖性判据：own_hits 记数，学界空白×自有有藏 → 已藏未用
     assert byname["交易成本"]["own_hits"] == 2 and byname["STS"]["own_hits"] == 0
     # 新颖性：en=4, zh=0 → 交叉空白 + 金标
@@ -389,6 +567,78 @@ def test_run_scan_all_providers_failing_raises(tmp_path):
         )
 
 
+# ---- 检索缓存（#19）----
+
+def test_cached_search_normalizes_query_and_tracks_stats(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
+    calls = []
+
+    def search(q):
+        calls.append(q)
+        return [{"title": "T", "url": "https://e"}]
+
+    cached = B._cached_search("en", 5, "test", ttl=60, search=search)
+
+    assert cached(" 平台   责任 ") == [{"title": "T", "url": "https://e"}]
+    assert cached("平台 责任") == [{"title": "T", "url": "https://e"}]
+    assert calls == [" 平台   责任 "]
+    assert B.retrieval_cache_stats()["en"] == {"hits": 1, "misses": 1, "stores": 1}
+
+
+def test_cache_base_dir_honors_paper_muse_cache_dir_exact(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    assert B._cache_base_dir() == tmp_path / "cache"
+
+
+def test_cnki_true_empty_is_cached_but_session_errors_are_not(monkeypatch, tmp_path):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
+    calls = []
+
+    class Empty:
+        stdout = ""
+        stderr = "ok: false\nerror:\n  code: EMPTY_RESULT\n"
+
+    def empty_run(*args, **kwargs):
+        calls.append("empty")
+        return Empty
+
+    monkeypatch.setattr(B.subprocess, "run", empty_run)
+    search = B.real_cnki_search(limit=3)
+    assert search("不存在的题") == []
+    assert search("不存在的题") == []
+    assert calls == ["empty"]
+    assert B.retrieval_cache_stats()["cnki"] == {"hits": 1, "misses": 1, "stores": 1}
+
+    class NoSession:
+        stdout = ""
+        stderr = "ok: false\nerror:\n  code: NO_BROWSER_SESSION\n"
+
+    calls.clear()
+
+    def no_session_run(*args, **kwargs):
+        calls.append("no-session")
+        return NoSession
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache2"))
+    B.reset_retrieval_cache_stats()
+    monkeypatch.setattr(B.subprocess, "run", no_session_run)
+    search = B.real_cnki_search(limit=3)
+    with pytest.raises(RuntimeError):
+        search("需要浏览器")
+    with pytest.raises(RuntimeError):
+        search("需要浏览器")
+    assert calls == ["no-session", "no-session"]
+    assert B.retrieval_cache_stats()["cnki"] == {"hits": 0, "misses": 2, "stores": 0}
+
+
 # ---- 机器级画像 researcher.md（ADR-0001 / #3）----
 from blindspot import (
     load_researcher_profile,
@@ -400,8 +650,15 @@ from blindspot import (
 
 
 def test_researcher_md_path_honors_xdg(monkeypatch, tmp_path):
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert researcher_md_path() == tmp_path / "paper-muse" / "researcher.md"
+
+
+def test_researcher_md_path_honors_paper_muse_config_dir(monkeypatch, tmp_path):
+    monkeypatch.setenv("PAPER_MUSE_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert researcher_md_path() == tmp_path / "config" / "researcher.md"
 
 
 def test_profile_text_dict_roundtrip_excludes_empty_and_puzzle():
@@ -415,6 +672,7 @@ def test_profile_text_dict_roundtrip_excludes_empty_and_puzzle():
 
 
 def test_researcher_profile_save_load_roundtrip(monkeypatch, tmp_path):
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert load_researcher_profile() == {"field": "", "stance": "", "familiar": ""}  # 缺文件回全空
     save_researcher_profile({"field": "数据法", "stance": "法教义学", "familiar": "反垄断法"})

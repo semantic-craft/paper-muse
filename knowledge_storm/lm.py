@@ -379,9 +379,7 @@ class OpenAIModel(dspy.OpenAI):
         choices = response["choices"]
         completions = [choice["message"]["content"] for choice in choices]
 
-        self.history.append(
-            {"prompt": prompt, "response": response, "kwargs": kwargs}
-        )
+        self.history.append({"prompt": prompt, "response": response, "kwargs": kwargs})
         return completions
 
 

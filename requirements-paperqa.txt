@@ -1,0 +1,16 @@
+# PaperQA2 evidence layer (issue #11).
+#
+# Keep this outside the main requirements.txt: paper-qa upgrades litellm/openai
+# and brings tantivy plus metadata clients. The main Paper Muse runtime should
+# not inherit that churn unless the user opts into self-library evidence QA.
+#
+# Build:
+#   uv venv .venv-paperqa --python 3.12
+#   VIRTUAL_ENV="$PWD/.venv-paperqa" uv pip install -r requirements-paperqa.txt
+#
+# Runtime:
+#   PAPER_MUSE_PAPERQA_PYTHON=.venv-paperqa/bin/python
+#   PAPER_MUSE_PDF_DIR=/path/to/zotero/pdf/export
+#   optional: PAPER_MUSE_PAPERQA_LLM, PAPER_MUSE_PAPERQA_EMBEDDING, PQA_HOME
+
+paper-qa==2026.3.18
