@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -21,6 +22,7 @@ PUBLIC_FILES = [
     "requirements.txt",
     "requirements-gptr.txt",
     "secrets.toml.example",
+    "tools/runtime_bootstrap.py",
     "LICENSE",
 ]
 PUBLIC_DIRS = [
@@ -33,6 +35,7 @@ REQUIRED_PATHS = [
     "adversary.py",
     "knowledge_storm/__init__.py",
     "webui/index.html",
+    "tools/runtime_bootstrap.py",
     "requirements.txt",
     MANIFEST,
 ]
@@ -104,6 +107,14 @@ def _manifest(root: Path) -> dict:
         "name": "paper-muse-server-assets",
         "entrypoint": "muse_server.py",
         "runtime": {
+            "platform": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_PLATFORM", "macos-arm64"),
+            "version": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_VERSION", "main-python-3.12-v1"),
+            "asset_url": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_URL", "PAPER_MUSE_MAIN_RUNTIME_URL"),
+            "archive_type": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_ARCHIVE_TYPE", "tar.gz"),
+            "sha256": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_SHA256", "PAPER_MUSE_MAIN_RUNTIME_SHA256"),
+            "entrypoint": "main/bin/python",
+            "compatible_app": os.environ.get("PAPER_MUSE_APP_VERSION", "dev"),
+            "compatible_server_schema": 1,
             "python": "3.12",
             "main_requirements": "requirements.txt",
             "sidecar_requirements": "requirements-gptr.txt",
@@ -119,7 +130,9 @@ def stage(output: Path) -> None:
     output.mkdir(parents=True)
 
     for rel in PUBLIC_FILES:
-        shutil.copy2(ROOT / rel, output / rel)
+        dst = output / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / rel, dst)
     for rel in PUBLIC_DIRS:
         shutil.copytree(ROOT / rel, output / rel, ignore=_ignore)
 

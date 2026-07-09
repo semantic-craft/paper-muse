@@ -16,7 +16,13 @@ def test_release_assets_stage_manifest_and_scan(tmp_path):
     assert not (out / "results").exists()
     manifest = json.loads((out / "runtime-manifest.json").read_text(encoding="utf-8"))
     assert manifest["entrypoint"] == "muse_server.py"
+    assert manifest["runtime"]["platform"] == "macos-arm64"
+    assert manifest["runtime"]["archive_type"] == "tar.gz"
+    assert manifest["runtime"]["entrypoint"] == "main/bin/python"
+    assert manifest["runtime"]["asset_url"]
+    assert manifest["runtime"]["sha256"]
     assert "webui/index.html" in manifest["required_paths"]
+    assert "tools/runtime_bootstrap.py" in manifest["required_paths"]
     assert any(f["path"] == "muse_server.py" and f["sha256"] for f in manifest["files"])
 
     release_assets.scan(out)
