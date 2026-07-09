@@ -65,6 +65,16 @@ def test_runtime_bootstrap_installs_and_skips_compatible_runtime(tmp_path):
     assert runtime_bootstrap.bootstrap(manifest, runtime_dir) == "already-installed"
 
 
+def test_runtime_bootstrap_accepts_manifest_relative_asset(tmp_path):
+    archive = _runtime_archive(tmp_path)
+    manifest = _manifest(tmp_path, archive)
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["runtime"]["asset_url"] = archive.name
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+
+    assert runtime_bootstrap.bootstrap(manifest, tmp_path / "runtime") == "installed"
+
+
 def test_runtime_bootstrap_installs_isolated_sidecar_runtime(tmp_path):
     main = _runtime_archive(tmp_path, version="Python 3.12.1", install_dir="main")
     sidecar = _runtime_archive(tmp_path, version="Python 3.12.2", install_dir="sidecar")
