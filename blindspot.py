@@ -14,6 +14,7 @@ import threading
 from contextlib import nullcontext
 from copy import deepcopy
 from pathlib import Path
+from urllib import parse, request
 
 import json_repair
 
@@ -84,6 +85,12 @@ def _cached_search(name: str, limit: int, mode: str, ttl: int, search):
         return result
 
     return wrapped
+
+
+def _http_json(url: str, headers=None, timeout: int = 20):
+    req = request.Request(url, headers=headers or {})
+    with request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8") or "{}")
 
 # 研究者画像三要素：既是机器级 researcher.md 的键，也是卡片 vs_profile 绑定的目标（#4）。
 # key = 机器/UI 用的稳定标识；label = 中文面（喂 LLM、researcher.md 文本、UI 标签）。
@@ -325,6 +332,19 @@ def _topic_zh_keyword(topic: str, llm_call):
         return None
 
 
+def _en_payload(en):
+    if isinstance(en, dict):
+        results = en.get("results") or en.get("anchors") or []
+        return {
+            "hits": int(en.get("hits") or len(results)),
+            "results": results,
+            "source": en.get("source"),
+            "degraded": en.get("degraded"),
+        }
+    results = en or []
+    return {"hits": len(results), "results": results, "source": None, "degraded": None}
+
+
 def _novelty_for(card, topic, en_search, zh_search, own_search=None,
                  zh_gate=None, own_gate=None, zh_keyword=None):
     """新颖性三面定位，逐面原地回填（卡已上墙，字段更新靠 /scan/status 轮询快照可见）。
@@ -335,8 +355,11 @@ def _novelty_for(card, topic, en_search, zh_search, own_search=None,
     except Exception as e:
         logging.warning(f"en_search 失败（en_hits=0 计）[{card['name']}]：{e}")
         en = []
-    card["en_hits"] = len(en)
-    card["anchors"] = [{"title": r.get("title", ""), "url": r.get("url", "")} for r in en[:3]]
+    en_payload = _en_payload(en)
+    card["en_hits"] = en_payload["hits"]
+    card["en_source"] = en_payload["source"]
+    card["en_degraded"] = en_payload["degraded"]
+    card["anchors"] = [{"title": r.get("title", ""), "url": r.get("url", "")} for r in en_payload["results"][:3]]
     if own_search is None:
         card["own_hits"] = None
     else:
@@ -356,7 +379,7 @@ def _novelty_for(card, topic, en_search, zh_search, own_search=None,
         # 降级必须留痕：中文面是新颖性判据，静默吞掉会让「未检」无从诊断
         logging.warning(f"zh_search 失败（降级中文面未检）[{card['name']}] q={zq!r}：{e}")
         zh_hits = None  # 中文面未检，明示不装懂
-    card["novelty"], card["gold"] = classify_novelty(len(en), zh_hits)
+    card["novelty"], card["gold"] = classify_novelty(en_payload["hits"], zh_hits)
     card["zh_hits"] = zh_hits
     return card
 
@@ -437,7 +460,8 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
                     c = dict(c)
                     # 徽标字段占位：上墙后原地更新只换值不加键（快照序列化安全）
                     c.update(id=len(order) + 1, outlier=None, novelty=None, gold=None,
-                             en_hits=None, zh_hits=None, own_hits=None, anchors=[])
+                             en_hits=None, en_source=None, en_degraded=None,
+                             zh_hits=None, own_hits=None, anchors=[])
                     wall[key] = c
                     order.append(key)
                     fresh.append(c)
@@ -595,15 +619,82 @@ def pick_decompose_llm(provs: dict):
     return next(iter(provs.values()))  # 全是自定义 provider → 回退第一个
 
 
+def _owl_academic_query(query: str) -> str:
+    return f"Has anyone studied {query.strip()}?"
+
+
+def _s2_api_key():
+    return os.getenv("SEMANTIC_SCHOLAR_API_KEY") or os.getenv("S2_API_KEY")
+
+
+def _academic_result(title="", url=""):
+    return {"title": title or "", "url": url or ""}
+
+
+def _semantic_scholar_search(query: str, limit: int):
+    key = _s2_api_key()
+    if not key:
+        raise RuntimeError("SEMANTIC_SCHOLAR_API_KEY/S2_API_KEY missing")
+    params = parse.urlencode({"query": query, "limit": limit, "fields": "title,url"})
+    data = _http_json(
+        f"https://api.semanticscholar.org/graph/v1/paper/search?{params}",
+        headers={"x-api-key": key},
+    )
+    rows = data.get("data") or []
+    return {
+        "hits": int(data.get("total") or len(rows)),
+        "results": [_academic_result(r.get("title"), r.get("url")) for r in rows],
+    }
+
+
+def _openalex_search(query: str, limit: int):
+    params = {"search": query, "per-page": limit}
+    if os.getenv("OPENALEX_MAILTO"):
+        params["mailto"] = os.getenv("OPENALEX_MAILTO")
+    data = _http_json(f"https://api.openalex.org/works?{parse.urlencode(params)}")
+    rows = data.get("results") or []
+    return {
+        "hits": int((data.get("meta") or {}).get("count") or len(rows)),
+        "results": [
+            _academic_result(r.get("title"), r.get("doi") or r.get("id")) for r in rows
+        ],
+    }
+
+
+def _merge_academic_searches(query: str, limit: int):
+    academic_query = _owl_academic_query(query)
+    results, degraded, sources, totals = [], [], [], []
+
+    for name, search in (
+        ("semantic_scholar", _semantic_scholar_search),
+        ("openalex", _openalex_search),
+    ):
+        try:
+            payload = search(query, limit)
+            sources.append(name)
+            totals.append(payload["hits"])
+            for item in payload["results"]:
+                key = (item.get("url") or item.get("title") or "").lower()
+                if key and key not in {r["_key"] for r in results}:
+                    results.append({**item, "_key": key})
+        except Exception as e:
+            degraded.append(f"{name}: {e}")
+
+    return {
+        "hits": max(totals) if totals else 0,
+        "results": [{k: v for k, v in r.items() if k != "_key"} for r in results[:limit]],
+        "source": "+".join(sources) if sources else None,
+        "degraded": "; ".join(degraded) if degraded else None,
+        "query": academic_query,
+    }
+
+
 def real_en_search(k: int = 5):
-    from knowledge_storm.rm import PerplexitySearchRM
-
-    rm = PerplexitySearchRM(k=k)
-
     def search(query):
-        return rm.forward(query)
+        return _merge_academic_searches(query, k)
 
-    return _cached_search("en", k, "perplexity", ttl=7 * 24 * 3600, search=search)
+    s2_mode = "s2" if _s2_api_key() else "openalex-only"
+    return _cached_search("en", k, f"academic:{s2_mode}", ttl=7 * 24 * 3600, search=search)
 
 
 def real_cnki_search(limit: int = 5):
