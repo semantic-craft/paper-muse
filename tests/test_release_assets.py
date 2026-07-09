@@ -60,3 +60,11 @@ def test_release_assets_can_embed_main_runtime(monkeypatch, tmp_path):
     assert manifest["runtime"]["asset_url"] == "runtime/main-runtime.tar.gz"
     assert manifest["runtime"]["sha256"] == release_assets._sha256(runtime)
     assert (out / "runtime" / "main-runtime.tar.gz").read_bytes() == b"runtime"
+
+
+def test_adversary_ui_renders_rebuttal_and_meta_review():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert "author_rebuttal" in html
+    assert "meta_review" in html
+    assert "作者答辩" in html and "仲裁" in html

@@ -988,6 +988,9 @@
   #advView .fp-statement { font-family: var(--serif-zh); font-size: 14.5px; line-height: 1.62; color: var(--ink); margin: 10px 0 8px; overflow-wrap: anywhere; }
   #advView .fp-note { font-family: var(--kai); font-size: 13.5px; line-height: 1.62; color: var(--vermilion); letter-spacing: .03em; margin: 0 0 10px; padding-left: 2px; }
   #advView .fp-note .byline::before { content: "按"; display: inline-block; border: 1px solid var(--vermilion); color: var(--vermilion); font-family: var(--serif-zh); font-size: 10px; width: 16px; height: 16px; line-height: 14px; text-align: center; margin-right: 6px; vertical-align: 1px; }
+  #advView .fp-arb { margin-top: 9px; padding-top: 8px; border-top: 1px dotted var(--hair); font-family: var(--kai); font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+  #advView .fp-arb b { font-family: var(--serif-zh); color: var(--vermilion); font-weight: 600; }
+  #advView .fp-arb .row + .row { margin-top: 4px; }
 
   #advView .fp-foot { border-top: 1px dotted var(--hair-strong); padding-top: 9px; }
   #advView .density { font-family: var(--mono); font-size: 11px; color: var(--ink); font-variant-numeric: tabular-nums; display: block; margin-bottom: 8px; }
@@ -2363,6 +2366,14 @@ document.addEventListener("toggle", positionMargins, true);
     const items = ev.map(e => `<li class="ev-item"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title || e.url)}</a><span class="ev-stance s-${esc(e.stance)}">${esc(e.stance)}</span><span class="ev-host">${esc(shortHost(e.url))}</span></li>`).join("");
     return `<details class="ev-fold"><summary>证据链 ${ev.length} · 呈</summary><ul class="ev-list">${items}</ul></details>`;
   }
+  function arbitrationHTML(fp){
+    const rb = fp.author_rebuttal, mr = fp.meta_review;
+    if (!rb && !mr) return "";
+    const rows = [];
+    if (rb) rows.push(`<div class="row"><b>作者答辩</b> ${esc(rb.stance || "存疑")} · ${esc(rb.argument || "")}${rb.needed_evidence ? ` · 补证：${esc(rb.needed_evidence)}` : ""}</div>`);
+    if (mr) rows.push(`<div class="row"><b>仲裁</b> ${esc(mr.decision || "维持")} · ${esc(mr.reason || "")}${mr.revision ? ` · 修订：${esc(mr.revision)}` : ""}</div>`);
+    return `<div class="fp-arb">${rows.join("")}</div>`;
+  }
   function sevDots(sev){
     const n = (SEV_META[sev] || SEV_META["存疑"]).n; let s = "";
     for (let k = 0; k < 3; k++) s += `<span class="dot ${k < n ? "on" : ""}"></span>`;
@@ -2390,6 +2401,7 @@ document.addEventListener("toggle", positionMargins, true);
       <div class="fp-foot attach" style="animation-delay:${footDelay}ms">
         ${densityHTML(fp)}
         ${evidenceHTML(fp)}
+        ${arbitrationHTML(fp)}
         <div class="fp-actions">
           <button class="mini-btn" type="button" data-act="送 to-prove · ${esc(fp.id)}">送 to-prove</button>
           <button class="mini-btn diag" type="button" data-act="送 diagnose · ${esc(fp.id)}">diagnose</button>
