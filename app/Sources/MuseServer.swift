@@ -30,6 +30,7 @@ final class MuseServer {
         case missingPython(String, String)
         case missingServerAssets(String)
         case missingAppSupportDirectory
+        case runtimeBootstrapFailed(String)
         case notReady
 
         var errorDescription: String? {
@@ -37,6 +38,7 @@ final class MuseServer {
             case .missingPython(let p, let hint): return "找不到 Python：\(p)\n\(hint)"
             case .missingServerAssets(let p): return "找不到打包后的后端资源：\(p)\nRelease 版本不会回退到开发 checkout。"
             case .missingAppSupportDirectory: return "找不到 Application Support 目录，无法准备 PaperMuse 用户数据目录"
+            case .runtimeBootstrapFailed(let msg): return "PaperMuse runtime 安装失败：\(msg)"
             case .notReady: return "后端 30 秒内未就绪，检查 muse_server.py 日志"
             }
         }
@@ -120,6 +122,7 @@ final class MuseServer {
             try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         try installConfigTemplate(from: serverRoot, to: configDir)
+        try bootstrapRuntime(serverRoot: serverRoot, runtimeDir: runtimeDir)
 
         let python = runtimeDir.appendingPathComponent("main/bin/python")
         guard fileManager.isExecutableFile(atPath: python.path) else {
@@ -149,6 +152,34 @@ final class MuseServer {
                 "PAPER_MUSE_LOGS_DIR": logsDir.path,
             ]
         )
+    }
+
+    private func bootstrapRuntime(serverRoot: URL, runtimeDir: URL) throws {
+        let script = serverRoot.appendingPathComponent("tools/runtime_bootstrap.py")
+        let manifest = serverRoot.appendingPathComponent("runtime-manifest.json")
+        guard fileManager.fileExists(atPath: script.path), fileManager.fileExists(atPath: manifest.path) else {
+            throw ServerError.runtimeBootstrapFailed("缺少 runtime bootstrap 工具或 manifest")
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        p.arguments = [
+            script.path,
+            "bootstrap",
+            "--manifest", manifest.path,
+            "--runtime-dir", runtimeDir.path,
+        ]
+        let out = Pipe()
+        let err = Pipe()
+        p.standardOutput = out
+        p.standardError = err
+        try p.run()
+        p.waitUntilExit()
+        guard p.terminationStatus == 0 else {
+            let data = err.fileHandleForReading.readDataToEndOfFile()
+            let fallback = out.fileHandleForReading.readDataToEndOfFile()
+            let msg = String(data: data.isEmpty ? fallback : data, encoding: .utf8) ?? "unknown error"
+            throw ServerError.runtimeBootstrapFailed(msg.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
     }
 
     private func installConfigTemplate(from serverRoot: URL, to configDir: URL) throws {
