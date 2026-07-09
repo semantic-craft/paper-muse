@@ -6,6 +6,12 @@ import muse_server
 from muse_server import ScanReq
 
 
+class _Turn:
+    def __init__(self, role, utterance):
+        self.role = role
+        self.utterance = utterance
+
+
 def _stub_scan_externals(monkeypatch, captured):
     """把 scan_bg 里会联网/落盘的接线全部换成惰性桩，只保留 has_profile 判据路径。"""
     monkeypatch.setattr(muse_server, "load_api_key", lambda **k: None)
@@ -74,6 +80,93 @@ def test_scan_status_returns_unchanged_for_current_version(monkeypatch, tmp_path
     assert changed["unchanged"] is False and changed["cards"] == [{"name": "A"}]
     restarted_or_stale_client = client.get("/scan/status?since=43").json()
     assert restarted_or_stale_client["unchanged"] is False
+
+
+def test_roundtable_status_filters_empty_turns(tmp_path):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(muse_server.app)
+    muse_server.SESSION.update(
+        phase="ready",
+        topic="t",
+        runner=type("Runner", (), {
+            "conversation_history": [
+                _Turn("Background discussion expert", ""),
+                _Turn("Background discussion moderator", "有效问题？"),
+                _Turn("Background discussion expert", "   "),
+            ]
+        })(),
+        progress=[],
+        output_dir=str(tmp_path),
+        error=None,
+    )
+
+    body = client.get("/status").json()
+
+    assert body["turns"] == [{"role": "Background discussion moderator", "utterance": "有效问题？"}]
+
+
+def test_roundtable_step_filters_empty_returned_turn(tmp_path):
+    from fastapi.testclient import TestClient
+
+    class _Runner:
+        conversation_history = []
+
+        def step(self, user_utterance=None):
+            return _Turn("Background discussion expert", "")
+
+    client = TestClient(muse_server.app)
+    muse_server.SESSION.update(
+        phase="ready",
+        topic="t",
+        runner=_Runner(),
+        progress=[],
+        output_dir=str(tmp_path),
+        error=None,
+    )
+
+    body = client.post("/step", json={}).json()
+
+    assert body == {"turns": []}
+
+
+def test_roundtable_report_filters_empty_turns_in_conversation_md(tmp_path):
+    class _KnowledgeBase:
+        def reorganize(self):
+            pass
+
+    class _Runner:
+        conversation_history = [
+            _Turn("Background discussion expert", ""),
+            _Turn("Background discussion moderator", "有效问题？"),
+            _Turn("Background discussion expert", "   "),
+            _Turn("Background discussion expert", "有效回答。"),
+        ]
+        knowledge_base = _KnowledgeBase()
+
+        def generate_report(self):
+            return "# 报告\n"
+
+        def to_dict(self):
+            return {}
+
+        def dump_logging_and_reset(self):
+            return {}
+
+    muse_server.SESSION.update(
+        phase="ready",
+        topic="圆桌主题",
+        runner=_Runner(),
+        progress=[],
+        output_dir=str(tmp_path / "costorm_topic"),
+        error=None,
+    )
+
+    muse_server.report()
+
+    text = (tmp_path / "costorm_topic" / "conversation.md").read_text(encoding="utf-8")
+    assert "有效问题？" in text and "有效回答。" in text
+    assert "**Background discussion expert**: \n" not in text
 
 
 # ---- 对抗幕接口（#10）：只 stub LLM/检索叶子，放真 run_review 跑通 server→引擎 全链 ----
