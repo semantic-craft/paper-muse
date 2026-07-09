@@ -7,6 +7,16 @@
 > - 修复 `OpenAIModel` 走错 API 端点 + 新模型参数兼容；修复 `TavilySearchRM` 空 query 拖垮整条流程的真 bug
 > - 前端（demo_light）改为 DeepSeek 栈，加双击启动脚本 `start.command`
 >
+> ## macOS 本地 App 首版
+>
+> 当前仓库已提供公开 runtime 下载路径和 release-mode 后端启动链路，普通用户不需要克隆仓库来准备 Python venv。Apple Silicon runtime 资产：
+>
+> `https://github.com/semantic-craft/paper-muse/releases/download/runtime-main-python-3.12-v1/papermuse-main-runtime-macos-arm64.tar.gz`
+>
+> sha256：`1c9afd28b26a1b523c47ad88724e482e4332c881910f5acf791fa4cc80a43e79`
+>
+> App 启动后会把用户配置、runtime、结果、缓存和日志放在 `~/Library/Application Support/PaperMuse/`。首次使用需要按 `config/secrets.toml.example` 填自己的 provider key。正式可分发 zip 仍需要维护者配置 Apple notary profile 并运行 release package，见 `docs/release/RELEASE_NOTES.md`。
+>
 > ## 怎么用
 >
 > **1. 装依赖**（本仓库用 uv 建的 venv，无 pip）：
