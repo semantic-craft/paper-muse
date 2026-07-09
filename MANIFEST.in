@@ -1,3 +1,4 @@
 include requirements.txt
+include requirements-paperqa.txt
 include LICENSE
 include README.md

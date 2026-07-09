@@ -177,7 +177,8 @@ def _env_setup():
     os.environ.setdefault("SMART_TOKEN_LIMIT", "4000")
 
 
-async def run(payload):
+async def _run_one(payload):
+    TALLY.clear()
     claim = (payload.get("claim") or "").strip()
     failures = payload.get("failures") or []
     if not claim:
@@ -209,10 +210,47 @@ async def run(payload):
     zh_ok = cnki.get("ok", False) or zs.get("ok", False)
     zh_hits = (cnki.get("hits", 0) + zs.get("hits", 0)) if zh_ok else None
     return {"ok": True, "sources": norm, "memo": memo, "en_hits": en, "zh_hits": zh_hits,
-            "by_retriever": TALLY}
+            "by_retriever": {k: dict(v) for k, v in TALLY.items()}}
+
+
+async def run(payload):
+    if isinstance(payload.get("claims"), list):
+        out = []
+        for item in payload["claims"]:
+            one = {
+                "claim": item.get("claim", ""),
+                "failures": item.get("failures") or [],
+                "topic": payload.get("topic", item.get("topic", "")),
+                "want_memo": payload.get("want_memo", item.get("want_memo", True)),
+            }
+            try:
+                res = await _run_one(one)
+            except Exception as e:
+                import traceback
+                res = {"ok": False, "sources": [], "memo": "", "en_hits": 0, "zh_hits": None,
+                       "by_retriever": {}, "error": f"{e}\n{traceback.format_exc()[-800:]}"}
+            res["id"] = item.get("id")
+            out.append(res)
+        return {"ok": True, "claims": out}
+    return await _run_one(payload)
+
+
+def health_check():
+    _env_setup()
+    import gpt_researcher  # noqa: F401
+    return {"ok": True}
 
 
 if __name__ == "__main__":
+    if "--health" in sys.argv:
+        try:
+            result = health_check()
+            status = 0
+        except Exception as e:
+            result = {"ok": False, "error": str(e)}
+            status = 1
+        sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+        raise SystemExit(status)
     try:
         payload = json.load(sys.stdin)
         result = asyncio.run(run(payload))

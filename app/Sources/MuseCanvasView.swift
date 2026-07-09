@@ -5,8 +5,9 @@ import SwiftUI
 struct MuseCanvasView: View {
     @State private var phase: Phase = .loading
     @State private var errorText = ""
+    @State private var setupText = ""
 
-    enum Phase { case loading, ready, failed }
+    enum Phase { case loading, ready, setupRequired, failed }
 
     var body: some View {
         Group {
@@ -30,6 +31,21 @@ struct MuseCanvasView: View {
                 .padding(40)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            case .setupRequired:
+                VStack(spacing: 14) {
+                    Text("需要完成首次设置").font(.headline)
+                    Text(setupText)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).frame(maxWidth: 520)
+                    HStack {
+                        Button("重新检查") { Task { await boot() } }
+                        Button("先打开画布") { phase = .ready }
+                    }
+                    .controlSize(.large)
+                }
+                .padding(40)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
             case .ready:
                 CanvasWebView(url: MuseServer.shared.baseURL.appendingPathComponent("ui/"))
             }
@@ -41,7 +57,26 @@ struct MuseCanvasView: View {
         phase = .loading
         do {
             try await MuseServer.shared.ensureRunning()
-            phase = .ready
+            if let health = try? await MuseServer.shared.releaseHealth() {
+                if health.state == "missing_required_key" {
+                    setupText = health.message
+                    phase = .setupRequired
+                    return
+                }
+                if health.blocking {
+                    errorText = health.message
+                    phase = .failed
+                    return
+                }
+                phase = .ready
+                return
+            }
+            if let setup = try? await MuseServer.shared.setupStatus(), setup.setup_required {
+                setupText = setup.message
+                phase = .setupRequired
+            } else {
+                phase = .ready
+            }
         } catch {
             errorText = error.localizedDescription
             phase = .failed

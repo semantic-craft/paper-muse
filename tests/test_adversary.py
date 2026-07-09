@@ -12,11 +12,28 @@ from adversary import (
     extract_claims,
     red_team,
     classify_evidence,
+    author_rebuttal,
+    meta_review,
     run_review,
     ADVERSARIAL_REVIEW_PERSONA,
     SEVERITIES,
     VERDICTS,
 )
+
+
+def _fake_sidecar_python(path, health_ok=True):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    health = '{"ok": true}' if health_ok else '{"ok": false, "error": "missing dep"}'
+    health_exit = "exit 0; fi\n" if health_ok else "exit 1; fi\n"
+    code = (
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"--version\" ]; then echo 'Python 3.12.0'; exit 0; fi\n"
+        "if [ \"$2\" = \"--health\" ]; then "
+        f"echo '{health}'; {health_exit}"
+        "exit 0\n"
+    )
+    path.write_text(code, encoding="utf-8")
+    path.chmod(0o755)
 
 
 class FakeLLM:
@@ -164,6 +181,48 @@ def test_classify_evidence_empty_hits_shortcircuits():
     assert ev == [] and not called   # 无命中直接返回，不浪费 LLM 调用
 
 
+# ---- 作者答辩 + 仲裁（不拥有最终裁决权）----
+
+def test_author_rebuttal_parses_stance_and_no_evidence_prompt():
+    llm = FakeLLM([json.dumps({
+        "stance": "驳",
+        "argument": "该失败点把规范必要性误读为经验必要性。",
+        "needed_evidence": "需要比较法反例。",
+    })])
+
+    out = author_rebuttal(
+        "确权是前提",
+        {"statement": "存在反例"},
+        [],
+        llm,
+    )
+
+    assert out["stance"] == "驳"
+    assert "比较法反例" in out["needed_evidence"]
+    assert "无直接证据" in llm.prompts[0]
+
+
+def test_meta_review_cannot_release_undecided_without_evidence():
+    llm = FakeLLM([json.dumps({
+        "decision": "缓和",
+        "reason": "作者说得有道理，可以放行。",
+        "revision": "弱化表述。",
+    })])
+
+    out = meta_review(
+        "确权是前提",
+        {"statement": "存在反例"},
+        [],
+        {"stance": "驳", "argument": "反例不适用"},
+        "未决",
+        llm,
+    )
+
+    assert out["decision"] == "维持"
+    assert out["final_verdict"] == "未决"
+    assert "代码裁决：未决" in llm.prompts[0]
+
+
 # ---- run_review 端到端离线 ----
 
 def _draft_with_claim():
@@ -211,6 +270,37 @@ def test_run_review_draft_end_to_end_offline(tmp_path):
     assert "确权是破解垄断的前提" in fp and quote in fp
     assert "已证伪" in fp and "https://doi.org/e1" in fp
     assert "证伪备忘录" in fp
+
+
+def test_run_review_optional_rebuttal_and_meta_review_are_written(tmp_path):
+    draft, quote, extract, redteam = _draft_with_claim()
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]),
+        redteam_llm=FakeLLM([redteam]),
+        classify_llm=lambda p: json.dumps({"evidence": [{"n": 1, "stance": "证伪"}]}),
+        author_llm=FakeLLM([
+            json.dumps({"stance": "驳", "argument": "DMA 反例不等同于中国法路径。", "needed_evidence": "补中文法文献"}),
+            json.dumps({"stance": "认", "argument": "确有机制反向风险。", "needed_evidence": ""}),
+        ]),
+        meta_llm=FakeLLM([
+            json.dumps({"decision": "维持", "reason": "已有反证，维持击穿。", "revision": "改成条件命题"}),
+            json.dumps({"decision": "加重", "reason": "作者承认机制风险。", "revision": "补反向机制段"}),
+        ]),
+        falsify_search=_pool(
+            [{"title": "反例文献", "url": "https://doi.org/e1", "content": "DMA 无确权亦规制"}],
+            en_hits=5, zh_hits=3),
+        on_claim=lambda c: None,
+    )
+
+    first = claims[0]["failures"][0]
+    assert first["author_rebuttal"]["stance"] == "驳"
+    assert first["meta_review"]["decision"] == "维持"
+    assert first["meta_review"]["final_verdict"] == "已证伪"
+    fp = (tmp_path / "docs" / "agents" / "muse" / "failure-points.md").read_text(encoding="utf-8")
+    assert "作者答辩：驳" in fp
+    assert "仲裁：维持" in fp
+    assert "修订建议：改成条件命题" in fp
 
 
 def test_run_review_no_evidence_is_undecided_not_pass(tmp_path):
@@ -299,6 +389,38 @@ def test_run_review_no_draft_line_mode(tmp_path):
     assert claims[0]["failures"][0]["id"] == "1a" and claims[0]["failures"][0]["verdict"] == "未决"
 
 
+def test_run_review_uses_batch_falsify_when_available(tmp_path):
+    draft = "A 主张句。B 主张句。"
+    extract = json.dumps({"claims": [
+        {"text": "A 主张", "quote": "A 主张句"},
+        {"text": "B 主张", "quote": "B 主张句"},
+    ]})
+    redteam_a = json.dumps({"failures": [{"statement": "A 失败点", "severity": "重大"}]})
+    redteam_b = json.dumps({"failures": [{"statement": "B 失败点", "severity": "重大"}]})
+    calls = {"single": 0, "batch": 0}
+
+    def single(claim_text, failures):
+        calls["single"] += 1
+        return {}
+
+    def batch(claims):
+        calls["batch"] += 1
+        return {c["id"]: {"sources": [], "en_hits": 0, "zh_hits": 0} for c in claims}
+
+    single.search_many = batch
+
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam_a, redteam_b]),
+        classify_llm=lambda p: json.dumps({"evidence": []}),
+        falsify_search=single, on_claim=lambda c: None,
+    )
+
+    assert [c["id"] for c in claims] == [1, 2]
+    assert calls == {"single": 0, "batch": 1}
+    assert all(f["verdict"] == "未决" for c in claims for f in c["failures"])
+
+
 def test_run_review_empty_source_raises(tmp_path):
     with pytest.raises(RuntimeError, match="未能"):
         run_review("   ", has_draft=False, output_dir=str(tmp_path),
@@ -308,6 +430,35 @@ def test_run_review_empty_source_raises(tmp_path):
 
 # ---- #8 sidecar 接线（主 venv 侧：末行 JSON 解析 + 子进程降级）----
 from adversary import _parse_sidecar_output, real_falsify_search
+
+
+def test_sidecar_status_reports_all_release_states(tmp_path):
+    import adversary as A
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    script = tmp_path / "gptr_sidecar.py"
+    script.write_text("print('unused')\n", encoding="utf-8")
+
+    assert A.sidecar_status(runtime_dir=runtime, sidecar_script=script)["state"] == "missing"
+
+    A.sidecar_installing_path(runtime).write_text("installing\n", encoding="utf-8")
+    assert A.sidecar_status(runtime_dir=runtime, sidecar_script=script)["state"] == "installing"
+    A.sidecar_installing_path(runtime).unlink()
+
+    A.sidecar_failed_path(runtime).write_text(json.dumps({"error": "checksum mismatch"}), encoding="utf-8")
+    failed = A.sidecar_status(runtime_dir=runtime, sidecar_script=script)
+    assert failed["state"] == "failed" and "checksum" in failed["message"]
+    A.sidecar_failed_path(runtime).unlink()
+
+    python = runtime / "sidecar" / "bin" / "python"
+    _fake_sidecar_python(python, health_ok=False)
+    installed = A.sidecar_status(runtime_dir=runtime, sidecar_script=script)
+    assert installed["state"] == "installed" and installed["installed"] is True
+
+    _fake_sidecar_python(python, health_ok=True)
+    ready = A.sidecar_status(runtime_dir=runtime, sidecar_script=script)
+    assert ready["state"] == "ready" and ready["ready"] is True
 
 
 def test_parse_sidecar_output_picks_marked_last_line():
@@ -328,9 +479,20 @@ def test_real_falsify_search_parses_subprocess(monkeypatch):
         stdout = '__GPTR_RESULT__{"ok": true, "sources": [{"title": "T", "url": "https://x"}], "en_hits": 2, "zh_hits": 1, "memo": "备忘"}'
         stderr = ""
 
+    monkeypatch.setattr(A, "sidecar_status", lambda **k: {"state": "ready", "python": "py", "script": "sidecar"})
     monkeypatch.setattr(A.subprocess, "run", lambda *a, **k: R)
     pool = real_falsify_search()("某主张", [{"id": "1a", "statement": "s"}])
     assert pool["ok"] and pool["en_hits"] == 2 and pool["sources"][0]["url"] == "https://x"
+
+
+def test_real_falsify_search_degrades_when_sidecar_missing(tmp_path):
+    missing_python = tmp_path / "missing-python"
+    search = real_falsify_search(sidecar_python=missing_python, sidecar_script=tmp_path / "gptr_sidecar.py")
+    pool = search("主张", [])
+
+    assert pool["degraded"] is True
+    assert "missing" in pool["degradation_reason"]
+    assert pool["en_hits"] == 0 and pool["zh_hits"] is None
 
 
 def test_real_falsify_search_degrades_on_subprocess_error(monkeypatch):
@@ -339,8 +501,40 @@ def test_real_falsify_search_degrades_on_subprocess_error(monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("no sidecar venv")
 
+    monkeypatch.setattr(A, "sidecar_status", lambda **k: {"state": "ready", "python": "py", "script": "sidecar"})
     monkeypatch.setattr(A.subprocess, "run", boom)
-    assert real_falsify_search()("主张", []) == {}   # 空池 → 上层判未决
+    pool = real_falsify_search()("主张", [])
+    assert pool["degraded"] is True and "no sidecar venv" in pool["degradation_reason"]
+
+
+def test_real_falsify_search_batch_parses_subprocess_once(monkeypatch):
+    import adversary as A
+    A.reset_sidecar_stats()
+    calls = []
+
+    class R:
+        stdout = ('__GPTR_RESULT__{"ok": true, "claims": ['
+                  '{"id": 1, "ok": true, "sources": [{"title": "T1", "url": "https://x1"}], "en_hits": 2, "zh_hits": 1, "memo": "m1"},'
+                  '{"id": 2, "ok": true, "sources": [{"title": "T2", "url": "https://x2"}], "en_hits": 3, "zh_hits": 0, "memo": "m2"}'
+                  ']}')
+        stderr = ""
+
+    def fake_run(*args, **kwargs):
+        calls.append(json.loads(kwargs["input"]))
+        return R
+
+    monkeypatch.setattr(A, "sidecar_status", lambda **k: {"state": "ready", "python": "py", "script": "sidecar"})
+    monkeypatch.setattr(A.subprocess, "run", fake_run)
+    search = real_falsify_search()
+    pools = search.search_many([
+        {"id": 1, "text": "主张一", "failures": [{"id": "1a", "statement": "s1"}]},
+        {"id": 2, "text": "主张二", "failures": [{"id": "2a", "statement": "s2"}]},
+    ])
+
+    assert len(calls) == 1 and len(calls[0]["claims"]) == 2
+    assert pools[1]["sources"][0]["url"] == "https://x1"
+    assert pools[2]["zh_hits"] == 0
+    assert A.sidecar_stats() == {"single_invocations": 0, "batch_invocations": 1, "claims_requested": 2}
 
 
 def test_pick_review_llm_prefers_strong():
@@ -352,3 +546,13 @@ def test_pick_review_llm_prefers_strong():
     assert pick_review_llm({"deepseek": ds, "gemini": gm}) is ds
     cx = object()
     assert pick_review_llm({"custom": cx}) is cx
+
+
+def test_pick_review_llm_honors_requested_provider():
+    from adversary import pick_review_llm
+    ds, oa, gm = object(), object(), object()
+
+    assert pick_review_llm({"deepseek": ds, "openai": oa, "gemini": gm}, model="gemini") is gm
+    assert pick_review_llm({"openai": oa}, model="gpt-5") is oa
+    with pytest.raises(RuntimeError, match="unavailable"):
+        pick_review_llm({"deepseek": ds}, model="openai")

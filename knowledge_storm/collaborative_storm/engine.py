@@ -12,6 +12,7 @@ from .modules.co_storm_agents import (
     CoStormExpert,
 )
 from .modules.expert_generation import GenerateExpertModule
+from .modules.roundtable_personas import with_fixed_roundtable_experts
 from .modules.warmstart_hierarchical_chat import WarmStartModule
 from ..dataclass import ConversationTurn, KnowledgeBase
 from ..encoder import Encoder
@@ -428,7 +429,9 @@ class DiscourseManager:
         agents: CoStormExpert = []
         for expert_name in expert_descriptions:
             # 兼容中文模型输出：全角冒号/缺冒号/多冒号都不该崩（上游 split(":") 会崩）
-            role_name, _, role_description = expert_name.replace("：", ":").partition(":")
+            role_name, _, role_description = expert_name.replace("：", ":").partition(
+                ":"
+            )
             role_name = role_name.strip()
             role_description = role_description.strip() or role_name
             new_costorm_expert = CoStormExpert(
@@ -451,6 +454,7 @@ class DiscourseManager:
             focus=focus,
             num_experts=self.runner_argument.max_num_round_table_experts,
         ).experts
+        expert_names = with_fixed_roundtable_experts(expert_names)
         self.experts = self._parse_expert_names_to_agent(expert_names)
 
     def _is_last_turn_questioning(self, conversation_history: List[ConversationTurn]):
@@ -611,7 +615,7 @@ class CoStormRunner:
                 )
                 self.discourse_manager.experts = (
                     self.discourse_manager._parse_expert_names_to_agent(
-                        warmstart_experts
+                        with_fixed_roundtable_experts(warmstart_experts)
                     )
                 )
                 self.discourse_manager.next_turn_moderator_override = True
