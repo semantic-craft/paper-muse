@@ -34,13 +34,20 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def load_runtime_manifest(path: Path) -> dict:
+def load_runtime_manifest(path: Path, component: str = "runtime") -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
-    runtime = data.get("runtime") or {}
+    runtime = data.get(component) or {}
     required = ("platform", "version", "asset_url", "archive_type", "sha256", "entrypoint")
     missing = [key for key in required if not runtime.get(key)]
     if missing:
-        raise BootstrapError("runtime manifest missing fields: " + ", ".join(missing))
+        raise BootstrapError(f"{component} manifest missing fields: " + ", ".join(missing))
+    entrypoint = Path(runtime["entrypoint"])
+    if entrypoint.is_absolute() or ".." in entrypoint.parts or len(entrypoint.parts) < 2:
+        raise BootstrapError(f"invalid runtime entrypoint: {runtime['entrypoint']}")
+    install_dir = runtime.get("install_dir") or entrypoint.parts[0]
+    if Path(install_dir).is_absolute() or "/" in install_dir or install_dir in ("", ".", ".."):
+        raise BootstrapError(f"invalid runtime install_dir: {install_dir}")
+    runtime["install_dir"] = install_dir
     return runtime
 
 
@@ -48,12 +55,16 @@ def _entrypoint(runtime_dir: Path, manifest: dict) -> Path:
     return runtime_dir / manifest["entrypoint"]
 
 
-def _record_path(runtime_dir: Path) -> Path:
-    return runtime_dir / "main" / INSTALL_RECORD
+def _install_root(runtime_dir: Path, manifest: dict) -> Path:
+    return runtime_dir / manifest["install_dir"]
+
+
+def _record_path_for(runtime_dir: Path, manifest: dict) -> Path:
+    return _install_root(runtime_dir, manifest) / INSTALL_RECORD
 
 
 def runtime_is_healthy(runtime_dir: Path, manifest: dict) -> bool:
-    record = _record_path(runtime_dir)
+    record = _record_path_for(runtime_dir, manifest)
     python = _entrypoint(runtime_dir, manifest)
     if not record.exists() or not python.exists() or not os.access(python, os.X_OK):
         return False
@@ -94,8 +105,8 @@ def _make_executable(path: Path) -> None:
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
-def bootstrap(manifest_path: Path, runtime_dir: Path) -> str:
-    manifest = load_runtime_manifest(manifest_path)
+def bootstrap(manifest_path: Path, runtime_dir: Path, component: str = "runtime") -> str:
+    manifest = load_runtime_manifest(manifest_path, component=component)
     runtime_dir.mkdir(parents=True, exist_ok=True)
     if runtime_is_healthy(runtime_dir, manifest):
         return "already-installed"
@@ -111,8 +122,8 @@ def bootstrap(manifest_path: Path, runtime_dir: Path) -> str:
             extracted = tmp / "extract"
             extracted.mkdir()
             _extract(archive, manifest["archive_type"], extracted)
-            staged_main = extracted / "main"
-            staged_python = staged_main / Path(manifest["entrypoint"]).relative_to("main")
+            staged_main = extracted / manifest["install_dir"]
+            staged_python = extracted / manifest["entrypoint"]
             _make_executable(staged_python)
             if not staged_python.exists() or not os.access(staged_python, os.X_OK):
                 raise BootstrapError(f"runtime archive missing executable {manifest['entrypoint']}")
@@ -127,8 +138,8 @@ def bootstrap(manifest_path: Path, runtime_dir: Path) -> str:
                 }, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
-            final_main = runtime_dir / "main"
-            backup = runtime_dir / ".main.previous"
+            final_main = _install_root(runtime_dir, manifest)
+            backup = runtime_dir / f".{manifest['install_dir']}.previous"
             if backup.exists():
                 shutil.rmtree(backup)
             try:
@@ -155,10 +166,11 @@ def main() -> int:
     boot = sub.add_parser("bootstrap")
     boot.add_argument("--manifest", required=True, type=Path)
     boot.add_argument("--runtime-dir", required=True, type=Path)
+    boot.add_argument("--component", default="runtime")
     args = parser.parse_args()
 
     if args.cmd == "bootstrap":
-        print(bootstrap(args.manifest, args.runtime_dir))
+        print(bootstrap(args.manifest, args.runtime_dir, component=args.component))
     return 0
 
 

@@ -19,6 +19,21 @@ from adversary import (
 )
 
 
+def _fake_sidecar_python(path, health_ok=True):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    health = '{"ok": true}' if health_ok else '{"ok": false, "error": "missing dep"}'
+    health_exit = "exit 0; fi\n" if health_ok else "exit 1; fi\n"
+    code = (
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"--version\" ]; then echo 'Python 3.12.0'; exit 0; fi\n"
+        "if [ \"$2\" = \"--health\" ]; then "
+        f"echo '{health}'; {health_exit}"
+        "exit 0\n"
+    )
+    path.write_text(code, encoding="utf-8")
+    path.chmod(0o755)
+
+
 class FakeLLM:
     """记录 prompt、按队列吐回复（仅用于主线程内顺序调用的 extract/red_team）。"""
 
@@ -342,6 +357,35 @@ def test_run_review_empty_source_raises(tmp_path):
 from adversary import _parse_sidecar_output, real_falsify_search
 
 
+def test_sidecar_status_reports_all_release_states(tmp_path):
+    import adversary as A
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    script = tmp_path / "gptr_sidecar.py"
+    script.write_text("print('unused')\n", encoding="utf-8")
+
+    assert A.sidecar_status(runtime_dir=runtime, sidecar_script=script)["state"] == "missing"
+
+    A.sidecar_installing_path(runtime).write_text("installing\n", encoding="utf-8")
+    assert A.sidecar_status(runtime_dir=runtime, sidecar_script=script)["state"] == "installing"
+    A.sidecar_installing_path(runtime).unlink()
+
+    A.sidecar_failed_path(runtime).write_text(json.dumps({"error": "checksum mismatch"}), encoding="utf-8")
+    failed = A.sidecar_status(runtime_dir=runtime, sidecar_script=script)
+    assert failed["state"] == "failed" and "checksum" in failed["message"]
+    A.sidecar_failed_path(runtime).unlink()
+
+    python = runtime / "sidecar" / "bin" / "python"
+    _fake_sidecar_python(python, health_ok=False)
+    installed = A.sidecar_status(runtime_dir=runtime, sidecar_script=script)
+    assert installed["state"] == "installed" and installed["installed"] is True
+
+    _fake_sidecar_python(python, health_ok=True)
+    ready = A.sidecar_status(runtime_dir=runtime, sidecar_script=script)
+    assert ready["state"] == "ready" and ready["ready"] is True
+
+
 def test_parse_sidecar_output_picks_marked_last_line():
     stdout = ("INFO gpt-researcher scraping...\n"
               "some noisy log {not json}\n"
@@ -360,9 +404,20 @@ def test_real_falsify_search_parses_subprocess(monkeypatch):
         stdout = '__GPTR_RESULT__{"ok": true, "sources": [{"title": "T", "url": "https://x"}], "en_hits": 2, "zh_hits": 1, "memo": "备忘"}'
         stderr = ""
 
+    monkeypatch.setattr(A, "sidecar_status", lambda **k: {"state": "ready", "python": "py", "script": "sidecar"})
     monkeypatch.setattr(A.subprocess, "run", lambda *a, **k: R)
     pool = real_falsify_search()("某主张", [{"id": "1a", "statement": "s"}])
     assert pool["ok"] and pool["en_hits"] == 2 and pool["sources"][0]["url"] == "https://x"
+
+
+def test_real_falsify_search_degrades_when_sidecar_missing(tmp_path):
+    missing_python = tmp_path / "missing-python"
+    search = real_falsify_search(sidecar_python=missing_python, sidecar_script=tmp_path / "gptr_sidecar.py")
+    pool = search("主张", [])
+
+    assert pool["degraded"] is True
+    assert "missing" in pool["degradation_reason"]
+    assert pool["en_hits"] == 0 and pool["zh_hits"] is None
 
 
 def test_real_falsify_search_degrades_on_subprocess_error(monkeypatch):
@@ -371,8 +426,10 @@ def test_real_falsify_search_degrades_on_subprocess_error(monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("no sidecar venv")
 
+    monkeypatch.setattr(A, "sidecar_status", lambda **k: {"state": "ready", "python": "py", "script": "sidecar"})
     monkeypatch.setattr(A.subprocess, "run", boom)
-    assert real_falsify_search()("主张", []) == {}   # 空池 → 上层判未决
+    pool = real_falsify_search()("主张", [])
+    assert pool["degraded"] is True and "no sidecar venv" in pool["degradation_reason"]
 
 
 def test_real_falsify_search_batch_parses_subprocess_once(monkeypatch):
@@ -391,6 +448,7 @@ def test_real_falsify_search_batch_parses_subprocess_once(monkeypatch):
         calls.append(json.loads(kwargs["input"]))
         return R
 
+    monkeypatch.setattr(A, "sidecar_status", lambda **k: {"state": "ready", "python": "py", "script": "sidecar"})
     monkeypatch.setattr(A.subprocess, "run", fake_run)
     search = real_falsify_search()
     pools = search.search_many([
