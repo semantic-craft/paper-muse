@@ -20,6 +20,8 @@ from urllib import parse, request
 
 import json_repair
 
+from prompt_assets import SCAN_METHOD_PROMPT
+
 # ---- persona（用户提供原文后整体替换本常量）----
 FIRST_PRINCIPLES_PERSONA = (
     "你是第一性原理思考者：回到问题的根本，把问题拆解到最小可验证单元，"
@@ -423,6 +425,7 @@ def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str
         f"主题：{topic}\n根本问题：{json.dumps(fundamentals, ensure_ascii=False)}\n"
         + (f"本次困惑（扫描应朝此发力，切入点优先解此惑）：{puzzle}\n" if puzzle else "")
         + profile_line + vs_line + "\n"
+        + SCAN_METHOD_PROMPT + "\n\n"
         "硬性配额：三类卡各至少 2 张——学科视角（其他学科怎么看这个问题）、"
         "理论框架（具体理论及其机制）、研究方法（实证/比较法/计算法学等，必附 feasibility 数据来源）。"
         "卡片之间必须彼此截然不同（学科、方法论、规范/实证、时间尺度错开），拒绝同一角度的变体。\n"
