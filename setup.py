@@ -25,6 +25,7 @@ setup(
     url="https://github.com/stanford-oval/storm",
     license="MIT License",
     packages=find_packages(),
+    py_modules=["prompt_assets"],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "License :: OSI Approved :: MIT License",

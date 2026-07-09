@@ -12,6 +12,7 @@ def test_fixed_roundtable_experts_prepend_dynamic_experts():
     experts = with_fixed_roundtable_experts(["Domain Expert: follows the topic"])
 
     assert experts[:2] == FIXED_ROUNDTABLE_EXPERTS
+    assert "别照搬" in experts[0]
     assert experts[2:] == ["Domain Expert: follows the topic"]
 
 

@@ -22,7 +22,7 @@
 - Create: `tests/test_blindspot.py` — 全离线单测（注入假 LM/假检索）
 - （不动 app/、不动 knowledge_storm/ 既有代码）
 
-**persona 说明：** 第一性原理提示词目前用要旨转述版（回到根本/拆最小可验证单元/答为什么）；用户提供原文后只需替换 `blindspot.py` 顶部 `FIRST_PRINCIPLES_PERSONA` 常量。
+**persona 说明：** 第一性原理提示词已替换为用户提供的工作方法论原文，并集中在 `prompt_assets.py`。
 
 ---
 
@@ -131,10 +131,12 @@ import subprocess
 import threading
 from pathlib import Path
 
-# ---- persona（用户提供原文后整体替换本常量）----
+# ---- persona（用户工作方法论原文）----
 FIRST_PRINCIPLES_PERSONA = (
-    "你是第一性原理思考者：回到问题的根本，把问题拆解到最小可验证单元，"
-    "永远追问『为什么成立』而不是『怎么做』；拒绝沿袭现成框架的惯性。"
+    "工作方法论：第一性原理\n"
+    "- 动手前先回到根本：这个任务到底要解决什么问题？别照搬“惯例 / 大家都这么做”。\n"
+    "- 把问题拆到最小、能验证的单元，一个个解决。\n"
+    "- 每个决定都说得出“为什么”，而不只是“怎么做”。"
 )
 
 CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
@@ -839,4 +841,4 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ## 附：后续姊妹计划（勿混入本计划）
 - **2/4 web 画布 UI**：4 方向 HTML mock → 用户反应 → 实现卡片墙/圆桌流/对抗报告 + WKWebView 接管 App 内容区（含 §12.2 首批 20s 的 UI 语义）。
 - **3/4 对抗幕引擎**：有稿/无稿双模式红队循环 + failure-points.md。
-- **4/4 圆桌钉死席位**：第一性原理专家 + 跨学科猎人进 Co-STORM 专家列表（persona 原文替换后做）。
+- **4/4 圆桌钉死席位**：第一性原理专家 + 跨学科猎人进 Co-STORM 专家列表（persona 原文已替换）。

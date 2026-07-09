@@ -135,6 +135,7 @@ def test_red_team_parses_four_fields_and_uses_persona():
     assert fs[0]["statement"] == "样本非随机" and fs[0]["type"] == "样本偏差"
     assert fs[0]["severity"] == "致命" and fs[0]["note"]
     assert ADVERSARIAL_REVIEW_PERSONA in llm.prompts[0] and "数据确权是前提" in llm.prompts[0]
+    assert "最可能翻车的 3 到 5 个点" in llm.prompts[0]
 
 
 def test_red_team_defaults_bad_severity_and_drops_empty_statement():

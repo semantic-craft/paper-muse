@@ -45,7 +45,7 @@
 
 ### 待用户 / 待接
 
-- **persona 原文**：`blindspot.py:FIRST_PRINCIPLES_PERSONA` 是要旨转述，待用户给「第一性原理」「对抗式审查」原文替换。
+- **persona 原文**：「第一性原理」「对抗式审查」工作方法论原文已落位于 `prompt_assets.py`。
 - **CNKI 走通**：中文学界面（`opencli cnki search`）需活的 Chrome 会话才出真 zh_hits，当前降级「中文面未检」。用户 Chrome + opencli 在时验一次，确认 zh_hits 非 None。
 - **研究者画像输入 UI**（本轮 defer）：现画像栏是占位提示、扫描发 `profile:""`。§4 要 5 行输入（领域/立场/熟悉/困惑）→落 `profile.md`→复用；离群/新颖性以画像为参照系，**缺它发现力打折**。
 - **主题预填**（本轮 defer）：§2 有 `PAPER_MUSE_OUTPUT_DIR` 时读该目录近期 md 标题预填主题框。
