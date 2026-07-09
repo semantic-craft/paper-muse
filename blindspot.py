@@ -31,11 +31,10 @@ _CACHE_LOCK = threading.Lock()
 
 
 def _cache_base_dir() -> Path:
-    base = (
-        os.environ.get("PAPER_MUSE_CACHE_DIR")
-        or os.environ.get("XDG_CACHE_HOME")
-        or os.path.join(os.path.expanduser("~"), ".cache")
-    )
+    explicit = os.environ.get("PAPER_MUSE_CACHE_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
     return Path(base) / "paper-muse"
 
 
@@ -495,11 +494,15 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
 # ---- 真实接线（引擎之外的薄层）----
 
 # 研究者画像 = 机器级配置，跨所有论文/扫描复用（ADR-0001）。三要素（PROFILE_ELEMENTS，见顶部）、
-# 不含困惑（CONTEXT.md）。存 `${XDG_CONFIG_HOME:-~/.config}/paper-muse/researcher.md`，
+# 不含困惑（CONTEXT.md）。release 下存 `${PAPER_MUSE_CONFIG_DIR}/researcher.md`，
+# 开发默认存 `${XDG_CONFIG_HOME:-~/.config}/paper-muse/researcher.md`，
 # 扫描时物化只读快照为论文 profile.md。键值块格式与 profile.md 一致 → 下游（grill-with-docs 等）读法无感。
 
 
 def researcher_md_path() -> Path:
+    explicit = os.environ.get("PAPER_MUSE_CONFIG_DIR")
+    if explicit:
+        return Path(explicit).expanduser() / "researcher.md"
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
     return Path(base) / "paper-muse" / "researcher.md"
 

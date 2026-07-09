@@ -1,6 +1,11 @@
 """muse_server 薄层测试：#4 的 has_profile 透出（无画像「发现力打折」的服务端判据）。
 scan_bg 的外部依赖（LLM/检索/落盘）全部 monkeypatch 掉，只验画像参照系有无的置位与透传。"""
 
+import os
+from pathlib import Path
+
+import pytest
+
 import blindspot
 import muse_server
 from muse_server import ScanReq
@@ -28,7 +33,63 @@ def _stub_scan_externals(monkeypatch, captured):
     monkeypatch.setattr(blindspot, "run_scan", fake_run_scan)
 
 
+def _clear_runtime_env(monkeypatch):
+    for name in (
+        "PAPER_MUSE_SERVER_ROOT",
+        "PAPER_MUSE_APP_DATA_DIR",
+        "PAPER_MUSE_CONFIG_DIR",
+        "PAPER_MUSE_CACHE_DIR",
+        "PAPER_MUSE_RUNTIME_DIR",
+        "PAPER_MUSE_OUTPUT_DIR",
+        "PAPER_MUSE_SECRETS_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_release_runtime_requires_explicit_server_root_and_dirs(monkeypatch):
+    _clear_runtime_env(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="server-root"):
+        muse_server.configure_runtime_paths(release_mode=True)
+
+    monkeypatch.setenv("PAPER_MUSE_SERVER_ROOT", str(muse_server.ROOT))
+    with pytest.raises(RuntimeError, match="PAPER_MUSE_APP_DATA_DIR"):
+        muse_server.configure_runtime_paths(release_mode=True)
+
+
+def test_release_runtime_paths_drive_secrets_and_results(monkeypatch, tmp_path):
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setattr(muse_server, "SERVER_ROOT", muse_server.ROOT)
+    monkeypatch.chdir(muse_server.ROOT)
+    server_root = tmp_path / "server"
+    data_dir = tmp_path / "data"
+    config_dir = tmp_path / "config"
+    cache_dir = tmp_path / "cache"
+    runtime_dir = tmp_path / "runtime"
+    server_root.mkdir()
+
+    muse_server.configure_runtime_paths(
+        server_root=server_root,
+        app_data_dir=data_dir,
+        config_dir=config_dir,
+        cache_dir=cache_dir,
+        runtime_dir=runtime_dir,
+        release_mode=True,
+    )
+
+    assert os.environ["PAPER_MUSE_SERVER_ROOT"] == str(server_root.resolve())
+    assert os.environ["PAPER_MUSE_APP_DATA_DIR"] == str(data_dir.resolve())
+    assert os.environ["PAPER_MUSE_CONFIG_DIR"] == str(config_dir.resolve())
+    assert os.environ["PAPER_MUSE_CACHE_DIR"] == str(cache_dir.resolve())
+    assert os.environ["PAPER_MUSE_RUNTIME_DIR"] == str(runtime_dir.resolve())
+    assert muse_server._secrets_path() == config_dir.resolve() / "secrets.toml"
+    assert muse_server._results_base() == data_dir.resolve() / "results"
+    assert Path.cwd() == server_root.resolve()
+    assert data_dir.is_dir() and config_dir.is_dir() and cache_dir.is_dir() and runtime_dir.is_dir()
+
+
 def test_scan_bg_sets_has_profile_true_and_feeds_profile(monkeypatch, tmp_path):
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     blindspot.save_researcher_profile({"field": "中文法学·数据法", "stance": "", "familiar": ""})
     captured = {}
@@ -44,6 +105,7 @@ def test_scan_bg_sets_has_profile_true_and_feeds_profile(monkeypatch, tmp_path):
 
 
 def test_scan_bg_sets_has_profile_false_without_researcher(monkeypatch, tmp_path):
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # 空 XDG → 无 researcher.md
     captured = {}
     _stub_scan_externals(monkeypatch, captured)
@@ -59,6 +121,7 @@ def test_scan_bg_sets_has_profile_false_without_researcher(monkeypatch, tmp_path
 def test_scan_status_exposes_has_profile_field(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     client = TestClient(muse_server.app)
     body = client.get("/scan/status").json()

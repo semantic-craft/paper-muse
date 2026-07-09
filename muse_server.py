@@ -28,13 +28,31 @@
 import json
 import os
 import re
+import sys
 import threading
 import traceback
 from argparse import ArgumentParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-os.chdir(ROOT)
+
+
+def _early_cli_value(flag):
+    for i, arg in enumerate(sys.argv[1:], start=1):
+        if arg == flag and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if arg.startswith(flag + "="):
+            return arg.split("=", 1)[1]
+    return None
+
+
+def _abs_path(value):
+    return Path(value).expanduser().resolve()
+
+
+_EXPLICIT_SERVER_ROOT = os.environ.get("PAPER_MUSE_SERVER_ROOT") or _early_cli_value("--server-root")
+SERVER_ROOT = _abs_path(_EXPLICIT_SERVER_ROOT) if _EXPLICIT_SERVER_ROOT else ROOT
+os.chdir(SERVER_ROOT)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -113,7 +131,68 @@ app = FastAPI()
 
 # web 画布：muse_server 同源静态托管 webui/（WKWebView 加载 /ui/，fetch /scan 无跨域）
 # 挂在 /ui 子路径，不遮挡 /scan、/session 等 API 路由。
-app.mount("/ui", StaticFiles(directory=str(ROOT / "webui"), html=True), name="ui")
+app.mount("/ui", StaticFiles(directory=str(SERVER_ROOT / "webui"), html=True), name="ui")
+
+
+def _env_path(name):
+    value = os.environ.get(name)
+    return _abs_path(value) if value else None
+
+
+def _set_path_env(name, value):
+    if value is not None:
+        os.environ[name] = str(_abs_path(value))
+
+
+def _secrets_path():
+    explicit = os.environ.get("PAPER_MUSE_SECRETS_FILE")
+    if explicit:
+        return _abs_path(explicit)
+    config_dir = _env_path("PAPER_MUSE_CONFIG_DIR")
+    return (config_dir / "secrets.toml") if config_dir else (SERVER_ROOT / "secrets.toml")
+
+
+def _results_base():
+    data_dir = _env_path("PAPER_MUSE_APP_DATA_DIR")
+    return (data_dir / "results") if data_dir else (SERVER_ROOT / "results")
+
+
+def configure_runtime_paths(
+    *,
+    server_root=None,
+    app_data_dir=None,
+    config_dir=None,
+    cache_dir=None,
+    runtime_dir=None,
+    release_mode=False,
+):
+    global SERVER_ROOT
+    explicit_server_root = bool(server_root or os.environ.get("PAPER_MUSE_SERVER_ROOT") or _EXPLICIT_SERVER_ROOT)
+    if server_root is not None:
+        SERVER_ROOT = _abs_path(server_root)
+        os.environ["PAPER_MUSE_SERVER_ROOT"] = str(SERVER_ROOT)
+        explicit_server_root = True
+    if release_mode and not explicit_server_root:
+        raise RuntimeError("release mode requires explicit --server-root or PAPER_MUSE_SERVER_ROOT")
+
+    required = {
+        "PAPER_MUSE_APP_DATA_DIR": app_data_dir,
+        "PAPER_MUSE_CONFIG_DIR": config_dir,
+        "PAPER_MUSE_CACHE_DIR": cache_dir,
+        "PAPER_MUSE_RUNTIME_DIR": runtime_dir,
+    }
+    if release_mode:
+        missing = [name for name, value in required.items() if value is None and not os.environ.get(name)]
+        if missing:
+            raise RuntimeError("release mode requires explicit paths: " + ", ".join(missing))
+
+    for name, value in required.items():
+        _set_path_env(name, value)
+        path = _env_path(name)
+        if path is not None:
+            path.mkdir(parents=True, exist_ok=True)
+
+    os.chdir(SERVER_ROOT)
 
 
 class SessionReq(BaseModel):
@@ -233,10 +312,10 @@ def build_rm(req: "SessionReq", k: int):
 
 
 def build_runner(req: SessionReq):
-    load_api_key(toml_file_path=str(ROOT / "secrets.toml"))
+    load_api_key(toml_file_path=str(_secrets_path()))
     for var in ("DEEPSEEK_API_KEY", "TAVILY_API_KEY", "ENCODER_API_TYPE"):
         if not os.getenv(var):
-            raise RuntimeError(f"缺少 {var}（请填在 secrets.toml 或环境变量里）")
+            raise RuntimeError(f"缺少 {var}（请填在 config/secrets.toml 或环境变量里）")
 
     kwargs = {
         "api_key": os.getenv("DEEPSEEK_API_KEY"),
@@ -303,7 +382,7 @@ def create_session(req: SessionReq):
     if not topic:
         raise HTTPException(400, "主题不能为空")
     req.topic = topic
-    base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(ROOT / "results")
+    base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
     SESSION.update(
         phase="warming",
         topic=topic,
@@ -429,7 +508,7 @@ def report():
 
 def scan_bg(req: ScanReq):
     try:
-        load_api_key(toml_file_path=str(ROOT / "secrets.toml"))
+        load_api_key(toml_file_path=str(_secrets_path()))
         provs = blindspot.real_providers()
         if not provs:
             raise RuntimeError("没有任何可用的 LLM key（DEEPSEEK/OPENAI/GOOGLE）")
@@ -469,7 +548,7 @@ def start_scan(req: ScanReq):
     topic = req.topic.strip()
     if not topic:
         raise HTTPException(400, "主题不能为空")
-    base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(ROOT / "results" / "muse" / sanitize_topic(topic))
+    base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base() / "muse" / sanitize_topic(topic))
     # 同 /step：相位检查与置位必须原子，堵并发 /scan 双双通过检查各起一个扫描线程
     with SCAN_LOCK:
         if SCAN["phase"] == "scanning":
@@ -537,7 +616,7 @@ def scan_feedback(req: FeedbackReq):
 # ---- 对抗幕（spec §6）：/scan 系的孪生——单会话一把锁，POST 起 + status 轮询增量 ----
 
 def _adv_base(output_dir=None):
-    return output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(ROOT / "results")
+    return output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
 
 
 def _list_drafts(base):
@@ -566,7 +645,7 @@ def _resolve_draft(base, name):
 
 def adversary_bg(req: AdversaryReq):
     try:
-        load_api_key(toml_file_path=str(ROOT / "secrets.toml"))
+        load_api_key(toml_file_path=str(_secrets_path()))
         review_llm = adversary.real_review_llm()
 
         def on_claim(claim):
@@ -651,5 +730,19 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--server-root")
+    parser.add_argument("--app-data-dir")
+    parser.add_argument("--config-dir")
+    parser.add_argument("--cache-dir")
+    parser.add_argument("--runtime-dir")
+    parser.add_argument("--release-mode", action="store_true")
     args = parser.parse_args()
+    configure_runtime_paths(
+        server_root=args.server_root,
+        app_data_dir=args.app_data_dir,
+        config_dir=args.config_dir,
+        cache_dir=args.cache_dir,
+        runtime_dir=args.runtime_dir,
+        release_mode=args.release_mode,
+    )
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
