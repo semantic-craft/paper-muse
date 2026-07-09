@@ -27,3 +27,15 @@ def test_release_preflight_accepts_required_inputs(monkeypatch, tmp_path):
     }
 
     assert release_package.preflight("Developer ID Application: Example", "profile", env) == []
+
+
+def test_release_preflight_accepts_embedded_runtime_file(monkeypatch, tmp_path):
+    _mock_preflight_dependencies(monkeypatch, tmp_path)
+    runtime = tmp_path / "main-runtime.tar.gz"
+    runtime.write_bytes(b"runtime")
+
+    assert release_package.preflight(
+        "Developer ID Application: Example",
+        "profile",
+        {"PAPER_MUSE_MAIN_RUNTIME_FILE": str(runtime)},
+    ) == []

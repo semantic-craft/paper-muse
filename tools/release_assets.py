@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = "runtime-manifest.json"
+EMBEDDED_MAIN_RUNTIME = "runtime/main-runtime.tar.gz"
 
 PUBLIC_FILES = [
     "muse_server.py",
@@ -98,6 +99,11 @@ def _sha256(path: Path) -> str:
 
 
 def _manifest(root: Path) -> dict:
+    embedded_main = root / EMBEDDED_MAIN_RUNTIME
+    main_asset_url = EMBEDDED_MAIN_RUNTIME if embedded_main.exists() else os.environ.get(
+        "PAPER_MUSE_MAIN_RUNTIME_URL", "PAPER_MUSE_MAIN_RUNTIME_URL")
+    main_sha = _sha256(embedded_main) if embedded_main.exists() else os.environ.get(
+        "PAPER_MUSE_MAIN_RUNTIME_SHA256", "PAPER_MUSE_MAIN_RUNTIME_SHA256")
     files = []
     for path in sorted(p for p in root.rglob("*") if p.is_file() and p.name != MANIFEST):
         rel = path.relative_to(root).as_posix()
@@ -109,9 +115,9 @@ def _manifest(root: Path) -> dict:
         "runtime": {
             "platform": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_PLATFORM", "macos-arm64"),
             "version": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_VERSION", "main-python-3.12-v1"),
-            "asset_url": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_URL", "PAPER_MUSE_MAIN_RUNTIME_URL"),
+            "asset_url": main_asset_url,
             "archive_type": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_ARCHIVE_TYPE", "tar.gz"),
-            "sha256": os.environ.get("PAPER_MUSE_MAIN_RUNTIME_SHA256", "PAPER_MUSE_MAIN_RUNTIME_SHA256"),
+            "sha256": main_sha,
             "entrypoint": "main/bin/python",
             "install_dir": "main",
             "compatible_app": os.environ.get("PAPER_MUSE_APP_VERSION", "dev"),
@@ -150,6 +156,14 @@ def stage(output: Path) -> None:
         shutil.copy2(ROOT / rel, dst)
     for rel in PUBLIC_DIRS:
         shutil.copytree(ROOT / rel, output / rel, ignore=_ignore)
+    main_runtime_file = os.environ.get("PAPER_MUSE_MAIN_RUNTIME_FILE")
+    if main_runtime_file:
+        src = Path(main_runtime_file).expanduser()
+        if not src.is_absolute():
+            src = ROOT / src
+        dst = output / EMBEDDED_MAIN_RUNTIME
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
 
     (output / MANIFEST).write_text(
         json.dumps(_manifest(output), ensure_ascii=False, indent=2) + "\n",

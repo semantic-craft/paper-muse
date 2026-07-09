@@ -18,6 +18,7 @@ APP_PATH = ROOT / "app" / "build-release" / "Build" / "Products" / "Release" / "
 DEFAULT_IDENTITY = "Developer ID Application: Xianwei Zhang (LQAVR62TK2)"
 MAIN_RUNTIME_URL = "PAPER_MUSE_MAIN_RUNTIME_URL"
 MAIN_RUNTIME_SHA = "PAPER_MUSE_MAIN_RUNTIME_SHA256"
+MAIN_RUNTIME_FILE = "PAPER_MUSE_MAIN_RUNTIME_FILE"
 NOTARY_PROFILE = "PAPER_MUSE_NOTARY_PROFILE"
 
 
@@ -42,6 +43,12 @@ def run(cmd: list[str], *, env: dict[str, str] | None = None, timeout: int | Non
 
 def _runtime_env_errors(env: dict[str, str]) -> list[str]:
     errors = []
+    runtime_file = env.get(MAIN_RUNTIME_FILE, "").strip()
+    if runtime_file:
+        path = Path(runtime_file).expanduser()
+        if not path.is_absolute():
+            path = ROOT / path
+        return [] if path.exists() else [f"{MAIN_RUNTIME_FILE} does not exist: {path}"]
     url = env.get(MAIN_RUNTIME_URL, "").strip()
     sha = env.get(MAIN_RUNTIME_SHA, "").strip()
     if not url or url == MAIN_RUNTIME_URL:

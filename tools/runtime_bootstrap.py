@@ -77,8 +77,11 @@ def runtime_is_healthy(runtime_dir: Path, manifest: dict) -> bool:
     return subprocess.run([str(python), "--version"], capture_output=True, text=True, timeout=10).returncode == 0
 
 
-def _download(url: str, dest: Path) -> None:
+def _download(url: str, dest: Path, base_dir: Path | None = None) -> None:
     parsed = urlparse(url)
+    if not parsed.scheme and base_dir is not None:
+        shutil.copy2(base_dir / url, dest)
+        return
     if parsed.scheme == "file":
         shutil.copy2(Path(urllib.request.url2pathname(parsed.path)), dest)
         return
@@ -115,7 +118,7 @@ def bootstrap(manifest_path: Path, runtime_dir: Path, component: str = "runtime"
         tmp = Path(tmp_name)
         archive = tmp / "runtime-asset"
         try:
-            _download(manifest["asset_url"], archive)
+            _download(manifest["asset_url"], archive, base_dir=manifest_path.parent)
             actual = sha256_file(archive)
             if actual != manifest["sha256"]:
                 raise BootstrapError(f"runtime checksum mismatch: expected {manifest['sha256']} got {actual}")

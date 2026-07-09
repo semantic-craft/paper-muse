@@ -41,3 +41,17 @@ def test_release_assets_scan_rejects_private_state(tmp_path):
 
     with pytest.raises(RuntimeError, match="private release assets"):
         release_assets.scan(out)
+
+
+def test_release_assets_can_embed_main_runtime(monkeypatch, tmp_path):
+    runtime = tmp_path / "main-runtime.tar.gz"
+    runtime.write_bytes(b"runtime")
+    out = tmp_path / "server"
+    monkeypatch.setenv("PAPER_MUSE_MAIN_RUNTIME_FILE", str(runtime))
+
+    release_assets.stage(out)
+
+    manifest = json.loads((out / "runtime-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["runtime"]["asset_url"] == "runtime/main-runtime.tar.gz"
+    assert manifest["runtime"]["sha256"] == release_assets._sha256(runtime)
+    assert (out / "runtime" / "main-runtime.tar.gz").read_bytes() == b"runtime"

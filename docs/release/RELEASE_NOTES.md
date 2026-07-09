@@ -5,6 +5,7 @@
 - macOS 14 or newer.
 - Apple Silicon Mac.
 - The release app is expected to run from `PaperMuse.app` with bundled server assets and a bootstrapped local Python runtime.
+- The main runtime archive may be embedded in the app bundle at release time; it must not point at a developer machine path.
 
 ## Required Provider Keys
 
@@ -59,3 +60,13 @@ No-cost release smoke can read:
 - `GET /perf/status`
 
 `/release/health` distinguishes runtime bootstrap state, server import readiness, missing required keys, optional capability degradation, sidecar status, and accidental developer-path usage.
+
+## Release Build Commands
+
+Build an embedded main runtime archive:
+
+`./tools/build_main_runtime.py`
+
+Build, sign, notarize, staple, assess, and zip the app:
+
+`PAPER_MUSE_MAIN_RUNTIME_FILE=dist/runtime/papermuse-main-runtime-macos-arm64.tar.gz PAPER_MUSE_NOTARY_PROFILE=<keychain-profile> ./tools/release_package.py package`
