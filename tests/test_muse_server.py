@@ -258,6 +258,33 @@ def test_release_health_warns_on_developer_path_in_release_mode(monkeypatch, tmp
     assert body["components"]["developer_paths"]["warnings"]
 
 
+def test_release_health_allows_staged_server_root_in_release_mode(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    runtime_dir = tmp_path / "runtime"
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    (server_root / "muse_server.py").write_text("# staged server\n", encoding="utf-8")
+    (server_root / "secrets.toml.example").write_text("", encoding="utf-8")
+    _fake_python(runtime_dir / "main" / "bin" / "python")
+    monkeypatch.setenv("PAPER_MUSE_RUNTIME_DIR", str(runtime_dir))
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-realish")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-realish")
+    monkeypatch.setenv("ENCODER_API_TYPE", "openai")
+    monkeypatch.setattr(muse_server, "ROOT", server_root)
+    monkeypatch.setattr(muse_server, "SERVER_ROOT", server_root)
+    monkeypatch.setattr(muse_server, "RELEASE_MODE", True)
+    monkeypatch.setattr(muse_server.shutil, "which", lambda _command: "/usr/bin/true")
+    client = TestClient(muse_server.app)
+
+    body = client.get("/release/health").json()
+
+    assert body["state"] == "ready_degraded"
+    assert body["blocking"] is False
+    assert body["components"]["developer_paths"] == {"state": "ok", "warnings": []}
+
+
 def test_sidecar_status_endpoint_reports_missing_and_failed(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
