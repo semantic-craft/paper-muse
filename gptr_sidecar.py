@@ -235,7 +235,22 @@ async def run(payload):
     return await _run_one(payload)
 
 
+def health_check():
+    _env_setup()
+    import gpt_researcher  # noqa: F401
+    return {"ok": True}
+
+
 if __name__ == "__main__":
+    if "--health" in sys.argv:
+        try:
+            result = health_check()
+            status = 0
+        except Exception as e:
+            result = {"ok": False, "error": str(e)}
+            status = 1
+        sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+        raise SystemExit(status)
     try:
         payload = json.load(sys.stdin)
         result = asyncio.run(run(payload))

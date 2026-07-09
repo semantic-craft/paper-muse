@@ -1,6 +1,7 @@
 """muse_server 薄层测试：#4 的 has_profile 透出（无画像「发现力打折」的服务端判据）。
 scan_bg 的外部依赖（LLM/检索/落盘）全部 monkeypatch 掉，只验画像参照系有无的置位与透传。"""
 
+import json
 import os
 from pathlib import Path
 
@@ -130,6 +131,41 @@ def test_setup_status_reports_missing_required_keys(monkeypatch, tmp_path):
     assert "DEEPSEEK_API_KEY" in body["missing_required_keys"]
     assert body["paths"]["secrets_file"] == str(secrets.resolve())
     assert "首次设置未完成" in body["message"]
+
+
+def test_sidecar_status_endpoint_reports_missing_and_failed(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("PAPER_MUSE_RUNTIME_DIR", str(runtime_dir))
+    client = TestClient(muse_server.app)
+
+    missing = client.get("/sidecar/status").json()
+    assert missing["state"] == "missing"
+
+    runtime_dir.mkdir()
+    adversary.sidecar_failed_path(runtime_dir).write_text(
+        json.dumps({"error": "checksum mismatch"}), encoding="utf-8"
+    )
+    failed = client.get("/sidecar/status").json()
+    assert failed["state"] == "failed" and "checksum" in failed["message"]
+
+    drafts = client.get("/adversary/drafts", params={"output_dir": str(tmp_path)}).json()
+    assert drafts["dir"] == str(tmp_path)
+
+
+def test_sidecar_bootstrap_endpoint_reports_installing(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("PAPER_MUSE_RUNTIME_DIR", str(runtime_dir))
+    monkeypatch.setattr(muse_server, "_sidecar_bootstrap_bg", lambda _runtime_dir: None)
+    client = TestClient(muse_server.app)
+
+    body = client.post("/sidecar/bootstrap").json()
+
+    assert body["ok"] is True
+    assert body["sidecar"]["state"] == "installing"
 
 
 def test_session_returns_setup_required_when_keys_missing(monkeypatch, tmp_path):

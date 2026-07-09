@@ -19,6 +19,7 @@ import re
 import subprocess
 import threading
 from copy import deepcopy
+from pathlib import Path
 
 import blindspot
 from blindspot import extract_json  # 复用带围栏/多对象/json_repair 兜底的 JSON 抠取
@@ -38,8 +39,11 @@ SEVERITIES = ["致命", "重大", "存疑"]      # 严重度（视觉分级）
 VERDICTS = ["已证伪", "有佐证", "未决"]     # 裁决三态（未决=无据不放行）
 STANCES = ["证伪", "佐证"]                  # 证据立场（相对中心主张：证伪=削弱主张，佐证=支持主张）
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
 _SIDECAR_STATS = {"single_invocations": 0, "batch_invocations": 0, "claims_requested": 0}
 _SIDECAR_STATS_LOCK = threading.Lock()
+SIDECAR_INSTALLING_FILE = ".paper-muse-sidecar-installing"
+SIDECAR_FAILED_FILE = ".paper-muse-sidecar-failed.json"
 
 
 def reset_sidecar_stats():
@@ -57,6 +61,110 @@ def _bump_sidecar_stat(kind: str, claims: int):
     with _SIDECAR_STATS_LOCK:
         _SIDECAR_STATS[kind] += 1
         _SIDECAR_STATS["claims_requested"] += claims
+
+
+def _runtime_root(runtime_dir=None) -> Path:
+    value = runtime_dir or os.environ.get("PAPER_MUSE_RUNTIME_DIR")
+    return Path(value).expanduser().resolve() if value else Path(_HERE)
+
+
+def sidecar_installing_path(runtime_dir=None) -> Path:
+    return _runtime_root(runtime_dir) / SIDECAR_INSTALLING_FILE
+
+
+def sidecar_failed_path(runtime_dir=None) -> Path:
+    return _runtime_root(runtime_dir) / SIDECAR_FAILED_FILE
+
+
+def sidecar_python_path(runtime_dir=None) -> Path:
+    explicit = os.environ.get("PAPER_MUSE_SIDECAR_PYTHON")
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    if runtime_dir or os.environ.get("PAPER_MUSE_RUNTIME_DIR"):
+        return _runtime_root(runtime_dir) / "sidecar" / "bin" / "python"
+    return Path(_HERE) / ".venv-gptr" / "bin" / "python"
+
+
+def sidecar_script_path() -> Path:
+    explicit = os.environ.get("PAPER_MUSE_SIDECAR_SCRIPT")
+    return Path(explicit).expanduser().resolve() if explicit else Path(_HERE) / "gptr_sidecar.py"
+
+
+def _read_sidecar_failure(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return str(data.get("error") or data.get("message") or "")
+    except Exception:
+        return path.read_text(encoding="utf-8", errors="replace")[:500]
+
+
+def sidecar_status(runtime_dir=None, sidecar_python=None, sidecar_script=None) -> dict:
+    root = _runtime_root(runtime_dir)
+    python = Path(sidecar_python).expanduser().resolve() if sidecar_python else sidecar_python_path(runtime_dir)
+    script = Path(sidecar_script).expanduser().resolve() if sidecar_script else sidecar_script_path()
+    marker = sidecar_installing_path(root)
+    failed = sidecar_failed_path(root)
+    base = {
+        "runtime_dir": str(root),
+        "python": str(python),
+        "script": str(script),
+        "installed": False,
+        "ready": False,
+    }
+    if marker.exists():
+        return {**base, "state": "installing", "message": "sidecar runtime 正在安装"}
+
+    failure = _read_sidecar_failure(failed)
+    if not python.exists():
+        state = "failed" if failure else "missing"
+        message = failure or "sidecar runtime 未安装"
+        return {**base, "state": state, "message": message}
+    if not os.access(python, os.X_OK):
+        return {**base, "state": "failed", "installed": True, "message": "sidecar python 不可执行"}
+
+    try:
+        version = subprocess.run([str(python), "--version"], capture_output=True, text=True, timeout=10)
+    except Exception as e:
+        return {**base, "state": "failed", "installed": True, "message": str(e)}
+    if version.returncode != 0:
+        return {
+            **base,
+            "state": "failed",
+            "installed": True,
+            "message": (version.stderr or version.stdout or "sidecar python --version failed")[-500:],
+        }
+
+    try:
+        health = subprocess.run(
+            [str(python), str(script), "--health"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except Exception as e:
+        state = "failed" if failure else "installed"
+        return {**base, "state": state, "installed": True, "message": failure or str(e)}
+    if health.returncode == 0:
+        try:
+            payload = json.loads((health.stdout or "{}").splitlines()[-1])
+        except (json.JSONDecodeError, IndexError):
+            payload = {}
+        if payload.get("ok") is True:
+            return {**base, "state": "ready", "installed": True, "ready": True, "message": "sidecar ready"}
+
+    message = failure or (health.stderr or health.stdout or "sidecar health check failed")[-500:]
+    state = "failed" if failure else "installed"
+    return {**base, "state": state, "installed": True, "message": message}
+
+
+def _degraded_pool(status: dict) -> dict:
+    state = status.get("state", "missing")
+    message = status.get("message") or "sidecar unavailable"
+    reason = f"sidecar {state}: {message}"
+    return {"sources": [], "memo": "", "en_hits": 0, "zh_hits": None,
+            "degraded": True, "degradation_reason": reason}
 
 
 # ---- 纯函数层（离线可测，无 LM/检索）----
@@ -207,6 +315,8 @@ def _apply_falsify_pool(claim, pool, classify_llm):
     sources = pool.get("sources") or []
     en_hits = pool.get("en_hits")            # 双面密度：每主张一份（池级），失败点共用
     zh_hits = pool.get("zh_hits")            # None = 中文/自有面全降级（明示未检）
+    degradation = pool.get("degradation_reason") if pool.get("degraded") else None
+    claim["sidecar_degradation"] = degradation
     claim["memo"] = pool.get("memo") or ""   # 证伪备忘录（gpt-researcher custom_report），落 md
     for f in claim["failures"]:
         evidence = classify_evidence(claim["text"], f["statement"], sources, classify_llm)
@@ -214,6 +324,7 @@ def _apply_falsify_pool(claim, pool, classify_llm):
         f["verdict"] = decide_verdict(evidence)
         f["en_hits"] = en_hits
         f["zh_hits"] = zh_hits
+        f["sidecar_degradation"] = degradation
     return claim
 
 
@@ -253,6 +364,8 @@ def _write_failure_points(output_dir, claims):
             lines.append(f"- 双面密度：英文命中 {f.get('en_hits')}，中文/自有命中 {f.get('zh_hits')}")
             if v == "未决":
                 lines.append("- **未检得证据 · 不放行**（补检索 / 换词 / 需中文学界会话方可解锁）")
+            if f.get("sidecar_degradation"):
+                lines.append(f"- Sidecar 降级：{f['sidecar_degradation']}")
             for e in f.get("evidence", []):
                 lines.append(f"- [{e['stance']}] {e['title']} — {e['url']}")
         if claim.get("memo"):
@@ -285,7 +398,7 @@ def run_review(source_text, has_draft, output_dir, review_llm, falsify_search,
         for j, f in enumerate(failures, 1):
             # 徽标字段占位：上墙后原地更新只换值不加键（快照序列化安全，同 blindspot）
             f.update(id=f"{claim['id']}{chr(96 + j)}", en_hits=None, zh_hits=None,
-                     evidence=[], verdict=None)
+                     evidence=[], verdict=None, sidecar_degradation=None)
         claim["failures"] = failures
         on_claim(claim)
 
@@ -338,7 +451,6 @@ def real_review_llm():
 
 # #8 证伪检索 = gpt-researcher，跑在隔离 .venv-gptr（重依赖不进主 venv，用户 2026-07-08 拍板隔离）。
 # 主引擎经子进程调 gptr_sidecar.py：多源（tavily+CNKI+zsearch）取证据池 + 证伪备忘录。
-_HERE = os.path.dirname(os.path.abspath(__file__))
 SIDECAR_PYTHON = os.path.join(_HERE, ".venv-gptr", "bin", "python")
 SIDECAR_SCRIPT = os.path.join(_HERE, "gptr_sidecar.py")
 _SIDECAR_MARK = "__GPTR_RESULT__"   # sidecar 末行前缀（gpt-researcher 自身日志混在 stdout 里，只取这行）
@@ -354,30 +466,47 @@ def _parse_sidecar_output(stdout):
     return None
 
 
-def real_falsify_search(sidecar_python=SIDECAR_PYTHON, sidecar_script=SIDECAR_SCRIPT,
-                        want_memo=True, timeout=300):
+def real_falsify_search(sidecar_python=None, sidecar_script=None, want_memo=True, timeout=300):
     """真态证伪检索：子进程调 gptr_sidecar（隔离 .venv-gptr 的 gpt-researcher）。
-    每主张一次，多源混跑取证据池 + 证伪备忘录。sidecar 缺失/超时/无结果 → 回空池
+    每主张一次，多源混跑取证据池 + 证伪备忘录。sidecar 缺失/超时/无结果 → 回降级池
     （该主张全判未决，绝不崩；裁决恒在主引擎 decide_verdict）。"""
+    def current_status():
+        return sidecar_status(sidecar_python=sidecar_python, sidecar_script=sidecar_script)
+
+    def failed_pool(message):
+        return _degraded_pool({"state": "failed", "message": message})
+
+    def degraded_many(claims, status):
+        pool = _degraded_pool(status)
+        return {c.get("id"): dict(pool) for c in claims if c.get("id") is not None}
+
     def search(claim_text, failures):
+        status = current_status()
+        if status["state"] != "ready":
+            logging.warning(f"证伪 sidecar 不可用（该主张降级未决）：{status['message']}")
+            return _degraded_pool(status)
         payload = {"claim": claim_text, "want_memo": want_memo,
                    "failures": [{"id": f.get("id"), "statement": f.get("statement", "")}
                                 for f in failures]}
         _bump_sidecar_stat("single_invocations", 1)
         try:
-            r = subprocess.run([sidecar_python, sidecar_script], input=json.dumps(payload),
+            r = subprocess.run([status["python"], status["script"]], input=json.dumps(payload),
                                capture_output=True, text=True, timeout=timeout)
         except Exception as e:
             logging.warning(f"证伪 sidecar 调用异常（该主张降级未决）：{e}")
-            return {}
+            return failed_pool(str(e))
         res = _parse_sidecar_output(r.stdout)
         if not res or not res.get("ok"):
             err = (res or {}).get("error") or (r.stderr or "")[-200:]
             logging.warning(f"证伪 sidecar 无有效结果（该主张降级未决）：{err}")
-            return {}
+            return failed_pool(err)
         return res
 
     def search_many(claims):
+        status = current_status()
+        if status["state"] != "ready":
+            logging.warning(f"证伪 sidecar 不可用（全场降级未决）：{status['message']}")
+            return degraded_many(claims, status)
         payload = {
             "want_memo": want_memo,
             "claims": [
@@ -394,16 +523,16 @@ def real_falsify_search(sidecar_python=SIDECAR_PYTHON, sidecar_script=SIDECAR_SC
         }
         _bump_sidecar_stat("batch_invocations", len(payload["claims"]))
         try:
-            r = subprocess.run([sidecar_python, sidecar_script], input=json.dumps(payload),
+            r = subprocess.run([status["python"], status["script"]], input=json.dumps(payload),
                                capture_output=True, text=True, timeout=timeout * max(1, len(claims)))
         except Exception as e:
             logging.warning(f"批量证伪 sidecar 调用异常（全场降级未决）：{e}")
-            return {}
+            return degraded_many(claims, {"state": "failed", "message": str(e)})
         res = _parse_sidecar_output(r.stdout)
         if not res or not res.get("ok"):
             err = (res or {}).get("error") or (r.stderr or "")[-200:]
             logging.warning(f"批量证伪 sidecar 无有效结果（全场降级未决）：{err}")
-            return {}
+            return degraded_many(claims, {"state": "failed", "message": err})
         pools = {}
         for item in res.get("claims", []):
             cid = item.get("id")

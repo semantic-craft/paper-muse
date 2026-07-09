@@ -29,6 +29,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import threading
 import traceback
@@ -125,8 +126,10 @@ SCAN_LOCK = threading.Lock()
 # 对抗幕单会话（同 SCAN：个人工具一次一场审查，全局 dict + 一把锁）。mode = draft|line。
 # source = 受审文本（有稿=草稿全文，供②稿面渲染 + 主张跨度定位；无稿=主线句）。
 ADV = {"phase": "idle", "mode": None, "topic": None, "claims": [], "source": None,
-       "source_version": 0, "version": 0, "output_dir": None, "error": None}
+       "source_version": 0, "version": 0, "output_dir": None, "error": None,
+       "sidecar": None}
 ADV_LOCK = threading.Lock()
+SIDECAR_BOOTSTRAP_LOCK = threading.Lock()
 
 app = FastAPI()
 
@@ -163,6 +166,14 @@ def _logs_dir():
     return logs_dir if logs_dir else (_results_base().parent / "logs")
 
 
+def _runtime_dir():
+    return _env_path("PAPER_MUSE_RUNTIME_DIR") or (SERVER_ROOT / ".venv")
+
+
+def _sidecar_status_runtime_dir():
+    return _env_path("PAPER_MUSE_RUNTIME_DIR")
+
+
 def _copy_config_template():
     config_dir = _env_path("PAPER_MUSE_CONFIG_DIR")
     if config_dir is None:
@@ -173,6 +184,55 @@ def _copy_config_template():
     if src.exists() and not dst.exists():
         shutil.copy2(src, dst)
     return dst if dst.exists() else None
+
+
+def _write_sidecar_failure(runtime_dir: Path, message: str):
+    path = adversary.sidecar_failed_path(runtime_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"error": message}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _sidecar_bootstrap_bg(runtime_dir: Path):
+    marker = adversary.sidecar_installing_path(runtime_dir)
+    failed = adversary.sidecar_failed_path(runtime_dir)
+    try:
+        script = SERVER_ROOT / "tools" / "runtime_bootstrap.py"
+        manifest = SERVER_ROOT / "runtime-manifest.json"
+        if not script.exists() or not manifest.exists():
+            raise RuntimeError("缺少 sidecar runtime bootstrap 工具或 manifest")
+        if failed.exists():
+            failed.unlink()
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "bootstrap",
+                "--manifest", str(manifest),
+                "--runtime-dir", str(runtime_dir),
+                "--component", "sidecar_runtime",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode != 0:
+            raise RuntimeError((result.stderr or result.stdout or "sidecar bootstrap failed")[-2000:])
+    except Exception as e:
+        _write_sidecar_failure(runtime_dir, str(e))
+    finally:
+        marker.unlink(missing_ok=True)
+
+
+def _start_sidecar_bootstrap():
+    runtime_dir = _runtime_dir()
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    marker = adversary.sidecar_installing_path(runtime_dir)
+    with SIDECAR_BOOTSTRAP_LOCK:
+        if marker.exists():
+            return adversary.sidecar_status(runtime_dir=runtime_dir)
+        marker.write_text("installing\n", encoding="utf-8")
+        threading.Thread(target=_sidecar_bootstrap_bg, args=(runtime_dir,), daemon=True).start()
+    return adversary.sidecar_status(runtime_dir=runtime_dir)
 
 
 def configure_runtime_paths(
@@ -469,6 +529,16 @@ def setup_status():
     return _setup_status()
 
 
+@app.get("/sidecar/status")
+def sidecar_status():
+    return adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir())
+
+
+@app.post("/sidecar/bootstrap")
+def sidecar_bootstrap():
+    return {"ok": True, "sidecar": _start_sidecar_bootstrap()}
+
+
 @app.post("/session")
 def create_session(req: SessionReq):
     if SESSION["phase"] in ("warming", "stepping"):
@@ -752,6 +822,9 @@ def adversary_bg(req: AdversaryReq):
     try:
         load_api_key(toml_file_path=str(_secrets_path()))
         review_llm = adversary.real_review_llm()
+        with ADV_LOCK:
+            ADV["sidecar"] = adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir())
+            _adv_bump_locked()
 
         def on_claim(claim):
             _adv_append_claim(claim)
@@ -803,7 +876,8 @@ def start_adversary(req: AdversaryReq):
             raise HTTPException(409, "对抗审查进行中")
         ADV.update(phase="reviewing", mode=req.mode, claims=[], source=None, error=None,
                    source_version=ADV["version"] + 1, output_dir=base,
-                   topic=(req.line or req.draft or "").strip())
+                   topic=(req.line or req.draft or "").strip(),
+                   sidecar=adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir()))
         _adv_bump_locked()
     threading.Thread(target=adversary_bg, args=(req,), daemon=True).start()
     return {"ok": True, "output_dir": base, "mode": req.mode}
@@ -814,8 +888,8 @@ def adversary_status(since: int | None = None):
     # 流式快照：主张/失败点原地补挂（只换预置键的值），浅拷贝快照序列化安全（同 /scan/status）
     with ADV_LOCK:
         version = ADV["version"]
-        phase, mode, topic, output_dir, error = (
-            ADV["phase"], ADV["mode"], ADV["topic"], ADV["output_dir"], ADV["error"])
+        phase, mode, topic, output_dir, error, sidecar = (
+            ADV["phase"], ADV["mode"], ADV["topic"], ADV["output_dir"], ADV["error"], ADV["sidecar"])
         if since is not None and since == version:
             return {"version": version, "unchanged": True, "phase": phase, "mode": mode,
                     "topic": topic, "output_dir": output_dir, "error": error}
@@ -824,7 +898,7 @@ def adversary_status(since: int | None = None):
         source_version = ADV["source_version"]
     return {"phase": phase, "mode": mode, "topic": topic, "source": source,
             "source_version": source_version, "claims": claims, "output_dir": output_dir,
-            "error": error, "version": version, "unchanged": False}
+            "error": error, "sidecar": sidecar, "version": version, "unchanged": False}
 
 
 @app.get("/perf/status")
@@ -832,6 +906,7 @@ def perf_status():
     return {
         "retrieval_cache": blindspot.retrieval_cache_stats(),
         "sidecar": adversary.sidecar_stats(),
+        "sidecar_runtime": adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir()),
         "llm_cache": {"available": False, "note": "LiteLLM cache hits are not exposed here"},
     }
 

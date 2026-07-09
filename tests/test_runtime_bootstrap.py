@@ -8,11 +8,11 @@ import pytest
 from tools import runtime_bootstrap
 
 
-def _runtime_archive(tmp_path, version="Python 3.12.0"):
-    archive = tmp_path / "runtime.tar.gz"
+def _runtime_archive(tmp_path, version="Python 3.12.0", install_dir="main"):
+    archive = tmp_path / f"{install_dir}-runtime.tar.gz"
     script = f"#!/bin/sh\necho '{version}'\n".encode()
     with tarfile.open(archive, "w:gz") as tf:
-        info = tarfile.TarInfo("main/bin/python")
+        info = tarfile.TarInfo(f"{install_dir}/bin/python")
         info.mode = 0o755
         info.size = len(script)
         tf.addfile(info, io.BytesIO(script))
@@ -30,20 +30,21 @@ def _broken_runtime_archive(tmp_path):
     return archive
 
 
-def _manifest(tmp_path, archive):
+def _manifest(tmp_path, archive, component="runtime", install_dir="main"):
     data = {
-        "runtime": {
+        component: {
             "platform": "macos-arm64",
             "version": "test-runtime-v1",
             "asset_url": archive.resolve().as_uri(),
             "archive_type": "tar.gz",
             "sha256": runtime_bootstrap.sha256_file(archive),
-            "entrypoint": "main/bin/python",
+            "entrypoint": f"{install_dir}/bin/python",
+            "install_dir": install_dir,
             "compatible_app": "test",
             "compatible_server_schema": 1,
         }
     }
-    path = tmp_path / "runtime-manifest.json"
+    path = tmp_path / f"{component}-manifest.json"
     path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
@@ -62,6 +63,24 @@ def test_runtime_bootstrap_installs_and_skips_compatible_runtime(tmp_path):
 
     archive.unlink()
     assert runtime_bootstrap.bootstrap(manifest, runtime_dir) == "already-installed"
+
+
+def test_runtime_bootstrap_installs_isolated_sidecar_runtime(tmp_path):
+    main = _runtime_archive(tmp_path, version="Python 3.12.1", install_dir="main")
+    sidecar = _runtime_archive(tmp_path, version="Python 3.12.2", install_dir="sidecar")
+    main_manifest = _manifest(tmp_path, main)
+    sidecar_manifest = _manifest(
+        tmp_path, sidecar, component="sidecar_runtime", install_dir="sidecar"
+    )
+    runtime_dir = tmp_path / "runtime"
+
+    assert runtime_bootstrap.bootstrap(main_manifest, runtime_dir) == "installed"
+    assert runtime_bootstrap.bootstrap(
+        sidecar_manifest, runtime_dir, component="sidecar_runtime"
+    ) == "installed"
+
+    assert (runtime_dir / "main" / "bin" / "python").exists()
+    assert (runtime_dir / "sidecar" / "bin" / "python").exists()
 
 
 def test_runtime_bootstrap_rejects_checksum_and_cleans_partial_install(tmp_path):
