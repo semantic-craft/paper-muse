@@ -8,6 +8,8 @@ final class MuseServer {
     var baseURL: URL { URL(string: "http://127.0.0.1:\(port)")! }
 
     private var process: Process?
+    private var stdoutPipe: Pipe?
+    private var stderrPipe: Pipe?
     private let fileManager = FileManager.default
 
     private struct LaunchPlan {
@@ -22,6 +24,12 @@ final class MuseServer {
         let message: String
     }
 
+    struct ReleaseHealth: Decodable {
+        let state: String
+        let blocking: Bool
+        let message: String
+    }
+
     private var devRootDir: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Projects/paper-muse")
     }
@@ -31,6 +39,7 @@ final class MuseServer {
         case missingServerAssets(String)
         case missingAppSupportDirectory
         case runtimeBootstrapFailed(String)
+        case serverImportFailed(String)
         case notReady
 
         var errorDescription: String? {
@@ -39,6 +48,7 @@ final class MuseServer {
             case .missingServerAssets(let p): return "找不到打包后的后端资源：\(p)\nRelease 版本不会回退到开发 checkout。"
             case .missingAppSupportDirectory: return "找不到 Application Support 目录，无法准备 PaperMuse 用户数据目录"
             case .runtimeBootstrapFailed(let msg): return "PaperMuse runtime 安装失败：\(msg)"
+            case .serverImportFailed(let msg): return "后端导入失败：\(msg)"
             case .notReady: return "后端 30 秒内未就绪，检查 muse_server.py 日志"
             }
         }
@@ -51,6 +61,9 @@ final class MuseServer {
         for _ in 0..<75 {
             try? await Task.sleep(nanoseconds: 400_000_000)
             if await isHealthy() { return }
+            if let p = process, !p.isRunning {
+                throw ServerError.serverImportFailed(serverOutputTail())
+            }
         }
         throw ServerError.notReady
     }
@@ -75,8 +88,20 @@ final class MuseServer {
         var environment = ProcessInfo.processInfo.environment
         plan.environment.forEach { environment[$0.key] = $0.value }
         p.environment = environment
+        let out = Pipe()
+        let err = Pipe()
+        p.standardOutput = out
+        p.standardError = err
+        stdoutPipe = out
+        stderrPipe = err
         try p.run()
         process = p
+    }
+
+    func releaseHealth() async throws -> ReleaseHealth {
+        let (data, resp) = try await URLSession.shared.data(from: baseURL.appendingPathComponent("release/health"))
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw ServerError.notReady }
+        return try JSONDecoder().decode(ReleaseHealth.self, from: data)
     }
 
     private func launchPlan() throws -> LaunchPlan {
@@ -202,5 +227,16 @@ final class MuseServer {
         req.timeoutInterval = 2
         guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return false }
         return (resp as? HTTPURLResponse)?.statusCode == 200
+    }
+
+    private func serverOutputTail() -> String {
+        let stdout = stdoutPipe?.fileHandleForReading.readDataToEndOfFile() ?? Data()
+        let stderr = stderrPipe?.fileHandleForReading.readDataToEndOfFile() ?? Data()
+        let combined = [stderr, stdout]
+            .compactMap { String(data: $0, encoding: .utf8) }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if combined.isEmpty { return "进程已退出，但没有 stderr/stdout 输出" }
+        return String(combined.suffix(2000))
     }
 }

@@ -54,6 +54,7 @@ def _abs_path(value):
 
 _EXPLICIT_SERVER_ROOT = os.environ.get("PAPER_MUSE_SERVER_ROOT") or _early_cli_value("--server-root")
 SERVER_ROOT = _abs_path(_EXPLICIT_SERVER_ROOT) if _EXPLICIT_SERVER_ROOT else ROOT
+RELEASE_MODE = "--release-mode" in sys.argv
 os.chdir(SERVER_ROOT)
 
 from fastapi import FastAPI, HTTPException
@@ -245,7 +246,8 @@ def configure_runtime_paths(
     logs_dir=None,
     release_mode=False,
 ):
-    global SERVER_ROOT
+    global SERVER_ROOT, RELEASE_MODE
+    RELEASE_MODE = bool(release_mode)
     explicit_server_root = bool(server_root or os.environ.get("PAPER_MUSE_SERVER_ROOT") or _EXPLICIT_SERVER_ROOT)
     if server_root is not None:
         SERVER_ROOT = _abs_path(server_root)
@@ -274,6 +276,124 @@ def configure_runtime_paths(
 
     _copy_config_template()
     os.chdir(SERVER_ROOT)
+
+
+def _main_runtime_status():
+    runtime_dir = _env_path("PAPER_MUSE_RUNTIME_DIR")
+    if runtime_dir is None:
+        return {"state": "dev", "message": "developer runtime", "runtime_dir": str(SERVER_ROOT / ".venv")}
+    temp_installs = sorted(p.name for p in runtime_dir.glob(".paper-muse-runtime-*"))
+    if temp_installs:
+        return {
+            "state": "bootstrap_in_progress",
+            "runtime_dir": str(runtime_dir),
+            "message": "main runtime bootstrap in progress",
+            "temp_installs": temp_installs,
+        }
+    python = runtime_dir / "main" / "bin" / "python"
+    if not python.exists():
+        return {"state": "runtime_missing", "runtime_dir": str(runtime_dir), "python": str(python)}
+    if not os.access(python, os.X_OK):
+        return {"state": "bootstrap_failed", "runtime_dir": str(runtime_dir), "python": str(python),
+                "message": "main runtime python is not executable"}
+    try:
+        result = subprocess.run([str(python), "--version"], capture_output=True, text=True, timeout=10)
+    except Exception as e:
+        return {"state": "bootstrap_failed", "runtime_dir": str(runtime_dir), "python": str(python),
+                "message": str(e)}
+    if result.returncode != 0:
+        return {"state": "bootstrap_failed", "runtime_dir": str(runtime_dir), "python": str(python),
+                "message": (result.stderr or result.stdout or "main runtime health check failed")[-500:]}
+    return {"state": "ready", "runtime_dir": str(runtime_dir), "python": str(python),
+            "version": (result.stdout or result.stderr or "").strip()}
+
+
+def _optional_tool_status(name: str, command: str):
+    path = shutil.which(command)
+    if path:
+        return {"state": "available", "optional": True, "command": command, "path": path}
+    return {"state": "unavailable", "optional": True, "command": command,
+            "message": f"{command} not found; related evidence surface will degrade"}
+
+
+def _optional_capabilities():
+    return {
+        "cnki": _optional_tool_status("cnki", "opencli"),
+        "zsearch": _optional_tool_status("zsearch", "zsearch"),
+    }
+
+
+def _developer_path_warnings():
+    if not RELEASE_MODE:
+        return []
+    warnings = []
+    dev_root = ROOT.resolve()
+    paths = {
+        "server_root": SERVER_ROOT,
+        "app_data_dir": _env_path("PAPER_MUSE_APP_DATA_DIR"),
+        "config_dir": _env_path("PAPER_MUSE_CONFIG_DIR"),
+        "cache_dir": _env_path("PAPER_MUSE_CACHE_DIR"),
+        "runtime_dir": _env_path("PAPER_MUSE_RUNTIME_DIR"),
+        "logs_dir": _env_path("PAPER_MUSE_LOGS_DIR"),
+    }
+    for name, path in paths.items():
+        if path is None:
+            continue
+        resolved = path.resolve()
+        if resolved == dev_root or dev_root in resolved.parents:
+            warnings.append({"path": name, "value": str(resolved), "message": "release mode is using a developer checkout path"})
+    return warnings
+
+
+def release_health_status():
+    setup = _setup_status(REQUIRED_ROUNDTABLE_KEYS)
+    runtime = _main_runtime_status()
+    optional = _optional_capabilities()
+    sidecar = adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir())
+    developer_warnings = _developer_path_warnings()
+    components = {
+        "runtime": runtime,
+        "server_import": {"state": "ready", "message": "muse_server imported successfully"},
+        "setup": setup,
+        "optional_capabilities": optional,
+        "sidecar": sidecar,
+        "developer_paths": {"state": "warning" if developer_warnings else "ok", "warnings": developer_warnings},
+    }
+    if runtime["state"] in {"runtime_missing", "bootstrap_in_progress", "bootstrap_failed"}:
+        state = runtime["state"]
+        blocking = True
+    elif developer_warnings:
+        state = "developer_path"
+        blocking = True
+    elif setup["missing_required_keys"]:
+        state = "missing_required_key"
+        blocking = True
+    elif any(v["state"] == "unavailable" for v in optional.values()) or sidecar["state"] != "ready":
+        state = "ready_degraded"
+        blocking = False
+    else:
+        state = "ready"
+        blocking = False
+    return {
+        "ok": not blocking,
+        "state": state,
+        "blocking": blocking,
+        "release_mode": RELEASE_MODE,
+        "components": components,
+        "message": _release_health_message(state, components),
+    }
+
+
+def _release_health_message(state, components):
+    if state == "missing_required_key":
+        return components["setup"]["message"]
+    if state == "developer_path":
+        return "Release mode is using developer checkout paths"
+    if state in {"runtime_missing", "bootstrap_in_progress", "bootstrap_failed"}:
+        return components["runtime"].get("message") or state
+    if state == "ready_degraded":
+        return "Ready with optional capability degradation"
+    return "Ready"
 
 
 REQUIRED_ROUNDTABLE_KEYS = ("DEEPSEEK_API_KEY", "TAVILY_API_KEY", "ENCODER_API_TYPE")
@@ -527,6 +647,11 @@ def health():
 @app.get("/setup/status")
 def setup_status():
     return _setup_status()
+
+
+@app.get("/release/health")
+def release_health():
+    return release_health_status()
 
 
 @app.get("/sidecar/status")

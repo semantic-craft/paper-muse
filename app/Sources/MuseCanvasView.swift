@@ -57,6 +57,20 @@ struct MuseCanvasView: View {
         phase = .loading
         do {
             try await MuseServer.shared.ensureRunning()
+            if let health = try? await MuseServer.shared.releaseHealth() {
+                if health.state == "missing_required_key" {
+                    setupText = health.message
+                    phase = .setupRequired
+                    return
+                }
+                if health.blocking {
+                    errorText = health.message
+                    phase = .failed
+                    return
+                }
+                phase = .ready
+                return
+            }
             if let setup = try? await MuseServer.shared.setupStatus(), setup.setup_required {
                 setupText = setup.message
                 phase = .setupRequired
