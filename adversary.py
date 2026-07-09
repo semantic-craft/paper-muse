@@ -435,18 +435,36 @@ def run_review(source_text, has_draft, output_dir, review_llm, falsify_search,
 REVIEW_PREFERENCE = ("openai", "deepseek", "gemini")
 
 
-def pick_review_llm(provs: dict):
+def _provider_from_model(model: str | None):
+    raw = (model or "").strip().lower()
+    if not raw:
+        return None
+    if raw.startswith("openai/") or raw.startswith(("gpt-", "chat")):
+        return "openai"
+    if raw.startswith("deepseek/") or raw == "deepseek":
+        return "deepseek"
+    if raw.startswith("gemini/") or "gemini" in raw:
+        return "gemini"
+    return raw.split("/", 1)[0]
+
+
+def pick_review_llm(provs: dict, model: str | None = None):
+    requested = _provider_from_model(model)
+    if requested:
+        if requested not in provs:
+            raise RuntimeError(f"requested LLM provider unavailable: {requested}")
+        return provs[requested]
     for tag in REVIEW_PREFERENCE:
         if tag in provs:
             return provs[tag]
     return next(iter(provs.values()))
 
 
-def real_review_llm():
+def real_review_llm(model: str | None = None):
     provs = blindspot.real_providers()
     if not provs:
         raise RuntimeError("没有任何可用的 LLM key（DEEPSEEK/OPENAI/GOOGLE）")
-    return pick_review_llm(provs)
+    return pick_review_llm(provs, model=model)
 
 
 # #8 证伪检索 = gpt-researcher，跑在隔离 .venv-gptr（重依赖不进主 venv，用户 2026-07-08 拍板隔离）。

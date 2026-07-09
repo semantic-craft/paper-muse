@@ -301,6 +301,24 @@ def test_session_returns_setup_required_when_keys_missing(monkeypatch, tmp_path)
     assert "首次设置未完成" in resp.json()["detail"]
 
 
+def test_session_accepts_openai_model_without_deepseek(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-realish")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-realish")
+    monkeypatch.setenv("ENCODER_API_TYPE", "openai")
+    monkeypatch.setattr(muse_server, "warm_start_bg", lambda _req: None)
+    muse_server.SESSION.update(phase="idle", runner=None, error=None)
+    client = TestClient(muse_server.app)
+
+    resp = client.post("/session", json={"topic": "平台数据权力", "model": "openai"})
+
+    assert resp.status_code == 200
+    assert resp.json()["model"] == "openai"
+    assert muse_server.SESSION["model"] == "openai"
+
+
 def test_scan_bg_sets_has_profile_true_and_feeds_profile(monkeypatch, tmp_path):
     monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))

@@ -68,7 +68,7 @@ from knowledge_storm.collaborative_storm.engine import (
     CoStormRunner,
 )
 from knowledge_storm.collaborative_storm.modules.callback import BaseCallbackHandler
-from knowledge_storm.lm import DeepSeekModel
+from knowledge_storm.lm import DeepSeekModel, GoogleModel, OpenAIModel
 from knowledge_storm.logging_wrapper import LoggingWrapper
 from knowledge_storm.rm import (
     TavilySearchRM,
@@ -139,6 +139,7 @@ class ProgressCallback(BaseCallbackHandler):
 SESSION = {
     "phase": "idle",  # idle | warming | ready | stepping | error
     "topic": None,
+    "model": None,
     "runner": None,
     "progress": [],
     "output_dir": None,
@@ -153,7 +154,7 @@ SCAN_LOCK = threading.Lock()
 
 # 对抗幕单会话（同 SCAN：个人工具一次一场审查，全局 dict + 一把锁）。mode = draft|line。
 # source = 受审文本（有稿=草稿全文，供②稿面渲染 + 主张跨度定位；无稿=主线句）。
-ADV = {"phase": "idle", "mode": None, "topic": None, "claims": [], "source": None,
+ADV = {"phase": "idle", "mode": None, "model": None, "topic": None, "claims": [], "source": None,
        "source_version": 0, "version": 0, "output_dir": None, "error": None,
        "sidecar": None}
 ADV_LOCK = threading.Lock()
@@ -423,8 +424,19 @@ def _release_health_message(state, components):
     return "Ready"
 
 
-REQUIRED_ROUNDTABLE_KEYS = ("DEEPSEEK_API_KEY", "TAVILY_API_KEY", "ENCODER_API_TYPE")
+ROUNDTABLE_BASE_KEYS = ("TAVILY_API_KEY", "ENCODER_API_TYPE")
+REQUIRED_ROUNDTABLE_KEYS = ("DEEPSEEK_API_KEY", *ROUNDTABLE_BASE_KEYS)
 LLM_PROVIDER_KEYS = ("DEEPSEEK_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY")
+ROUNDTABLE_PROVIDER_KEYS = {
+    "deepseek": "DEEPSEEK_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GOOGLE_API_KEY",
+}
+ROUNDTABLE_DEFAULT_MODELS = {
+    "deepseek": "deepseek-v4-flash",
+    "openai": "chat-latest",
+    "gemini": "gemini-3.1-flash-lite",
+}
 KNOWN_PROVIDER_KEYS = (
     "DEEPSEEK_API_KEY",
     "OPENAI_API_KEY",
@@ -495,6 +507,27 @@ def _raise_setup_http(error: SetupRequiredError):
     raise HTTPException(status_code=428, detail=str(error))
 
 
+def _roundtable_model_spec(model: str):
+    raw = (model or "deepseek").strip()
+    key = raw.lower()
+    for provider in ROUNDTABLE_DEFAULT_MODELS:
+        prefix = provider + "/"
+        if key == provider:
+            return provider, ROUNDTABLE_DEFAULT_MODELS[provider]
+        if key.startswith(prefix):
+            return provider, raw.split("/", 1)[1]
+    if "gemini" in key:
+        return "gemini", raw
+    if key.startswith(("gpt-", "chat")):
+        return "openai", raw
+    return "deepseek", raw
+
+
+def _roundtable_required_keys(req: "SessionReq"):
+    provider, _ = _roundtable_model_spec(req.model)
+    return (ROUNDTABLE_PROVIDER_KEYS[provider], *ROUNDTABLE_BASE_KEYS)
+
+
 class SessionReq(BaseModel):
     topic: str
     model: str = "deepseek-v4-flash"
@@ -530,6 +563,7 @@ class FeedbackReq(BaseModel):
 
 class AdversaryReq(BaseModel):
     mode: str = "line"              # draft=有稿（读 draft 草稿）| line=无稿（攻击 line 主线句）
+    model: str | None = None        # 可选：openai/deepseek/gemini；空则按 adversary.REVIEW_PREFERENCE
     draft: str | None = None        # 有稿：草稿 .md（相对 output_dir 或绝对路径）
     line: str | None = None         # 无稿：主线句
     from_card: bool = False         # 无稿来源=构思幕卡片一键送入（仅标注 from）
@@ -612,25 +646,34 @@ def build_rm(req: "SessionReq", k: int):
 
 
 def build_runner(req: SessionReq):
-    _require_setup(REQUIRED_ROUNDTABLE_KEYS)
+    _require_setup(_roundtable_required_keys(req))
+    provider, model = _roundtable_model_spec(req.model)
 
-    kwargs = {
-        "api_key": os.getenv("DEEPSEEK_API_KEY"),
-        "api_base": os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com"),
-        "temperature": 1.0,
-        "top_p": 0.9,
-    }
-
-    def ds(max_tokens):
-        return DeepSeekModel(model=req.model, max_tokens=max_tokens, **kwargs)
+    def lm(max_tokens):
+        kwargs = {"temperature": 1.0, "top_p": 0.9, "max_tokens": max_tokens}
+        if provider == "openai":
+            return OpenAIModel(
+                model=model,
+                api_key=os.getenv("OPENAI_API_KEY"),
+                api_base=os.getenv("OPENAI_API_BASE", "https://api.openai.com"),
+                **kwargs,
+            )
+        if provider == "gemini":
+            return GoogleModel(model=model, api_key=os.getenv("GOOGLE_API_KEY"), **kwargs)
+        return DeepSeekModel(
+            model=model,
+            api_key=os.getenv("DEEPSEEK_API_KEY"),
+            api_base=os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com"),
+            **kwargs,
+        )
 
     lm_config = CollaborativeStormLMConfigs()
-    lm_config.set_question_answering_lm(ds(1000))
-    lm_config.set_discourse_manage_lm(ds(500))
-    lm_config.set_utterance_polishing_lm(ds(2000))
-    lm_config.set_warmstart_outline_gen_lm(ds(500))
-    lm_config.set_question_asking_lm(ds(300))
-    lm_config.set_knowledge_base_lm(ds(1000))
+    lm_config.set_question_answering_lm(lm(1000))
+    lm_config.set_discourse_manage_lm(lm(500))
+    lm_config.set_utterance_polishing_lm(lm(2000))
+    lm_config.set_warmstart_outline_gen_lm(lm(500))
+    lm_config.set_question_asking_lm(lm(300))
+    lm_config.set_knowledge_base_lm(lm(1000))
 
     runner_argument = RunnerArgument(
         topic=req.topic,
@@ -699,21 +742,23 @@ def create_session(req: SessionReq):
     if not topic:
         raise HTTPException(400, "主题不能为空")
     try:
-        _require_setup(REQUIRED_ROUNDTABLE_KEYS)
+        _require_setup(_roundtable_required_keys(req))
     except SetupRequiredError as e:
         _raise_setup_http(e)
     req.topic = topic
+    provider, model = _roundtable_model_spec(req.model)
     base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
     SESSION.update(
         phase="warming",
         topic=topic,
+        model=provider,
         runner=None,
         progress=[],
         error=None,
         output_dir=os.path.join(base, f"costorm_{sanitize_topic(topic)}"),
     )
     threading.Thread(target=warm_start_bg, args=(req,), daemon=True).start()
-    return {"ok": True, "topic": topic, "output_dir": SESSION["output_dir"]}
+    return {"ok": True, "topic": topic, "model": provider, "llm": model, "output_dir": SESSION["output_dir"]}
 
 
 @app.get("/status")
@@ -725,6 +770,7 @@ def status():
     return {
         "phase": SESSION["phase"],
         "topic": SESSION["topic"],
+        "model": SESSION["model"],
         "progress": SESSION["progress"][-5:],
         "turns": turns,
         "output_dir": SESSION["output_dir"],
@@ -978,7 +1024,7 @@ def _resolve_draft(base, name):
 def adversary_bg(req: AdversaryReq):
     try:
         load_api_key(toml_file_path=str(_secrets_path()))
-        review_llm = adversary.real_review_llm()
+        review_llm = adversary.real_review_llm(req.model) if req.model else adversary.real_review_llm()
         with ADV_LOCK:
             ADV["sidecar"] = adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir())
             _adv_bump_locked()
@@ -1032,12 +1078,13 @@ def start_adversary(req: AdversaryReq):
         if ADV["phase"] == "reviewing":
             raise HTTPException(409, "对抗审查进行中")
         ADV.update(phase="reviewing", mode=req.mode, claims=[], source=None, error=None,
+                   model=req.model,
                    source_version=ADV["version"] + 1, output_dir=base,
                    topic=(req.line or req.draft or "").strip(),
                    sidecar=adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir()))
         _adv_bump_locked()
     threading.Thread(target=adversary_bg, args=(req,), daemon=True).start()
-    return {"ok": True, "output_dir": base, "mode": req.mode}
+    return {"ok": True, "output_dir": base, "mode": req.mode, "model": req.model}
 
 
 @app.get("/adversary/status")
@@ -1045,15 +1092,16 @@ def adversary_status(since: int | None = None):
     # 流式快照：主张/失败点原地补挂（只换预置键的值），浅拷贝快照序列化安全（同 /scan/status）
     with ADV_LOCK:
         version = ADV["version"]
-        phase, mode, topic, output_dir, error, sidecar = (
-            ADV["phase"], ADV["mode"], ADV["topic"], ADV["output_dir"], ADV["error"], ADV["sidecar"])
+        phase, mode, model, topic, output_dir, error, sidecar = (
+            ADV["phase"], ADV["mode"], ADV["model"], ADV["topic"],
+            ADV["output_dir"], ADV["error"], ADV["sidecar"])
         if since is not None and since == version:
             return {"version": version, "unchanged": True, "phase": phase, "mode": mode,
-                    "topic": topic, "output_dir": output_dir, "error": error}
+                    "model": model, "topic": topic, "output_dir": output_dir, "error": error}
         claims = list(ADV["claims"])
         source = None if since is not None and since >= ADV["source_version"] else ADV["source"]
         source_version = ADV["source_version"]
-    return {"phase": phase, "mode": mode, "topic": topic, "source": source,
+    return {"phase": phase, "mode": mode, "model": model, "topic": topic, "source": source,
             "source_version": source_version, "claims": claims, "output_dir": output_dir,
             "error": error, "sidecar": sidecar, "version": version, "unchanged": False}
 
