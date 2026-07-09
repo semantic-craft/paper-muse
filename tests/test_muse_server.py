@@ -40,8 +40,26 @@ def _clear_runtime_env(monkeypatch):
         "PAPER_MUSE_CONFIG_DIR",
         "PAPER_MUSE_CACHE_DIR",
         "PAPER_MUSE_RUNTIME_DIR",
+        "PAPER_MUSE_LOGS_DIR",
         "PAPER_MUSE_OUTPUT_DIR",
         "PAPER_MUSE_SECRETS_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def _clear_provider_env(monkeypatch):
+    for name in (
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_API_BASE",
+        "OPENAI_API_KEY",
+        "GOOGLE_API_KEY",
+        "TAVILY_API_KEY",
+        "PERPLEXITY_API_KEY",
+        "JINA_API_KEY",
+        "ENCODER_API_TYPE",
+        "ENCODER_API_KEY",
+        "ENCODER_API_BASE",
+        "ENCODER_MODEL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -66,7 +84,10 @@ def test_release_runtime_paths_drive_secrets_and_results(monkeypatch, tmp_path):
     config_dir = tmp_path / "config"
     cache_dir = tmp_path / "cache"
     runtime_dir = tmp_path / "runtime"
+    logs_dir = tmp_path / "logs"
     server_root.mkdir()
+    (server_root / "secrets.toml.example").write_text("DEEPSEEK_API_KEY=\"sk-YOUR_DEEPSEEK_KEY\"\n",
+                                                       encoding="utf-8")
 
     muse_server.configure_runtime_paths(
         server_root=server_root,
@@ -74,6 +95,7 @@ def test_release_runtime_paths_drive_secrets_and_results(monkeypatch, tmp_path):
         config_dir=config_dir,
         cache_dir=cache_dir,
         runtime_dir=runtime_dir,
+        logs_dir=logs_dir,
         release_mode=True,
     )
 
@@ -82,10 +104,48 @@ def test_release_runtime_paths_drive_secrets_and_results(monkeypatch, tmp_path):
     assert os.environ["PAPER_MUSE_CONFIG_DIR"] == str(config_dir.resolve())
     assert os.environ["PAPER_MUSE_CACHE_DIR"] == str(cache_dir.resolve())
     assert os.environ["PAPER_MUSE_RUNTIME_DIR"] == str(runtime_dir.resolve())
+    assert os.environ["PAPER_MUSE_LOGS_DIR"] == str(logs_dir.resolve())
     assert muse_server._secrets_path() == config_dir.resolve() / "secrets.toml"
     assert muse_server._results_base() == data_dir.resolve() / "results"
     assert Path.cwd() == server_root.resolve()
-    assert data_dir.is_dir() and config_dir.is_dir() and cache_dir.is_dir() and runtime_dir.is_dir()
+    assert data_dir.is_dir() and config_dir.is_dir() and cache_dir.is_dir()
+    assert runtime_dir.is_dir() and logs_dir.is_dir()
+    assert (config_dir / "secrets.toml.example").exists()
+
+
+def test_setup_status_reports_missing_required_keys(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    _clear_provider_env(monkeypatch)
+    secrets = tmp_path / "empty-secrets.toml"
+    secrets.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PAPER_MUSE_SECRETS_FILE", str(secrets))
+    monkeypatch.setenv("PAPER_MUSE_CONFIG_DIR", str(tmp_path / "config"))
+    client = TestClient(muse_server.app)
+
+    body = client.get("/setup/status").json()
+
+    assert body["setup_required"] is True
+    assert "DEEPSEEK_API_KEY" in body["missing_required_keys"]
+    assert body["paths"]["secrets_file"] == str(secrets.resolve())
+    assert "首次设置未完成" in body["message"]
+
+
+def test_session_returns_setup_required_when_keys_missing(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    _clear_provider_env(monkeypatch)
+    secrets = tmp_path / "empty-secrets.toml"
+    secrets.write_text("", encoding="utf-8")
+    monkeypatch.setenv("PAPER_MUSE_SECRETS_FILE", str(secrets))
+    client = TestClient(muse_server.app)
+
+    resp = client.post("/session", json={"topic": "平台数据权力"})
+
+    assert resp.status_code == 428
+    assert "首次设置未完成" in resp.json()["detail"]
 
 
 def test_scan_bg_sets_has_profile_true_and_feeds_profile(monkeypatch, tmp_path):

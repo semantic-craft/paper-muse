@@ -17,6 +17,11 @@ final class MuseServer {
         let environment: [String: String]
     }
 
+    struct SetupStatus: Decodable {
+        let setup_required: Bool
+        let message: String
+    }
+
     private var devRootDir: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Projects/paper-muse")
     }
@@ -51,6 +56,12 @@ final class MuseServer {
     func stop() {
         if let p = process, p.isRunning { p.terminate() }
         process = nil
+    }
+
+    func setupStatus() async throws -> SetupStatus {
+        let (data, resp) = try await URLSession.shared.data(from: baseURL.appendingPathComponent("setup/status"))
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw ServerError.notReady }
+        return try JSONDecoder().decode(SetupStatus.self, from: data)
     }
 
     private func launch() throws {
@@ -104,9 +115,11 @@ final class MuseServer {
         let configDir = supportRoot.appendingPathComponent("config", isDirectory: true)
         let cacheDir = supportRoot.appendingPathComponent("cache", isDirectory: true)
         let runtimeDir = supportRoot.appendingPathComponent("runtime", isDirectory: true)
-        for dir in [dataDir, configDir, cacheDir, runtimeDir] {
+        let logsDir = supportRoot.appendingPathComponent("logs", isDirectory: true)
+        for dir in [dataDir, configDir, cacheDir, runtimeDir, logsDir] {
             try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         }
+        try installConfigTemplate(from: serverRoot, to: configDir)
 
         let python = runtimeDir.appendingPathComponent("main/bin/python")
         guard fileManager.isExecutableFile(atPath: python.path) else {
@@ -124,6 +137,7 @@ final class MuseServer {
                 "--config-dir", configDir.path,
                 "--cache-dir", cacheDir.path,
                 "--runtime-dir", runtimeDir.path,
+                "--logs-dir", logsDir.path,
             ],
             currentDirectory: serverRoot,
             environment: [
@@ -132,8 +146,17 @@ final class MuseServer {
                 "PAPER_MUSE_CONFIG_DIR": configDir.path,
                 "PAPER_MUSE_CACHE_DIR": cacheDir.path,
                 "PAPER_MUSE_RUNTIME_DIR": runtimeDir.path,
+                "PAPER_MUSE_LOGS_DIR": logsDir.path,
             ]
         )
+    }
+
+    private func installConfigTemplate(from serverRoot: URL, to configDir: URL) throws {
+        let src = serverRoot.appendingPathComponent("secrets.toml.example")
+        let dst = configDir.appendingPathComponent("secrets.toml.example")
+        if fileManager.fileExists(atPath: src.path) && !fileManager.fileExists(atPath: dst.path) {
+            try fileManager.copyItem(at: src, to: dst)
+        }
     }
 
     private func appSupportRoot() throws -> URL {

@@ -28,6 +28,7 @@
 import json
 import os
 import re
+import shutil
 import sys
 import threading
 import traceback
@@ -157,6 +158,23 @@ def _results_base():
     return (data_dir / "results") if data_dir else (SERVER_ROOT / "results")
 
 
+def _logs_dir():
+    logs_dir = _env_path("PAPER_MUSE_LOGS_DIR")
+    return logs_dir if logs_dir else (_results_base().parent / "logs")
+
+
+def _copy_config_template():
+    config_dir = _env_path("PAPER_MUSE_CONFIG_DIR")
+    if config_dir is None:
+        return None
+    config_dir.mkdir(parents=True, exist_ok=True)
+    src = SERVER_ROOT / "secrets.toml.example"
+    dst = config_dir / "secrets.toml.example"
+    if src.exists() and not dst.exists():
+        shutil.copy2(src, dst)
+    return dst if dst.exists() else None
+
+
 def configure_runtime_paths(
     *,
     server_root=None,
@@ -164,6 +182,7 @@ def configure_runtime_paths(
     config_dir=None,
     cache_dir=None,
     runtime_dir=None,
+    logs_dir=None,
     release_mode=False,
 ):
     global SERVER_ROOT
@@ -180,6 +199,7 @@ def configure_runtime_paths(
         "PAPER_MUSE_CONFIG_DIR": config_dir,
         "PAPER_MUSE_CACHE_DIR": cache_dir,
         "PAPER_MUSE_RUNTIME_DIR": runtime_dir,
+        "PAPER_MUSE_LOGS_DIR": logs_dir,
     }
     if release_mode:
         missing = [name for name, value in required.items() if value is None and not os.environ.get(name)]
@@ -192,7 +212,80 @@ def configure_runtime_paths(
         if path is not None:
             path.mkdir(parents=True, exist_ok=True)
 
+    _copy_config_template()
     os.chdir(SERVER_ROOT)
+
+
+REQUIRED_ROUNDTABLE_KEYS = ("DEEPSEEK_API_KEY", "TAVILY_API_KEY", "ENCODER_API_TYPE")
+LLM_PROVIDER_KEYS = ("DEEPSEEK_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY")
+KNOWN_PROVIDER_KEYS = (
+    "DEEPSEEK_API_KEY",
+    "OPENAI_API_KEY",
+    "GOOGLE_API_KEY",
+    "TAVILY_API_KEY",
+    "PERPLEXITY_API_KEY",
+    "JINA_API_KEY",
+    "ENCODER_API_TYPE",
+    "ENCODER_API_KEY",
+)
+PLACEHOLDER_MARKERS = ("YOUR_", "sk-YOUR", "tvly-dev-YOUR", "AIzaSy-YOUR", "pplx-YOUR", "jina_YOUR")
+
+
+class SetupRequiredError(RuntimeError):
+    pass
+
+
+def _load_provider_config():
+    load_api_key(toml_file_path=str(_secrets_path()))
+
+
+def _configured_key(name):
+    value = (os.getenv(name) or "").strip()
+    return bool(value) and not any(marker in value for marker in PLACEHOLDER_MARKERS)
+
+
+def _setup_status(required_keys=REQUIRED_ROUNDTABLE_KEYS):
+    _load_provider_config()
+    template = _copy_config_template()
+    provider_keys = {name: _configured_key(name) for name in KNOWN_PROVIDER_KEYS}
+    missing = [name for name in required_keys if not provider_keys.get(name)]
+    paths = {
+        "config_dir": str(_env_path("PAPER_MUSE_CONFIG_DIR") or SERVER_ROOT),
+        "secrets_file": str(_secrets_path()),
+        "secrets_template": str(template or (SERVER_ROOT / "secrets.toml.example")),
+        "researcher_profile": str(blindspot.researcher_md_path()),
+        "results_dir": str(_results_base()),
+        "cache_dir": str(_env_path("PAPER_MUSE_CACHE_DIR") or Path.home() / ".cache" / "paper-muse"),
+        "runtime_dir": str(_env_path("PAPER_MUSE_RUNTIME_DIR") or SERVER_ROOT / ".venv"),
+        "logs_dir": str(_logs_dir()),
+    }
+    message = "设置完成"
+    if missing:
+        message = (
+            "首次设置未完成：缺少 "
+            + ", ".join(missing)
+            + f"。请在 {paths['secrets_file']} 填入 provider key；模板见 {paths['secrets_template']}。"
+        )
+    return {
+        "ok": not missing,
+        "setup_required": bool(missing),
+        "missing_required_keys": missing,
+        "provider_keys": provider_keys,
+        "has_llm_provider": any(provider_keys.get(name) for name in LLM_PROVIDER_KEYS),
+        "paths": paths,
+        "message": message,
+    }
+
+
+def _require_setup(required_keys=REQUIRED_ROUNDTABLE_KEYS):
+    status = _setup_status(required_keys)
+    if status["missing_required_keys"]:
+        raise SetupRequiredError(status["message"])
+    return status
+
+
+def _raise_setup_http(error: SetupRequiredError):
+    raise HTTPException(status_code=428, detail=str(error))
 
 
 class SessionReq(BaseModel):
@@ -312,10 +405,7 @@ def build_rm(req: "SessionReq", k: int):
 
 
 def build_runner(req: SessionReq):
-    load_api_key(toml_file_path=str(_secrets_path()))
-    for var in ("DEEPSEEK_API_KEY", "TAVILY_API_KEY", "ENCODER_API_TYPE"):
-        if not os.getenv(var):
-            raise RuntimeError(f"缺少 {var}（请填在 config/secrets.toml 或环境变量里）")
+    _require_setup(REQUIRED_ROUNDTABLE_KEYS)
 
     kwargs = {
         "api_key": os.getenv("DEEPSEEK_API_KEY"),
@@ -371,7 +461,12 @@ def warm_start_bg(req: SessionReq):
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "setup": _setup_status()}
+
+
+@app.get("/setup/status")
+def setup_status():
+    return _setup_status()
 
 
 @app.post("/session")
@@ -381,6 +476,10 @@ def create_session(req: SessionReq):
     topic = req.topic.strip()
     if not topic:
         raise HTTPException(400, "主题不能为空")
+    try:
+        _require_setup(REQUIRED_ROUNDTABLE_KEYS)
+    except SetupRequiredError as e:
+        _raise_setup_http(e)
     req.topic = topic
     base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
     SESSION.update(
@@ -548,6 +647,12 @@ def start_scan(req: ScanReq):
     topic = req.topic.strip()
     if not topic:
         raise HTTPException(400, "主题不能为空")
+    try:
+        _require_setup(())
+        if not _setup_status(())["has_llm_provider"]:
+            raise SetupRequiredError("首次设置未完成：缺少 DEEPSEEK_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY 至少一个。")
+    except SetupRequiredError as e:
+        _raise_setup_http(e)
     base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base() / "muse" / sanitize_topic(topic))
     # 同 /step：相位检查与置位必须原子，堵并发 /scan 双双通过检查各起一个扫描线程
     with SCAN_LOCK:
@@ -685,6 +790,12 @@ def start_adversary(req: AdversaryReq):
         raise HTTPException(400, "有稿模式需指定 draft 草稿")
     if req.mode == "line" and not (req.line or "").strip():
         raise HTTPException(400, "无稿模式需输入主线句 line")
+    try:
+        _require_setup(())
+        if not _setup_status(())["has_llm_provider"]:
+            raise SetupRequiredError("首次设置未完成：缺少 DEEPSEEK_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY 至少一个。")
+    except SetupRequiredError as e:
+        _raise_setup_http(e)
     base = _adv_base(req.output_dir)
     # 同 /scan：相位检查与置位原子，堵并发 /adversary 双双通过检查各起一场审查
     with ADV_LOCK:
@@ -735,6 +846,7 @@ if __name__ == "__main__":
     parser.add_argument("--config-dir")
     parser.add_argument("--cache-dir")
     parser.add_argument("--runtime-dir")
+    parser.add_argument("--logs-dir")
     parser.add_argument("--release-mode", action="store_true")
     args = parser.parse_args()
     configure_runtime_paths(
@@ -743,6 +855,7 @@ if __name__ == "__main__":
         config_dir=args.config_dir,
         cache_dir=args.cache_dir,
         runtime_dir=args.runtime_dir,
+        logs_dir=args.logs_dir,
         release_mode=args.release_mode,
     )
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
