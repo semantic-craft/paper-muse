@@ -4,12 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+import tarfile
+import tempfile
+from pathlib import Path, PurePosixPath
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +24,16 @@ MAIN_RUNTIME_URL = "PAPER_MUSE_MAIN_RUNTIME_URL"
 MAIN_RUNTIME_SHA = "PAPER_MUSE_MAIN_RUNTIME_SHA256"
 MAIN_RUNTIME_FILE = "PAPER_MUSE_MAIN_RUNTIME_FILE"
 NOTARY_PROFILE = "PAPER_MUSE_NOTARY_PROFILE"
+EMBEDDED_MAIN_RUNTIME = Path("runtime/main-runtime.tar.gz")
+MANIFEST = "runtime-manifest.json"
+MACHO_MAGICS = {
+    b"\xfe\xed\xfa\xce",
+    b"\xce\xfa\xed\xfe",
+    b"\xfe\xed\xfa\xcf",
+    b"\xcf\xfa\xed\xfe",
+    b"\xca\xfe\xba\xbe",
+    b"\xbe\xba\xfe\xca",
+}
 
 
 class ReleaseError(RuntimeError):
@@ -39,6 +53,118 @@ def run(cmd: list[str], *, env: dict[str, str] | None = None, timeout: int | Non
         detail = (proc.stderr or proc.stdout or "").strip()
         raise ReleaseError(f"{' '.join(cmd)} failed\n{detail}")
     return proc.stdout
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _is_macho(path: Path) -> bool:
+    try:
+        with path.open("rb") as f:
+            return f.read(4) in MACHO_MAGICS
+    except OSError:
+        return False
+
+
+def _extract_tar_safe(archive: Path, dest: Path) -> None:
+    with tarfile.open(archive, "r:gz") as tf:
+        for member in tf.getmembers():
+            member_path = PurePosixPath(member.name)
+            if (
+                not member.name
+                or member_path.is_absolute()
+                or ".." in member_path.parts
+                or not (member.isfile() or member.isdir() or member.issym() or member.islnk())
+            ):
+                raise ReleaseError(f"unsafe runtime archive member: {member.name}")
+            if member.issym() or member.islnk():
+                link_path = PurePosixPath(member.linkname)
+                if (
+                    not member.linkname
+                    or link_path.is_absolute()
+                    or ".." in link_path.parts
+                ):
+                    raise ReleaseError(f"unsafe runtime archive link: {member.name}")
+        try:
+            tf.extractall(dest, filter="fully_trusted")
+        except TypeError:
+            tf.extractall(dest)
+
+
+def _tar_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    info.mtime = 0
+    return info
+
+
+def _sign_macho_files(root: Path, identity: str) -> int:
+    signed = 0
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.is_symlink() or not _is_macho(path):
+            continue
+        run([
+            "codesign",
+            "--force",
+            "--options", "runtime",
+            "--timestamp",
+            "--sign", identity,
+            str(path),
+        ])
+        signed += 1
+    return signed
+
+
+def _refresh_embedded_runtime_manifest(server_root: Path, archive: Path) -> None:
+    manifest_path = server_root / MANIFEST
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    rel = archive.relative_to(server_root).as_posix()
+    digest = _sha256(archive)
+    data["runtime"]["asset_url"] = rel
+    data["runtime"]["sha256"] = digest
+    for item in data.get("files", []):
+        if item.get("path") == rel:
+            item["bytes"] = archive.stat().st_size
+            item["sha256"] = digest
+            break
+    else:
+        data.setdefault("files", []).append({
+            "path": rel,
+            "bytes": archive.stat().st_size,
+            "sha256": digest,
+        })
+    manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def sign_embedded_runtime(identity: str) -> int:
+    """Developer-ID sign Mach-O files inside the embedded runtime archive."""
+    server_root = APP_PATH / "Contents" / "Resources" / "server"
+    archive = server_root / EMBEDDED_MAIN_RUNTIME
+    if not archive.exists():
+        return 0
+
+    with tempfile.TemporaryDirectory(prefix="papermuse-runtime-sign-") as tmp_name:
+        tmp = Path(tmp_name)
+        extracted = tmp / "runtime"
+        extracted.mkdir()
+        _extract_tar_safe(archive, extracted)
+        signed = _sign_macho_files(extracted, identity)
+        rebuilt = tmp / "main-runtime.tar.gz"
+        with tarfile.open(rebuilt, "w:gz") as tf:
+            for child in sorted(extracted.iterdir()):
+                tf.add(child, arcname=child.name, filter=_tar_filter)
+        shutil.copy2(rebuilt, archive)
+
+    _refresh_embedded_runtime_manifest(server_root, archive)
+    run([sys.executable, "tools/release_assets.py", "scan", str(APP_PATH)])
+    return signed
 
 
 def _runtime_env_errors(env: dict[str, str]) -> list[str]:
@@ -151,6 +277,9 @@ def main() -> int:
         return 0
 
     build_app(env)
+    signed_runtime_count = sign_embedded_runtime(args.identity)
+    if signed_runtime_count:
+        print(f"signed embedded runtime Mach-O files: {signed_runtime_count}")
     sign_app(args.identity)
     final_zip = notarize_and_package(args.notary_profile, args.output_dir)
     print(final_zip)
