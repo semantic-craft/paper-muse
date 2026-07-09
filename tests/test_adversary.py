@@ -471,3 +471,13 @@ def test_pick_review_llm_prefers_strong():
     assert pick_review_llm({"deepseek": ds, "gemini": gm}) is ds
     cx = object()
     assert pick_review_llm({"custom": cx}) is cx
+
+
+def test_pick_review_llm_honors_requested_provider():
+    from adversary import pick_review_llm
+    ds, oa, gm = object(), object(), object()
+
+    assert pick_review_llm({"deepseek": ds, "openai": oa, "gemini": gm}, model="gemini") is gm
+    assert pick_review_llm({"openai": oa}, model="gpt-5") is oa
+    with pytest.raises(RuntimeError, match="unavailable"):
+        pick_review_llm({"deepseek": ds}, model="openai")
