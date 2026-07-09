@@ -35,6 +35,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import tomllib
 import traceback
 from argparse import ArgumentParser
 from pathlib import Path
@@ -64,25 +65,22 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from knowledge_storm.collaborative_storm.engine import (
-    CollaborativeStormLMConfigs,
-    RunnerArgument,
-    CoStormRunner,
-)
-from knowledge_storm.collaborative_storm.modules.callback import BaseCallbackHandler
-from knowledge_storm.lm import DeepSeekModel, GoogleModel, OpenAIModel
-from knowledge_storm.logging_wrapper import LoggingWrapper
-from knowledge_storm.rm import (
-    TavilySearchRM,
-    PerplexitySearchRM,
-    JinaFullTextRM,
-    MixedRM,
-)
-from knowledge_storm.utils import load_api_key
-
 import blindspot
 import adversary
 import paperqa_bridge
+
+
+def load_api_key(toml_file_path):
+    try:
+        data = tomllib.loads(Path(toml_file_path).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"File not found: {toml_file_path}", file=sys.stderr)
+        return
+    except tomllib.TOMLDecodeError:
+        print(f"Error decoding TOML file: {toml_file_path}", file=sys.stderr)
+        return
+    for key, value in data.items():
+        os.environ[key] = str(value)
 
 
 def sanitize_topic(topic):
@@ -116,7 +114,7 @@ def _suggest_topic_from_output_dir(output_dir=None):
     return {"topic": "", "path": None}
 
 
-class ProgressCallback(BaseCallbackHandler):
+class ProgressCallback:
     """把引擎回调收进内存，供 /status 轮询。"""
 
     def __init__(self, session):
@@ -359,11 +357,30 @@ def _optional_degraded(status):
     return status.get("state") not in {"available", "ready"}
 
 
+def _looks_like_developer_checkout(path: Path) -> bool:
+    return (
+        (path / "muse_server.py").exists()
+        and (path / "tools" / "release_assets.py").exists()
+        and (
+            (path / ".git").exists()
+            or (path / "app" / "project.yml").exists()
+            or (path / "tests" / "test_release_assets.py").exists()
+        )
+    )
+
+
+def _developer_checkout_root_for(path: Path):
+    resolved = path.resolve()
+    for candidate in (resolved, *resolved.parents):
+        if _looks_like_developer_checkout(candidate):
+            return candidate
+    return None
+
+
 def _developer_path_warnings():
     if not RELEASE_MODE:
         return []
     warnings = []
-    dev_root = ROOT.resolve()
     paths = {
         "server_root": SERVER_ROOT,
         "app_data_dir": _env_path("PAPER_MUSE_APP_DATA_DIR"),
@@ -376,7 +393,7 @@ def _developer_path_warnings():
         if path is None:
             continue
         resolved = path.resolve()
-        if resolved == dev_root or dev_root in resolved.parents:
+        if _developer_checkout_root_for(resolved):
             warnings.append({"path": name, "value": str(resolved), "message": "release mode is using a developer checkout path"})
     return warnings
 
@@ -646,6 +663,13 @@ def turn_to_dict(turn):
 
 
 def build_rm(req: "SessionReq", k: int):
+    from knowledge_storm.rm import (
+        JinaFullTextRM,
+        MixedRM,
+        PerplexitySearchRM,
+        TavilySearchRM,
+    )
+
     def tavily():
         return TavilySearchRM(
             tavily_search_api_key=os.getenv("TAVILY_API_KEY"),
@@ -667,6 +691,14 @@ def build_rm(req: "SessionReq", k: int):
 
 
 def build_runner(req: SessionReq):
+    from knowledge_storm.collaborative_storm.engine import (
+        CollaborativeStormLMConfigs,
+        CoStormRunner,
+        RunnerArgument,
+    )
+    from knowledge_storm.lm import DeepSeekModel, GoogleModel, OpenAIModel
+    from knowledge_storm.logging_wrapper import LoggingWrapper
+
     _require_setup(_roundtable_required_keys(req))
     provider, model = _roundtable_model_spec(req.model)
 
