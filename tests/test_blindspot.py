@@ -5,6 +5,7 @@ import pytest
 from blindspot import (
     normalize_name,
     dedupe_cards,
+    finalize_card_quality,
     mark_outliers,
     apply_suppression,
     classify_novelty,
@@ -49,11 +50,44 @@ def test_dedupe_merges_angle_name_variants():
     assert set(cards[0]["source_models"]) == {"deepseek", "gemini"}
 
 
+def test_finalize_quality_embedding_merges_near_duplicates():
+    cards = [
+        _card("制度扩散理论", "deepseek"),
+        _card("政策扩散框架", "gemini"),
+        _card("交易成本理论", "openai"),
+    ]
+
+    def fake_embed(texts):
+        assert len(texts) == 3
+        return [[1, 0], [0.98, 0.02], [0, 1]]
+
+    merged = finalize_card_quality(cards, embedding_fn=fake_embed, embedding_threshold=0.9)
+
+    assert [c["name"] for c in merged] == ["制度扩散理论", "交易成本理论"]
+    assert set(merged[0]["source_models"]) == {"deepseek", "gemini"}
+    assert merged[0]["cluster_size"] == 2
+    assert merged[0]["merged_angles"] == ["政策扩散框架"]
+    assert merged[0]["outlier"] is False
+
+
 def test_mark_outliers_only_single_proposer():
     cards = dedupe_cards([_card("A", "deepseek"), _card("A", "gemini"), _card("B", "openai")])
     cards = mark_outliers(cards)
     by = {c["name"]: c["outlier"] for c in cards}
     assert by["B"] is True and by["A"] is False
+    assert "Elo" in cards[1]["outlier_reason"]
+
+
+def test_mark_outliers_requires_high_elo_and_isolation():
+    cards = [
+        _card("英热中冷强卡", "deepseek", novelty="交叉空白", gold=True, en_hits=12, zh_hits=0),
+        _card("主流弱卡", "gemini", novelty="主流", gold=False, en_hits=1, zh_hits=9),
+    ]
+    mark_outliers(cards)
+
+    assert cards[0]["elo_score"] > cards[1]["elo_score"]
+    assert cards[0]["outlier"] is True
+    assert cards[1]["outlier"] is False
 
 
 def test_apply_suppression_filters_known():
@@ -259,6 +293,37 @@ def test_run_scan_streaming_merge_and_enrich(tmp_path, monkeypatch):
     assert len(a["anchors"]) == 3
 
 
+def test_run_scan_merges_angle_variants_in_live_wall(tmp_path, monkeypatch):
+    import blindspot as B
+
+    monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
+    monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "著作权")
+    emitted = []
+    cards = B.run_scan(
+        "主题", "", str(tmp_path),
+        providers={
+            "deepseek": lambda p: json.dumps({"cards": [
+                {"type": "学科视角", "name": "进化生物学", "mechanism": "m",
+                 "why_nonobvious": "w", "steelman": "s", "questions": ["q"]}
+            ]}),
+            "gemini": lambda p: json.dumps({"cards": [
+                {"type": "学科视角", "name": "物种进化生物学视角", "mechanism": "m",
+                 "why_nonobvious": "w", "steelman": "s", "questions": ["q2"]}
+            ]}),
+        },
+        decompose_llm=lambda p: "",
+        en_search=lambda q: [],
+        zh_search=lambda q: [],
+        own_search=None,
+        on_card=emitted.append,
+    )
+
+    assert len(emitted) == 1
+    assert len(cards) == 1
+    assert set(cards[0]["source_models"]) == {"deepseek", "gemini"}
+    assert cards[0]["outlier"] is False
+
+
 def test_run_scan_suppression_blocks_emit(tmp_path, monkeypatch):
     import blindspot as B
 
@@ -439,10 +504,12 @@ def test_run_scan_end_to_end_offline(tmp_path):
         own_search=lambda q: [1, 2] if "交易成本" in q else [],
         on_card=emitted.append,
     )
-    # 去重后 5 张；交易成本双模型共识、其余离群
+    # 去重后 5 张；交易成本双模型共识，离群需同时满足孤立 + Elo 本轮高位
     assert len(cards) == 5 and len(emitted) == 5
     byname = {c["name"]: c for c in cards}
-    assert byname["交易成本"]["outlier"] is False and byname["STS"]["outlier"] is True
+    assert byname["交易成本"]["outlier"] is False
+    assert byname["文书量化"]["outlier"] is True and byname["STS"]["outlier"] is False
+    assert "Elo" in byname["文书量化"]["outlier_reason"]
     # 自有语料面独立于新颖性判据：own_hits 记数，学界空白×自有有藏 → 已藏未用
     assert byname["交易成本"]["own_hits"] == 2 and byname["STS"]["own_hits"] == 0
     # 新颖性：en=4, zh=0 → 交叉空白 + 金标

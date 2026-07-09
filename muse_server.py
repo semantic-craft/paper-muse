@@ -586,6 +586,12 @@ def _scan_append_card(card):
         _scan_bump_locked()
 
 
+def _scan_replace_cards(cards):
+    with SCAN_LOCK:
+        SCAN["cards"] = list(cards)
+        _scan_bump_locked()
+
+
 def _scan_touch(_card=None):
     with SCAN_LOCK:
         _scan_bump_locked()
@@ -887,11 +893,12 @@ def scan_bg(req: ScanReq):
         profile = blindspot.profile_text_from_dict(blindspot.load_researcher_profile())
         # 记本次是否有画像参照系——供 /scan/status 透出、webui 无画像时明示「发现力打折」（#4）
         _scan_update(has_profile=bool(profile.strip()))
-        blindspot.run_scan(
+        cards = blindspot.run_scan(
             topic=req.topic, profile=profile, puzzle=req.puzzle, output_dir=SCAN["output_dir"],
             providers=provs, decompose_llm=blindspot.pick_decompose_llm(provs),
             en_search=blindspot.real_en_search(), zh_search=blindspot.real_cnki_search(),
             own_search=blindspot.real_own_search(), on_card=on_card, on_update=_scan_touch)
+        _scan_replace_cards(cards)
         _scan_update(phase="done")
     except Exception:
         _scan_update(error=traceback.format_exc(), phase="error")
