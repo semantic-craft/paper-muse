@@ -95,7 +95,10 @@ def _download(url: str, dest: Path, base_dir: Path | None = None) -> None:
 def _extract(archive: Path, archive_type: str, dest: Path) -> None:
     if archive_type in ("tar.gz", "tgz"):
         with tarfile.open(archive, "r:gz") as tf:
-            tf.extractall(dest, filter="data")
+            try:
+                tf.extractall(dest, filter="data")
+            except TypeError:
+                tf.extractall(dest)
     elif archive_type == "zip":
         with zipfile.ZipFile(archive) as zf:
             zf.extractall(dest)
