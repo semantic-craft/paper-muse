@@ -429,7 +429,9 @@ class DiscourseManager:
         agents: CoStormExpert = []
         for expert_name in expert_descriptions:
             # 兼容中文模型输出：全角冒号/缺冒号/多冒号都不该崩（上游 split(":") 会崩）
-            role_name, _, role_description = expert_name.replace("：", ":").partition(":")
+            role_name, _, role_description = expert_name.replace("：", ":").partition(
+                ":"
+            )
             role_name = role_name.strip()
             role_description = role_description.strip() or role_name
             new_costorm_expert = CoStormExpert(

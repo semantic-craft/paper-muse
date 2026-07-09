@@ -1,10 +1,10 @@
 """
 Warm starts the Co-STORM system by conducting a background information search to establish a shared conceptual space with the user.
- 
-This stage functions as a mini-STORM, where multiple LLM agents are spawned with different perspectives to engage in multi-round conversations. 
+
+This stage functions as a mini-STORM, where multiple LLM agents are spawned with different perspectives to engage in multi-round conversations.
 The knowledge base (represented as a mind map) is initialized using the information gathered during these exchanges.
 
-Additionally, the system generates a first draft of the report, which is then used to create a concise and engaging conversation. 
+Additionally, the system generates a first draft of the report, which is then used to create a concise and engaging conversation.
 The synthesized conversation is presented to the user to help them quickly catch up on the system's current knowledge about the topic.
 """
 
@@ -26,7 +26,6 @@ from ...interface import LMConfigs
 from ...logging_wrapper import LoggingWrapper
 from ...storm_wiki.modules.outline_generation import WritePageOutline
 from ...utils import ArticleTextProcessing as AP
-
 
 if TYPE_CHECKING:
     from ..engine import RunnerArgument
@@ -166,9 +165,10 @@ class WarmStartConversation(dspy.Module):
             background_info=background_info,
             num_experts=self.max_num_experts,
         )
-        return with_fixed_roundtable_experts(
-            gen_expert_output.experts
-        ), background_seeking_dialogue
+        return (
+            with_fixed_roundtable_experts(gen_expert_output.experts),
+            background_seeking_dialogue,
+        )
 
     def get_background_info(self, topic: str):
         question = f"Background information about {topic}"
@@ -201,7 +201,9 @@ class WarmStartConversation(dspy.Module):
         # hierarchical chat: chat with one expert. Generate question, get answer
         def process_expert(expert):
             # 同 engine._parse_expert_names_to_agent：兼容全角冒号/缺冒号的中文专家描述
-            expert_name, _, expert_descriptoin = expert.replace("：", ":").partition(":")
+            expert_name, _, expert_descriptoin = expert.replace("：", ":").partition(
+                ":"
+            )
             for idx in range(self.max_turn_per_experts):
                 with self.logging_wrapper.log_event(
                     f"warm start, perspective guided QA: expert {expert_name}; turn {idx + 1}"
@@ -252,7 +254,9 @@ class WarmStartConversation(dspy.Module):
         ) as executor:
             futures = [
                 executor.submit(process_expert, expert)
-                for expert in warmstart_experts_to_process(experts, self.max_num_experts)
+                for expert in warmstart_experts_to_process(
+                    experts, self.max_num_experts
+                )
             ]
             concurrent.futures.wait(futures)
 
