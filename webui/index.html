@@ -1704,9 +1704,17 @@ function entryHTML(c, i){
   const feas = c.feasibility
     ? `<div class="feasibility"><span class="h">可行性 · 数据从哪来</span>${esc(c.feasibility)}</div>`
     : "";
-  const anchors = c.anchors.map(a =>
+  const evidence = Array.isArray(c.evidence) ? c.evidence : [];
+  const anchorRows = evidence.length ? evidence.map(evidenceRef => {
+    const source = evidenceRef.source || {};
+    const retrieval = evidenceRef.retrieval || {};
+    const verification = evidenceRef.verification || {};
+    const detail = [retrieval.provider, verification.status, evidenceRef.id].filter(Boolean).join(" · ");
+    return `<li><a href="${esc(source.url)}" target="_blank" rel="noopener">${esc(source.title)}</a><span class="u">${esc(detail)}</span></li>`;
+  }) : (c.anchors || []).map(a =>
     `<li><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a><span class="u">${esc(shortHost(a.url))}</span></li>`
-  ).join("");
+  );
+  const anchors = anchorRows.join("");
   const questions = c.questions.map(q => `<li>${esc(q)}</li>`).join("");
 
   // 窄窗内联旁注（宽屏 CSS 隐藏）
@@ -1744,7 +1752,7 @@ function entryHTML(c, i){
         ${modelsHTML(c)}
       </div>
       <details class="fold">
-        <summary>拷问 ${c.questions.length} · 锚点 ${c.anchors.length}</summary>
+        <summary>拷问 ${c.questions.length} · 证据 ${evidence.length} · 锚点 ${(c.anchors || []).length}</summary>
         <div class="body">
           <ol class="q-list">${questions}</ol>
           <ul class="anchors">${anchors}</ul>
