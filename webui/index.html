@@ -1659,6 +1659,7 @@ function retrievalStatusLabel(state, face){
     "bad-payload": `${face}返回异常`,
     "unavailable": `${face}不可用`,
     "error": `${face}检索失败`,
+    "unknown": `${face}状态未确认`,
   };
   return labels[state] || `${face}未检`;
 }

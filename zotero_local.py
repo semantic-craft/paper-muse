@@ -38,17 +38,47 @@ class ZoteroLocalAdapter:
             "message": message,
         }
 
-    def _fetch(self, keys):
-        query = parse.urlencode(
-            {"itemKey": ",".join(keys), "include": "data", "limit": len(keys)}
-        )
+    def _get_json(self, url):
         req = request.Request(
-            f"{self.base_url}/users/0/items?{query}",
+            url,
             headers={"Zotero-API-Version": "3"},
             method="GET",
         )
         with self.opener(req, timeout=self.timeout) as response:
             return json.loads(response.read().decode("utf-8") or "[]")
+
+    def _fetch(self, keys):
+        query = parse.urlencode(
+            {"itemKey": ",".join(keys), "include": "data", "limit": len(keys)}
+        )
+        return self._get_json(f"{self.base_url}/users/0/items?{query}")
+
+    def _fetch_children(self, item_key):
+        query = parse.urlencode({"include": "data"})
+        return self._get_json(
+            f"{self.base_url}/users/0/items/{parse.quote(item_key)}/children?{query}"
+        )
+
+    def _with_descendants(self, payload):
+        items = list(payload)
+        seen = {item.get("key") for item in items if isinstance(item, dict)}
+        queue = [(item, 0) for item in items if isinstance(item, dict)]
+        while queue:
+            item, depth = queue.pop(0)
+            if depth >= 2 or not item.get("key"):
+                continue
+            children = self._fetch_children(item["key"])
+            if not isinstance(children, list):
+                raise ValueError("Zotero children must be a list")
+            for child in children:
+                if not isinstance(child, dict) or not child.get("key"):
+                    continue
+                if child["key"] in seen:
+                    continue
+                seen.add(child["key"])
+                items.append(child)
+                queue.append((child, depth + 1))
+        return items
 
     def enrich(self, records: tuple[ProviderRecord, ...]) -> ZoteroEnrichment:
         keys = list(
@@ -67,7 +97,7 @@ class ZoteroLocalAdapter:
             return ZoteroEnrichment(
                 records, self._status("unavailable", message=str(exc))
             )
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
             return ZoteroEnrichment(
                 records, self._status("bad-payload", message=str(exc))
             )
@@ -77,6 +107,17 @@ class ZoteroLocalAdapter:
                 records,
                 self._status("bad-payload", message="Zotero items must be a list"),
             )
+        try:
+            payload = self._with_descendants(payload)
+        except (error.HTTPError, error.URLError, TimeoutError, socket.timeout) as exc:
+            return ZoteroEnrichment(
+                records, self._status("degraded", message=f"children: {exc}")
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+            return ZoteroEnrichment(
+                records, self._status("bad-payload", message=str(exc))
+            )
+
         by_key = {
             item.get("key"): item
             for item in payload
@@ -88,12 +129,37 @@ class ZoteroLocalAdapter:
             self._enrich_record(record, by_key.get(record.source_id))
             for record in records
         )
+        original_keys = {record.source_id for record in records}
+        descendants = tuple(
+            self._enrich_record(self._record_for_item(item), item)
+            for item in payload
+            if item.get("key") not in original_keys
+        )
+        enriched += descendants
         matched = sum(
             record.verification_status == "identity-enriched" for record in enriched
         )
         return ZoteroEnrichment(
             enriched,
             self._status("ok" if matched else "empty", hits=matched),
+        )
+
+    def _record_for_item(self, item):
+        data = item.get("data") or {}
+        title = (
+            data.get("title")
+            or data.get("annotationText")
+            or data.get("filename")
+            or item.get("key")
+            or ""
+        )
+        return ProviderRecord(
+            source_id=item.get("key") or "",
+            title=title,
+            url="",
+            source_kind="library-document",
+            relation="context",
+            verification_status="unresolved",
         )
 
     def _enrich_record(self, record: ProviderRecord, item: dict | None):
