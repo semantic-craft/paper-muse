@@ -21,16 +21,18 @@ from urllib import parse, request
 import json_repair
 
 from evidence import (
+    EvidenceProviderError,
     EvidenceGateway,
     FunctionEvidenceProvider,
     ProviderRecord,
     ProviderSearchResult,
 )
 from prompt_assets import FIRST_PRINCIPLES_PERSONA, SCAN_METHOD_PROMPT
+from zotero_local import ZoteroLocalAdapter
 
 CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 
-_CACHE_VERSION = "retrieval-v2-evidence"
+_CACHE_VERSION = "retrieval-v3-status"
 _CACHE_STATS = {}
 _CACHE_LOCK = threading.Lock()
 
@@ -350,7 +352,7 @@ def apply_suppression(cards: list, suppressed: set) -> list:
 
 
 def classify_novelty(en_hits, zh_hits):
-    """→ (分类, 是否金标)。zh_hits=None 表示 zsearch 不可用（明示未检，不装懂）。"""
+    """→ (分类, 是否金标)。zh_hits=None 表示 CNKI 未确认（明示未检，不装懂）。"""
     if zh_hits is None:
         return ("中文面未检", False)
     if zh_hits >= 3:
@@ -508,28 +510,48 @@ def _topic_zh_keyword(topic: str, llm_call):
         return None
 
 
-def _en_payload(en):
-    if isinstance(en, dict):
-        results = en.get("results") or en.get("anchors") or []
+def _retrieval_payload(result, provider=None):
+    if isinstance(result, dict):
+        results = result.get("results") or result.get("anchors") or []
+        hits = int(result.get("hits", len(results)))
         return {
-            "hits": int(en.get("hits") or len(results)),
+            "hits": hits,
             "results": results,
-            "evidence": en.get("evidence") or [],
-            "source": en.get("source"),
-            "degraded": en.get("degraded"),
+            "evidence": result.get("evidence") or [],
+            "source": result.get("source"),
+            "degraded": result.get("degraded"),
+            "status": result.get("status") or {
+                "provider": provider,
+                "state": (
+                    "unknown" if provider == "cnki" else ("empty" if hits == 0 else "ok")
+                ),
+                "hits": hits,
+                "message": None,
+            },
+            "identity_status": result.get("identity_status"),
         }
-    results = en or []
+    results = result or []
+    hits = len(results)
     return {
-        "hits": len(results),
+        "hits": hits,
         "results": results,
         "evidence": [],
         "source": None,
         "degraded": None,
+        "status": {
+            "provider": provider,
+            "state": (
+                "unknown" if provider == "cnki" else ("empty" if hits == 0 else "ok")
+            ),
+            "hits": hits,
+            "message": None,
+        },
+        "identity_status": None,
     }
 
 
 def _novelty_for(card, topic, en_search, zh_search, own_search=None,
-                 zh_gate=None, own_gate=None, zh_keyword=None):
+                 zh_gate=None, own_gate=None, zh_keyword=None, on_face_update=None):
     """新颖性三面定位，逐面原地回填（卡已上墙，字段更新靠 /scan/status 轮询快照可见）。
     顺序：en → own（秒级）先挂，zh（CNKI 走浏览器，慢且必须串行）最后定 novelty/gold。"""
     query = f"{card['name']} {topic}"
@@ -538,7 +560,7 @@ def _novelty_for(card, topic, en_search, zh_search, own_search=None,
     except Exception as e:
         logging.warning(f"en_search 失败（en_hits=0 计）[{card['name']}]：{e}")
         en = []
-    en_payload = _en_payload(en)
+    en_payload = _retrieval_payload(en, provider="academic")
     card["en_hits"] = en_payload["hits"]
     card["en_source"] = en_payload["source"]
     card["en_degraded"] = en_payload["degraded"]
@@ -546,25 +568,72 @@ def _novelty_for(card, topic, en_search, zh_search, own_search=None,
     card["anchors"] = [{"title": r.get("title", ""), "url": r.get("url", "")} for r in en_payload["results"][:3]]
     if own_search is None:
         card["own_hits"] = None
+        card["own_status"] = None
+        card["own_identity_status"] = None
     else:
         try:
             with (own_gate or nullcontext()):
-                card["own_hits"] = len(own_search(query) or [])  # 自有语料面 = zsearch
+                own_result = own_search(query)
+                own_payload = _retrieval_payload(own_result, provider="zsearch")
+            card["own_hits"] = own_payload["hits"]
+            card["own_status"] = own_payload["status"]
+            card["own_identity_status"] = own_payload["identity_status"]
+            card["evidence"] = _merge_unique(card["evidence"], own_payload["evidence"])
+            if on_face_update:
+                on_face_update(card)
+            if (
+                own_payload["status"].get("state") in {"ok", "empty"}
+                and callable(getattr(own_search, "enrich", None))
+            ):
+                enriched = _retrieval_payload(
+                    own_search.enrich(own_result), provider="zsearch"
+                )
+                card["own_identity_status"] = enriched["identity_status"]
+                card["evidence"] = _merge_unique(
+                    en_payload["evidence"], enriched["evidence"]
+                )
+                if on_face_update:
+                    on_face_update(card)
         except Exception as e:
             logging.warning(f"own_search 失败（own_hits 置空）[{card['name']}]：{e}")
             card["own_hits"] = None
+            card["own_status"] = {
+                "provider": "zsearch",
+                "state": "error",
+                "hits": None,
+                "message": str(e),
+            }
+            card["own_identity_status"] = None
     kw = zh_keyword() if callable(zh_keyword) else zh_keyword
     zq = f"{_zh_name_core(card['name'])} {kw or topic}"
     try:
         with (zh_gate or nullcontext()):
-            zh = zh_search(zq)  # 中文学界面 = CNKI（新颖性判据）
-        zh_hits = len(zh or [])  # []＝真零命中（交叉空白/金矿判据靠它触发）
+            zh_payload = _retrieval_payload(zh_search(zq), provider="cnki")
+        card["zh_status"] = zh_payload["status"]
+        card["evidence"] = _merge_unique(card["evidence"], zh_payload["evidence"])
+        if zh_payload["status"].get("state") in {"ok", "empty"}:
+            zh_hits = zh_payload["hits"]
+        else:
+            zh_hits = None
     except Exception as e:
         # 降级必须留痕：中文面是新颖性判据，静默吞掉会让「未检」无从诊断
         logging.warning(f"zh_search 失败（降级中文面未检）[{card['name']}] q={zq!r}：{e}")
         zh_hits = None  # 中文面未检，明示不装懂
+        card["zh_status"] = {
+            "provider": "cnki",
+            "state": "error",
+            "hits": None,
+            "message": str(e),
+        }
     card["novelty"], card["gold"] = classify_novelty(en_payload["hits"], zh_hits)
     card["zh_hits"] = zh_hits
+    zh_state = (card.get("zh_status") or {}).get("state", "error")
+    if zh_hits is None:
+        card["novelty_reason"] = f"中文面状态 {zh_state}，不判定中文真零或金标"
+    elif zh_state == "empty":
+        card["novelty_reason"] = "CNKI 已确认零命中；允许交叉空白与金标判定"
+    else:
+        card["novelty_reason"] = f"CNKI 已确认 {zh_hits} 条命中"
     return card
 
 
@@ -663,7 +732,8 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
                     # 徽标字段占位：上墙后原地更新只换值不加键（快照序列化安全）
                     c.update(id=len(order) + 1, outlier=None, novelty=None, gold=None,
                              en_hits=None, en_source=None, en_degraded=None,
-                             zh_hits=None, own_hits=None, anchors=[],
+                             zh_hits=None, zh_status=None, own_hits=None, own_status=None,
+                             own_identity_status=None, novelty_reason=None, anchors=[],
                              evidence=[],
                              elo_score=None, outlier_reason=None,
                              cluster_id=None, cluster_size=1, cluster_similarity=None)
@@ -674,7 +744,7 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
             on_card(c)
             def enrich(card=c):
                 _novelty_for(card, topic, en_search, zh_search, own_search,
-                             zh_gate, own_gate, zh_keyword)
+                             zh_gate, own_gate, zh_keyword, on_update)
                 if on_update:
                     on_update(card)
             t = threading.Thread(target=enrich, daemon=True)
@@ -905,47 +975,181 @@ def real_cnki_search(limit: int = 5):
     """中文学界面（新颖性判据）：opencli cnki search，CSSCI 过滤。
     需 Chrome 会话（`opencli browser open <url>` 一次）；无会话/风控抛错 → 上层降级「中文面未检」。
     错误输出是 YAML 风格文本（`ok: false` 块）非合法 JSON。
-    ⚠️ EMPTY_RESULT（零命中）≠ 未检：必须回 []（zh_hits=0），交叉空白/金矿判据靠它触发
+    ⚠️ EMPTY_RESULT（零命中）≠ 未检：必须回结构化 empty（zh_hits=0），交叉空白/金矿判据靠它触发
     （冒烟 2026-07-07：之前当异常抛导致金标永不可能出现）。"""
 
-    def search(query):
-        r = subprocess.run(
-            ["opencli", "cnki", "search", query, "--source_category", "CSSCI",
-             "--limit", str(limit), "-f", "json"],
-            capture_output=True, text=True, timeout=90)
+    def failure_state(blob: str):
+        value = blob.upper()
+        if any(
+            token in value
+            for token in (
+                "NO_BROWSER_SESSION",
+                "BROWSER SESSION",
+                "SESSION IS REQUIRED",
+                "AUTH",
+                "LOGIN",
+                "403",
+            )
+        ):
+            return "authentication-required"
+        if any(token in value for token in ("RATE_LIMIT", "TOO_MANY_REQUESTS", "429")):
+            return "rate-limited"
+        return "bad-payload"
+
+    def provider_search(query):
+        try:
+            r = subprocess.run(
+                ["opencli", "cnki", "search", query, "--source_category", "CSSCI",
+                 "--limit", str(limit), "-f", "json"],
+                capture_output=True, text=True, timeout=90)
+        except subprocess.TimeoutExpired as e:
+            raise EvidenceProviderError("timeout", "cnki search timed out") from e
+        except FileNotFoundError as e:
+            raise EvidenceProviderError("unavailable", "opencli not found") from e
         try:
             data = json.loads(r.stdout)
         except json.JSONDecodeError:
             blob = (r.stdout or "") + (r.stderr or "")
             if "EMPTY_RESULT" in blob:
-                return []  # 真零命中（实测：错误 YAML 走 stderr、stdout 为空、exit 66）
-            raise RuntimeError(blob[:200])
+                return ProviderSearchResult(total=0, records=())
+            raise EvidenceProviderError(failure_state(blob), blob[:200])
         if isinstance(data, dict) and not data.get("ok", True):
-            if (data.get("error") or {}).get("code") == "EMPTY_RESULT":
-                return []  # 真零命中
-            raise RuntimeError(data.get("error", {}).get("message", "cnki search failed"))
+            error = data.get("error") or {}
+            if error.get("code") == "EMPTY_RESULT":
+                return ProviderSearchResult(total=0, records=())
+            raise EvidenceProviderError(
+                failure_state(f"{error.get('code', '')} {error.get('message', '')}"),
+                error.get("message", "cnki search failed"),
+            )
         rows = data.get("data") if isinstance(data, dict) else data
-        return rows or []
+        if not isinstance(rows, list):
+            raise EvidenceProviderError("bad-payload", "cnki search data must be a list")
+        return ProviderSearchResult(
+            total=len(rows),
+            records=tuple(
+                ProviderRecord(
+                    source_id=row.get("id") or row.get("url") or row.get("title") or "",
+                    title=row.get("title") or row.get("name") or "",
+                    url=row.get("url") or row.get("link") or "",
+                    version=str(row.get("year") or row.get("date") or ""),
+                    source_kind="cnki-record",
+                )
+                for row in rows
+                if isinstance(row, dict)
+            ),
+        )
 
-    return _cached_search("cnki", limit, "CSSCI", ttl=3 * 24 * 3600, search=search)
+    cached = _cached_search(
+        "cnki", limit, "CSSCI", ttl=3 * 24 * 3600, search=provider_search
+    )
+    gateway = EvidenceGateway(
+        (FunctionEvidenceProvider("cnki", lambda query, _limit: cached(query)),)
+    )
+    return lambda query: gateway.search(query, limit)
 
 
-def real_own_search(limit: int = 8):
+class OwnEvidenceSearch:
+    """Return zsearch counts immediately; enrich Zotero identity as a second phase."""
+
+    def __init__(self, cached_search, limit, zotero_adapter):
+        self.cached_search = cached_search
+        self.limit = limit
+        self.zotero_adapter = zotero_adapter
+        self.identity_cache = {}
+        self.pending = {}
+        self.lock = threading.Lock()
+
+    def __call__(self, query):
+        def provider_search(value, _limit):
+            batch = self.cached_search(value)
+            with self.lock:
+                self.pending[value] = batch
+            return batch
+
+        gateway = EvidenceGateway(
+            (FunctionEvidenceProvider("zsearch", provider_search),)
+        )
+        payload = gateway.search(query, self.limit)
+        payload["identity_status"] = None
+        return payload
+
+    def enrich(self, payload):
+        query = payload["query"]
+        with self.lock:
+            batch = self.pending.pop(query, None)
+        if batch is None:
+            batch = self.cached_search(query)
+        key = tuple((record.source_id, record.url) for record in batch.records)
+        with self.lock:
+            enrichment = self.identity_cache.get(key)
+        if enrichment is None:
+            enrichment = self.zotero_adapter.enrich(batch.records)
+            if enrichment.status["state"] in {"ok", "empty"}:
+                with self.lock:
+                    self.identity_cache[key] = enrichment
+
+        enriched_gateway = EvidenceGateway(
+            (
+                FunctionEvidenceProvider(
+                    "zsearch",
+                    lambda _query, _limit: ProviderSearchResult(
+                        total=batch.total, records=enrichment.records
+                    ),
+                ),
+            )
+        )
+        # own_hits 的 top-k 只约束 zsearch parent；Zotero 关联对象必须完整保留。
+        result = enriched_gateway.search(query, max(self.limit, len(enrichment.records)))
+        result["status"] = payload["status"]
+        result["statuses"] = payload["statuses"]
+        result["degraded"] = payload["degraded"]
+        result["identity_status"] = enrichment.status
+        return result
+
+
+def real_own_search(limit: int = 8, zotero_adapter=None):
     """自有语料面（unknown-knowns 信号）：zsearch 本地 Zotero 语义检索。
     实测：无 `zsearch "<query>"` 顶层用法；真实子命令是 `zsearch query <text> -k N --json`，
-    输出干净 JSON 数组（元素含 title/url 等字段），故直接 json.loads 取 title/url，
-    不走 spec 基准里假设的「行文本、每行一条」解析。"""
+    输出干净 JSON 数组（元素含 title/url/key 等字段）。第一阶段立即返回 own_hits 与
+    unresolved/context EvidenceRef；第二阶段由 OwnEvidenceSearch.enrich() 只读补全 Zotero 身份。"""
 
-    def search(query):
-        r = subprocess.run(
-            ["zsearch", "query", query, "-k", str(limit), "--json"],
-            capture_output=True, text=True, timeout=30)
+    def provider_search(query):
+        try:
+            r = subprocess.run(
+                ["zsearch", "query", query, "-k", str(limit), "--json"],
+                capture_output=True, text=True, timeout=30)
+        except subprocess.TimeoutExpired as e:
+            raise EvidenceProviderError("timeout", "zsearch timed out") from e
+        except FileNotFoundError as e:
+            raise EvidenceProviderError("unavailable", "zsearch not found") from e
         if r.returncode != 0:
-            raise RuntimeError(r.stderr[:200])
-        rows = json.loads(r.stdout)
-        return [{"title": row.get("title", ""), "url": row.get("url", "")} for row in rows[:limit]]
+            raise EvidenceProviderError("unavailable", (r.stderr or "zsearch failed")[:200])
+        try:
+            rows = json.loads(r.stdout)
+        except json.JSONDecodeError as e:
+            raise EvidenceProviderError("bad-payload", "zsearch returned invalid JSON") from e
+        if not isinstance(rows, list):
+            raise EvidenceProviderError("bad-payload", "zsearch result must be a list")
+        return ProviderSearchResult(
+            total=len(rows),
+            records=tuple(
+                ProviderRecord(
+                    source_id=row.get("key") or row.get("url") or row.get("title") or "",
+                    title=row.get("title") or "",
+                    url=row.get("url") or "",
+                    source_kind="library-document",
+                    relation="context",
+                    verification_status="unresolved",
+                )
+                for row in rows[:limit]
+                if isinstance(row, dict)
+            ),
+        )
 
-    return _cached_search("own", limit, "zsearch", ttl=7 * 24 * 3600, search=search)
+    cached = _cached_search(
+        "own", limit, "zsearch", ttl=7 * 24 * 3600, search=provider_search
+    )
+    return OwnEvidenceSearch(cached, limit, zotero_adapter or ZoteroLocalAdapter())
 
 
 if __name__ == "__main__":
