@@ -8,7 +8,7 @@ from typing import Callable, Iterable, Literal, Protocol, TypedDict
 
 
 SourceKind = Literal["scholarly-work", "cnki-record", "library-document"]
-LocatorKind = Literal["url", "provider-id"]
+LocatorKind = Literal["url", "provider-id", "zotero-select"]
 EvidenceRelation = Literal["discovery", "context"]
 VerificationStatus = Literal["provider-retrieved", "unresolved", "identity-enriched"]
 SearchState = Literal[
@@ -24,12 +24,31 @@ SearchState = Literal[
 ]
 
 
-class EvidenceSource(TypedDict):
+class ZoteroNativeIdentity(TypedDict):
+    provider: str
+    library_type: str
+    library_id: int
+    library_name: str
+    item_key: str
+    item_version: int
+    item_type: str
+    parent_item: str | None
+    attachment_key: str | None
+    annotation_key: str | None
+    collections: list[str]
+    tags: list[str]
+
+
+class EvidenceSourceRequired(TypedDict):
     kind: SourceKind
     identity: str
     version: str
     title: str
     url: str
+
+
+class EvidenceSource(EvidenceSourceRequired, total=False):
+    native: ZoteroNativeIdentity
 
 
 class EvidenceLocator(TypedDict):
@@ -87,6 +106,10 @@ class ProviderRecord:
     source_kind: SourceKind = "scholarly-work"
     relation: EvidenceRelation = "discovery"
     verification_status: VerificationStatus = "provider-retrieved"
+    identity: str = ""
+    locator_kind: LocatorKind | None = None
+    locator_value: str = ""
+    native: ZoteroNativeIdentity | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +142,8 @@ class FunctionEvidenceProvider:
 
 
 def _source_identity(record: ProviderRecord, provider: str) -> str:
+    if record.identity:
+        return record.identity.strip()
     if record.url:
         return record.url.strip()
     if record.source_id:
@@ -133,18 +158,21 @@ def _evidence_id(identity: str) -> str:
 
 def _evidence_ref(record: ProviderRecord, provider: str, query: str) -> EvidenceRef:
     identity = _source_identity(record, provider)
-    locator_value = record.url or record.source_id
+    locator_value = record.locator_value or record.url or record.source_id
+    source = {
+        "kind": record.source_kind,
+        "identity": identity,
+        "version": record.version or "provider-current",
+        "title": record.title,
+        "url": record.url,
+    }
+    if record.native:
+        source["native"] = record.native
     return {
         "id": _evidence_id(identity),
-        "source": {
-            "kind": record.source_kind,
-            "identity": identity,
-            "version": record.version or "provider-current",
-            "title": record.title,
-            "url": record.url,
-        },
+        "source": source,
         "locator": {
-            "kind": "url" if record.url else "provider-id",
+            "kind": record.locator_kind or ("url" if record.url else "provider-id"),
             "value": locator_value,
             "exact": record.title,
         },
@@ -156,7 +184,7 @@ def _evidence_ref(record: ProviderRecord, provider: str, query: str) -> Evidence
         "relation": record.relation,
         "verification": {
             "status": record.verification_status,
-            "degraded": False,
+            "degraded": record.verification_status == "unresolved",
         },
     }
 

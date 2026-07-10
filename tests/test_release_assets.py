@@ -13,6 +13,7 @@ def test_release_assets_stage_manifest_and_scan(tmp_path):
     assert (out / "muse_server.py").exists()
     assert (out / "paperqa_bridge.py").exists()
     assert (out / "evidence.py").exists()
+    assert (out / "zotero_local.py").exists()
     assert (out / "prompt_assets.py").exists()
     assert (out / "requirements-paperqa.txt").exists()
     assert (out / "webui" / "index.html").exists()
@@ -34,6 +35,7 @@ def test_release_assets_stage_manifest_and_scan(tmp_path):
     assert "webui/index.html" in manifest["required_paths"]
     assert "paperqa_bridge.py" in manifest["required_paths"]
     assert "evidence.py" in manifest["required_paths"]
+    assert "zotero_local.py" in manifest["required_paths"]
     assert "prompt_assets.py" in manifest["required_paths"]
     assert "requirements-paperqa.txt" in manifest["required_paths"]
     assert "tools/runtime_bootstrap.py" in manifest["required_paths"]
@@ -88,6 +90,14 @@ def test_scan_ui_exposes_structured_cnki_status_and_novelty_reason():
     assert "c.zh_status" in html
     assert "c.novelty_reason" in html
     assert "新颖性判定" in html
+
+
+def test_scan_ui_uses_zotero_locator_and_shows_identity_status():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert "c.own_identity_status" in html
+    assert 'locator.kind === "zotero-select"' in html
+    assert "Zotero 身份" in html
 
 
 def test_release_launch_does_not_write_bytecode_into_signed_bundle():
