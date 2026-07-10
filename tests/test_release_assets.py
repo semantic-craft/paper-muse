@@ -82,6 +82,14 @@ def test_scan_ui_consumes_unified_evidence_refs():
     assert "证据" in html
 
 
+def test_scan_ui_exposes_structured_cnki_status_and_novelty_reason():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert "c.zh_status" in html
+    assert "c.novelty_reason" in html
+    assert "新颖性判定" in html
+
+
 def test_release_launch_does_not_write_bytecode_into_signed_bundle():
     source = (release_assets.ROOT / "app" / "Sources" / "MuseServer.swift").read_text(
         encoding="utf-8"

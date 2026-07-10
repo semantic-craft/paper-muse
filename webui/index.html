@@ -1649,9 +1649,22 @@ function renderNav(){
 }
 
 /* ══ 密度对比 ══ */
+function retrievalStatusLabel(state, face){
+  const labels = {
+    "authentication-required": `${face}需登录或浏览器会话`,
+    "rate-limited": `${face}触发限流`,
+    "timeout": `${face}检索超时`,
+    "bad-payload": `${face}返回异常`,
+    "unavailable": `${face}不可用`,
+    "error": `${face}检索失败`,
+  };
+  return labels[state] || `${face}未检`;
+}
+
 function densityHTML(c){
+  const zhState = c.zh_status && c.zh_status.state;
   const zhPart = (c.zh_hits === null)
-    ? `<span class="nulltag">中文面未检 · 需 CNKI 会话</span>`
+    ? `<span class="nulltag">${esc(retrievalStatusLabel(zhState, "中文面"))}</span>`
     : `<span class="zh">中 ${c.zh_hits}</span>`;
   const goldCls = c.gold ? " gold-gap" : "";
   return `<span class="density${goldCls}">
@@ -1704,6 +1717,9 @@ function entryHTML(c, i){
   const feas = c.feasibility
     ? `<div class="feasibility"><span class="h">可行性 · 数据从哪来</span>${esc(c.feasibility)}</div>`
     : "";
+  const noveltyReason = c.novelty_reason
+    ? `<div class="feasibility"><span class="h">新颖性判定</span>${esc(c.novelty_reason)}</div>`
+    : "";
   const evidence = Array.isArray(c.evidence) ? c.evidence : [];
   const anchorRows = evidence.length ? evidence.map(evidenceRef => {
     const source = evidenceRef.source || {};
@@ -1738,6 +1754,7 @@ function entryHTML(c, i){
     ${becuzTagsHTML(c)}
 
     ${feas}
+    ${noveltyReason}
 
     <div class="steelman">
       <span class="tag">最强反驳</span>
