@@ -28,10 +28,11 @@ from evidence import (
     ProviderSearchResult,
 )
 from prompt_assets import FIRST_PRINCIPLES_PERSONA, SCAN_METHOD_PROMPT
+from zotero_local import ZoteroLocalAdapter
 
 CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 
-_CACHE_VERSION = "retrieval-v2-evidence"
+_CACHE_VERSION = "retrieval-v3-status"
 _CACHE_STATS = {}
 _CACHE_LOCK = threading.Lock()
 
@@ -1022,7 +1023,7 @@ def real_cnki_search(limit: int = 5):
     return lambda query: gateway.search(query, limit)
 
 
-def real_own_search(limit: int = 8):
+def real_own_search(limit: int = 8, zotero_adapter=None):
     """自有语料面（unknown-knowns 信号）：zsearch 本地 Zotero 语义检索。
     实测：无 `zsearch "<query>"` 顶层用法；真实子命令是 `zsearch query <text> -k N --json`，
     输出干净 JSON 数组（元素含 title/url 等字段），故直接 json.loads 取 title/url，
@@ -1064,10 +1065,34 @@ def real_own_search(limit: int = 8):
     cached = _cached_search(
         "own", limit, "zsearch", ttl=7 * 24 * 3600, search=provider_search
     )
-    gateway = EvidenceGateway(
-        (FunctionEvidenceProvider("zsearch", lambda query, _limit: cached(query)),)
-    )
-    return lambda query: gateway.search(query, limit)
+    adapter = zotero_adapter or ZoteroLocalAdapter()
+    identity_cache = {}
+    identity_lock = threading.Lock()
+
+    def search(query):
+        identity_status = {"value": None}
+
+        def enriched_provider(value, _limit):
+            batch = cached(value)
+            key = tuple((record.source_id, record.url) for record in batch.records)
+            with identity_lock:
+                enrichment = identity_cache.get(key)
+            if enrichment is None:
+                enrichment = adapter.enrich(batch.records)
+                if enrichment.status["state"] in {"ok", "empty"}:
+                    with identity_lock:
+                        identity_cache[key] = enrichment
+            identity_status["value"] = enrichment.status
+            return ProviderSearchResult(total=batch.total, records=enrichment.records)
+
+        gateway = EvidenceGateway(
+            (FunctionEvidenceProvider("zsearch", enriched_provider),)
+        )
+        payload = gateway.search(query, limit)
+        payload["identity_status"] = identity_status["value"]
+        return payload
+
+    return search
 
 
 if __name__ == "__main__":

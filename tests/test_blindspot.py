@@ -840,6 +840,9 @@ def test_zsearch_keeps_fast_cached_count_and_returns_context_evidence(
     monkeypatch, tmp_path
 ):
     import blindspot as B
+    from urllib import error
+
+    from zotero_local import ZoteroLocalAdapter
 
     monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
     B.reset_retrieval_cache_stats()
@@ -864,7 +867,12 @@ def test_zsearch_keeps_fast_cached_count_and_returns_context_evidence(
         return Result
 
     monkeypatch.setattr(B.subprocess, "run", run)
-    search = B.real_own_search(limit=3)
+    def unavailable(_request, timeout):
+        raise error.URLError("fixture: Zotero unavailable")
+
+    search = B.real_own_search(
+        limit=3, zotero_adapter=ZoteroLocalAdapter(opener=unavailable)
+    )
 
     first = search("平台治理")
     second = search("平台治理")
@@ -879,6 +887,7 @@ def test_zsearch_keeps_fast_cached_count_and_returns_context_evidence(
     assert ref["retrieval"]["source_id"] == "ABCD1234"
     assert ref["relation"] == "context"
     assert ref["verification"]["status"] == "unresolved"
+    assert ref["verification"]["degraded"] is True
 
 
 @pytest.mark.parametrize(
