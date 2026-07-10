@@ -1,4 +1,5 @@
 from evidence import (
+    EvidenceProviderError,
     EvidenceGateway,
     FunctionEvidenceProvider,
     ProviderRecord,
@@ -106,3 +107,40 @@ def test_gateway_keeps_working_provider_and_reports_degradation():
     assert result["source"] == "openalex"
     assert result["degraded"] == "semantic_scholar: missing key"
     assert result["evidence"][0]["verification"]["degraded"] is False
+
+
+def test_gateway_distinguishes_confirmed_empty_from_provider_failure():
+    empty = EvidenceGateway(
+        (
+            FunctionEvidenceProvider(
+                "cnki",
+                lambda _query, _limit: ProviderSearchResult(total=0, records=()),
+            ),
+        )
+    ).search("平台责任", limit=3)
+
+    def browser_session_missing(_query, _limit):
+        raise EvidenceProviderError(
+            "authentication-required", "CNKI browser session is missing"
+        )
+
+    failed = EvidenceGateway(
+        (FunctionEvidenceProvider("cnki", browser_session_missing),)
+    ).search("平台责任", limit=3)
+
+    assert empty["status"] == {
+        "provider": "cnki",
+        "state": "empty",
+        "query": "平台责任",
+        "hits": 0,
+        "message": None,
+    }
+    assert empty["degraded"] is None
+    assert failed["status"] == {
+        "provider": "cnki",
+        "state": "authentication-required",
+        "query": "平台责任",
+        "hits": None,
+        "message": "CNKI browser session is missing",
+    }
+    assert failed["degraded"] == "cnki: CNKI browser session is missing"

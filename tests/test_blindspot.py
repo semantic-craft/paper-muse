@@ -252,21 +252,87 @@ def test_cnki_empty_result_is_zero_hits(monkeypatch, tmp_path):
         stderr = "ok: false\nerror:\n  code: EMPTY_RESULT\n  message: cnki search returned no data\n"
 
     monkeypatch.setattr(B.subprocess, "run", lambda *a, **k: R)
-    assert B.real_cnki_search()("任意查询") == []
+    result = B.real_cnki_search()("任意查询")
+    assert result["hits"] == 0
+    assert result["evidence"] == []
+    assert result["status"]["state"] == "empty"
 
 
-def test_cnki_session_error_still_raises(monkeypatch, tmp_path):
+def test_cnki_results_are_normalized_to_evidence_refs(monkeypatch, tmp_path):
     import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+
+    class Result:
+        returncode = 0
+        stderr = ""
+        stdout = json.dumps(
+            {
+                "ok": True,
+                "data": [
+                    {
+                        "id": "CJFD-2026-1",
+                        "title": "平台治理研究",
+                        "url": "https://kns.cnki.net/kcms/detail/CJFD-2026-1",
+                        "year": "2026",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(B.subprocess, "run", lambda *args, **kwargs: Result)
+
+    result = B.real_cnki_search(limit=3)("平台治理")
+
+    assert result["hits"] == 1
+    assert result["status"]["state"] == "ok"
+    ref = result["evidence"][0]
+    assert ref["source"]["kind"] == "cnki-record"
+    assert ref["source"]["version"] == "2026"
+    assert ref["retrieval"]["provider"] == "cnki"
+    assert ref["retrieval"]["query"] == "平台治理"
+    assert ref["relation"] == "discovery"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_state"),
+    [
+        ("NO_BROWSER_SESSION", "authentication-required"),
+        ("RATE_LIMIT", "rate-limited"),
+        ("not-json", "bad-payload"),
+        ("timeout", "timeout"),
+        ("missing-command", "unavailable"),
+    ],
+)
+def test_cnki_failures_have_distinct_structured_states(
+    monkeypatch, tmp_path, failure, expected_state
+):
+    import blindspot as B
+
     monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
     B.reset_retrieval_cache_stats()
 
     class R:
         stdout = ""
-        stderr = "ok: false\nerror:\n  code: NO_BROWSER_SESSION\n"
+        stderr = f"ok: false\nerror:\n  code: {failure}\n"
 
-    monkeypatch.setattr(B.subprocess, "run", lambda *a, **k: R)
-    with pytest.raises(RuntimeError):
-        B.real_cnki_search()("任意查询")
+    def run(*args, **kwargs):
+        if failure == "timeout":
+            raise B.subprocess.TimeoutExpired(args[0], timeout=90)
+        if failure == "missing-command":
+            raise FileNotFoundError("opencli not found")
+        if failure == "not-json":
+            R.stderr = "not-json"
+        return R
+
+    monkeypatch.setattr(B.subprocess, "run", run)
+
+    result = B.real_cnki_search()("任意查询")
+
+    assert result["status"]["state"] == expected_state
+    assert result["hits"] == 0
+    assert result["status"]["hits"] is None
 
 
 def test_run_scan_streaming_merge_and_enrich(tmp_path, monkeypatch):
@@ -590,6 +656,97 @@ def test_run_scan_zh_search_failure_degrades(tmp_path):
     assert cards[0]["novelty"] == "中文面未检"
 
 
+def test_run_scan_only_treats_confirmed_cnki_empty_as_gold(tmp_path):
+    card_reply = json.dumps(
+        {
+            "cards": [
+                {
+                    "type": "理论框架",
+                    "name": "制度空白",
+                    "mechanism": "m",
+                    "why_nonobvious": "w",
+                    "steelman": "s",
+                    "questions": ["q"],
+                }
+            ]
+        }
+    )
+    en_payload = {
+        "hits": 12,
+        "results": [{"title": "English", "url": "https://en.example"}],
+        "evidence": [
+            {
+                "id": "evr_en",
+                "source": {"title": "English", "url": "https://en.example"},
+                "retrieval": {"provider": "openalex"},
+                "verification": {"status": "provider-retrieved"},
+            }
+        ],
+        "status": {"state": "ok"},
+    }
+    own_payload = {
+        "hits": 1,
+        "results": [{"title": "Owned", "url": "zotero://owned"}],
+        "evidence": [
+            {
+                "id": "evr_own",
+                "source": {"title": "Owned", "url": "zotero://owned"},
+                "retrieval": {"provider": "zsearch"},
+                "verification": {"status": "unresolved"},
+            }
+        ],
+        "status": {"state": "ok", "provider": "zsearch"},
+    }
+
+    def scan(output_dir, zh_payload):
+        return run_scan(
+            topic="平台责任",
+            profile="",
+            output_dir=str(output_dir),
+            providers={"deepseek": lambda _prompt: card_reply},
+            decompose_llm=lambda _prompt: json.dumps({"fundamentals": ["f"]}),
+            en_search=lambda _query: en_payload,
+            zh_search=lambda _query: zh_payload,
+            own_search=lambda _query: own_payload,
+            on_card=lambda _card: None,
+        )[0]
+
+    confirmed = scan(
+        tmp_path / "confirmed",
+        {
+            "hits": 0,
+            "evidence": [],
+            "status": {"state": "empty", "provider": "cnki"},
+        },
+    )
+    degraded = scan(
+        tmp_path / "degraded",
+        {
+            "hits": 0,
+            "evidence": [],
+            "status": {
+                "state": "authentication-required",
+                "provider": "cnki",
+                "message": "browser session missing",
+            },
+        },
+    )
+
+    assert confirmed["zh_hits"] == 0
+    assert confirmed["gold"] is True
+    assert confirmed["own_hits"] == 1
+    assert confirmed["zh_status"]["state"] == "empty"
+    assert confirmed["own_status"]["state"] == "ok"
+    assert {ref["id"] for ref in confirmed["evidence"]} == {"evr_en", "evr_own"}
+    assert "已确认零命中" in confirmed["novelty_reason"]
+
+    assert degraded["zh_hits"] is None
+    assert degraded["novelty"] == "中文面未检"
+    assert degraded["gold"] is False
+    assert degraded["zh_status"]["state"] == "authentication-required"
+    assert "不判定中文真零或金标" in degraded["novelty_reason"]
+
+
 def test_extract_json_multi_object_picks_payload():
     # 思考前奏 + 正文 + 尾注三个对象：贪婪 {.*} 会整体解析失败，平衡扫描应取最大的正文对象
     noisy = '思考: {"step": 1} 好的，结果：{"cards": [{"name": "X", "type": "理论框架"}]} 附注 {"n": 2}'
@@ -654,8 +811,8 @@ def test_cnki_true_empty_is_cached_but_session_errors_are_not(monkeypatch, tmp_p
 
     monkeypatch.setattr(B.subprocess, "run", empty_run)
     search = B.real_cnki_search(limit=3)
-    assert search("不存在的题") == []
-    assert search("不存在的题") == []
+    assert search("不存在的题")["status"]["state"] == "empty"
+    assert search("不存在的题")["status"]["state"] == "empty"
     assert calls == ["empty"]
     assert B.retrieval_cache_stats()["cnki"] == {"hits": 1, "misses": 1, "stores": 1}
 
@@ -673,12 +830,94 @@ def test_cnki_true_empty_is_cached_but_session_errors_are_not(monkeypatch, tmp_p
     B.reset_retrieval_cache_stats()
     monkeypatch.setattr(B.subprocess, "run", no_session_run)
     search = B.real_cnki_search(limit=3)
-    with pytest.raises(RuntimeError):
-        search("需要浏览器")
-    with pytest.raises(RuntimeError):
-        search("需要浏览器")
+    assert search("需要浏览器")["status"]["state"] == "authentication-required"
+    assert search("需要浏览器")["status"]["state"] == "authentication-required"
     assert calls == ["no-session", "no-session"]
     assert B.retrieval_cache_stats()["cnki"] == {"hits": 0, "misses": 2, "stores": 0}
+
+
+def test_zsearch_keeps_fast_cached_count_and_returns_context_evidence(
+    monkeypatch, tmp_path
+):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
+    calls = []
+
+    class Result:
+        returncode = 0
+        stderr = ""
+        stdout = json.dumps(
+            [
+                {
+                    "key": "ABCD1234",
+                    "title": "我的平台治理论文",
+                    "url": "zotero://select/library/items/ABCD1234",
+                }
+            ],
+            ensure_ascii=False,
+        )
+
+    def run(*args, **kwargs):
+        calls.append(args[0])
+        return Result
+
+    monkeypatch.setattr(B.subprocess, "run", run)
+    search = B.real_own_search(limit=3)
+
+    first = search("平台治理")
+    second = search("平台治理")
+
+    assert first["hits"] == second["hits"] == 1
+    assert first["status"]["state"] == "ok"
+    assert calls == [["zsearch", "query", "平台治理", "-k", "3", "--json"]]
+    assert B.retrieval_cache_stats()["own"] == {"hits": 1, "misses": 1, "stores": 1}
+    ref = first["evidence"][0]
+    assert ref["source"]["kind"] == "library-document"
+    assert ref["retrieval"]["provider"] == "zsearch"
+    assert ref["retrieval"]["source_id"] == "ABCD1234"
+    assert ref["relation"] == "context"
+    assert ref["verification"]["status"] == "unresolved"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_state"),
+    [
+        ("timeout", "timeout"),
+        ("missing-command", "unavailable"),
+        ("bad-json", "bad-payload"),
+    ],
+)
+def test_zsearch_failures_are_structured_and_not_cached(
+    monkeypatch, tmp_path, failure, expected_state
+):
+    import blindspot as B
+
+    monkeypatch.setenv("PAPER_MUSE_CACHE_DIR", str(tmp_path / "cache"))
+    B.reset_retrieval_cache_stats()
+    calls = []
+
+    class Result:
+        returncode = 0
+        stderr = ""
+        stdout = "not-json"
+
+    def run(*args, **kwargs):
+        calls.append(args[0])
+        if failure == "timeout":
+            raise B.subprocess.TimeoutExpired(args[0], timeout=30)
+        if failure == "missing-command":
+            raise FileNotFoundError("zsearch not found")
+        return Result
+
+    monkeypatch.setattr(B.subprocess, "run", run)
+    search = B.real_own_search(limit=3)
+
+    assert search("平台治理")["status"]["state"] == expected_state
+    assert search("平台治理")["status"]["state"] == expected_state
+    assert len(calls) == 2
+    assert B.retrieval_cache_stats()["own"] == {"hits": 0, "misses": 2, "stores": 0}
 
 
 # ---- 机器级画像 researcher.md（ADR-0001 / #3）----

@@ -471,11 +471,24 @@ def test_scan_status_returns_unchanged_for_current_version(monkeypatch, tmp_path
         "retrieval": {"provider": "in-memory", "query": "query"},
         "verification": {"status": "provider-retrieved", "degraded": False},
     }
+    zh_status = {
+        "provider": "cnki",
+        "state": "authentication-required",
+        "hits": None,
+        "message": "browser session missing",
+    }
     with muse_server.SCAN_LOCK:
         muse_server.SCAN.update(
             phase="scanning",
             topic="t",
-            cards=[{"name": "A", "evidence": [evidence]}],
+            cards=[
+                {
+                    "name": "A",
+                    "evidence": [evidence],
+                    "zh_status": zh_status,
+                    "novelty_reason": "中文面不可用，不判定金标",
+                }
+            ],
             output_dir=str(tmp_path),
             error=None,
             has_profile=False,
@@ -487,6 +500,8 @@ def test_scan_status_returns_unchanged_for_current_version(monkeypatch, tmp_path
     changed = client.get("/scan/status?since=41").json()
     assert changed["unchanged"] is False
     assert changed["cards"][0]["evidence"] == [evidence]
+    assert changed["cards"][0]["zh_status"] == zh_status
+    assert "不判定金标" in changed["cards"][0]["novelty_reason"]
     restarted_or_stale_client = client.get("/scan/status?since=43").json()
     assert restarted_or_stale_client["unchanged"] is False
 

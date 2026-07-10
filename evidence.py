@@ -7,10 +7,21 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, Literal, Protocol, TypedDict
 
 
-SourceKind = Literal["scholarly-work"]
+SourceKind = Literal["scholarly-work", "cnki-record", "library-document"]
 LocatorKind = Literal["url", "provider-id"]
-EvidenceRelation = Literal["discovery"]
-VerificationStatus = Literal["provider-retrieved"]
+EvidenceRelation = Literal["discovery", "context"]
+VerificationStatus = Literal["provider-retrieved", "unresolved", "identity-enriched"]
+SearchState = Literal[
+    "ok",
+    "empty",
+    "unavailable",
+    "authentication-required",
+    "rate-limited",
+    "timeout",
+    "bad-payload",
+    "error",
+    "degraded",
+]
 
 
 class EvidenceSource(TypedDict):
@@ -49,6 +60,22 @@ class EvidenceRef(TypedDict):
     verification: EvidenceVerification
 
 
+class RetrievalStatus(TypedDict):
+    provider: str
+    state: SearchState
+    query: str
+    hits: int | None
+    message: str | None
+
+
+class EvidenceProviderError(RuntimeError):
+    """A provider failure whose state is safe to expose through the API."""
+
+    def __init__(self, state: SearchState, message: str):
+        super().__init__(message)
+        self.state = state
+
+
 @dataclass(frozen=True)
 class ProviderRecord:
     """Provider-neutral scholarly record returned by an evidence adapter."""
@@ -57,6 +84,9 @@ class ProviderRecord:
     title: str
     url: str
     version: str = ""
+    source_kind: SourceKind = "scholarly-work"
+    relation: EvidenceRelation = "discovery"
+    verification_status: VerificationStatus = "provider-retrieved"
 
 
 @dataclass(frozen=True)
@@ -107,7 +137,7 @@ def _evidence_ref(record: ProviderRecord, provider: str, query: str) -> Evidence
     return {
         "id": _evidence_id(identity),
         "source": {
-            "kind": "scholarly-work",
+            "kind": record.source_kind,
             "identity": identity,
             "version": record.version or "provider-current",
             "title": record.title,
@@ -123,9 +153,9 @@ def _evidence_ref(record: ProviderRecord, provider: str, query: str) -> Evidence
             "query": query,
             "source_id": record.source_id,
         },
-        "relation": "discovery",
+        "relation": record.relation,
         "verification": {
-            "status": "provider-retrieved",
+            "status": record.verification_status,
             "degraded": False,
         },
     }
@@ -142,19 +172,53 @@ class EvidenceGateway:
         totals = []
         sources = []
         degraded = []
+        statuses: list[RetrievalStatus] = []
 
         for provider in self.providers:
             try:
                 batch = provider.search(query, limit)
                 totals.append(max(0, int(batch.total)))
                 sources.append(provider.name)
+                statuses.append(
+                    {
+                        "provider": provider.name,
+                        "state": "empty" if batch.total == 0 else "ok",
+                        "query": query,
+                        "hits": max(0, int(batch.total)),
+                        "message": None,
+                    }
+                )
                 for record in batch.records:
                     ref = _evidence_ref(record, provider.name, query)
                     evidence_by_id.setdefault(ref["id"], ref)
             except Exception as exc:
                 degraded.append(f"{provider.name}: {exc}")
+                statuses.append(
+                    {
+                        "provider": provider.name,
+                        "state": (
+                            exc.state
+                            if isinstance(exc, EvidenceProviderError)
+                            else "error"
+                        ),
+                        "query": query,
+                        "hits": None,
+                        "message": str(exc),
+                    }
+                )
 
         evidence = list(evidence_by_id.values())[:limit]
+        if len(statuses) == 1:
+            status = statuses[0]
+        else:
+            failed = [item for item in statuses if item["state"] not in {"ok", "empty"}]
+            status = {
+                "provider": "+".join(item["provider"] for item in statuses),
+                "state": "degraded" if failed else ("empty" if not evidence else "ok"),
+                "query": query,
+                "hits": max(totals) if totals else None,
+                "message": "; ".join(item["message"] or "" for item in failed) or None,
+            }
         return {
             "hits": max(totals) if totals else 0,
             "evidence": evidence,
@@ -165,4 +229,6 @@ class EvidenceGateway:
             "source": "+".join(sources) if sources else None,
             "degraded": "; ".join(degraded) if degraded else None,
             "query": query,
+            "status": status,
+            "statuses": statuses,
         }
