@@ -20,11 +20,17 @@ from urllib import parse, request
 
 import json_repair
 
+from evidence import (
+    EvidenceGateway,
+    FunctionEvidenceProvider,
+    ProviderRecord,
+    ProviderSearchResult,
+)
 from prompt_assets import FIRST_PRINCIPLES_PERSONA, SCAN_METHOD_PROMPT
 
 CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 
-_CACHE_VERSION = "retrieval-v1"
+_CACHE_VERSION = "retrieval-v2-evidence"
 _CACHE_STATS = {}
 _CACHE_LOCK = threading.Lock()
 
@@ -142,6 +148,9 @@ def _merge_card_into(base: dict, incoming: dict, similarity=None) -> dict:
             aliases.append(incoming["name"])
     base["questions"] = _merge_unique(base.get("questions") or [], incoming.get("questions") or [])
     base["anchors"] = _merge_unique(base.get("anchors") or [], incoming.get("anchors") or [])
+    base["evidence"] = _merge_unique(
+        base.get("evidence") or [], incoming.get("evidence") or []
+    )
     if not base.get("feasibility") and incoming.get("feasibility"):
         base["feasibility"] = incoming["feasibility"]
     base["cluster_size"] = int(base.get("cluster_size") or 1) + int(incoming.get("cluster_size") or 1)
@@ -505,11 +514,18 @@ def _en_payload(en):
         return {
             "hits": int(en.get("hits") or len(results)),
             "results": results,
+            "evidence": en.get("evidence") or [],
             "source": en.get("source"),
             "degraded": en.get("degraded"),
         }
     results = en or []
-    return {"hits": len(results), "results": results, "source": None, "degraded": None}
+    return {
+        "hits": len(results),
+        "results": results,
+        "evidence": [],
+        "source": None,
+        "degraded": None,
+    }
 
 
 def _novelty_for(card, topic, en_search, zh_search, own_search=None,
@@ -526,6 +542,7 @@ def _novelty_for(card, topic, en_search, zh_search, own_search=None,
     card["en_hits"] = en_payload["hits"]
     card["en_source"] = en_payload["source"]
     card["en_degraded"] = en_payload["degraded"]
+    card["evidence"] = en_payload["evidence"]
     card["anchors"] = [{"title": r.get("title", ""), "url": r.get("url", "")} for r in en_payload["results"][:3]]
     if own_search is None:
         card["own_hits"] = None
@@ -579,8 +596,23 @@ def _write_outputs(output_dir, topic, profile, cards):
             lines.append(f"- 可行性/数据：{c['feasibility']}")
         lines.append(f"- 提出方：{'、'.join(c['source_models'])}；英文命中 {c.get('en_hits')}，中文学界命中 {c.get('zh_hits')}，自有库命中 {c.get('own_hits')}")
         qlines += [f"\n## {c['name']}"] + [f"- {q}" for q in c.get("questions", [])]
-        for a in c.get("anchors", []):
-            slines.append(f"- [{c['name']}] {a['title']} — {a['url']}")
+        if c.get("evidence"):
+            for ref in c["evidence"]:
+                source = ref.get("source") or {}
+                retrieval = ref.get("retrieval") or {}
+                verification = ref.get("verification") or {}
+                slines += [
+                    f"- [{c['name']}] {source.get('title', '')} — {source.get('url', '')}",
+                    f"  - EvidenceRef `{ref.get('id', '')}` · {retrieval.get('provider', '?')}"
+                    f" · {verification.get('status', 'unknown')}",
+                    "  - EvidenceRef-JSON: "
+                    + json.dumps(
+                        ref, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                    ),
+                ]
+        else:
+            for a in c.get("anchors", []):
+                slines.append(f"- [{c['name']}] {a['title']} — {a['url']}")
     (d / "perspectives.md").write_text("\n".join(lines), encoding="utf-8")
     (d / "questions.md").write_text("\n".join(qlines), encoding="utf-8")
     (d / "sources.md").write_text("\n".join(slines), encoding="utf-8")
@@ -632,6 +664,7 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
                     c.update(id=len(order) + 1, outlier=None, novelty=None, gold=None,
                              en_hits=None, en_source=None, en_degraded=None,
                              zh_hits=None, own_hits=None, anchors=[],
+                             evidence=[],
                              elo_score=None, outlier_reason=None,
                              cluster_id=None, cluster_size=1, cluster_similarity=None)
                     wall[key] = c
@@ -803,24 +836,30 @@ def _s2_api_key():
     return os.getenv("SEMANTIC_SCHOLAR_API_KEY") or os.getenv("S2_API_KEY")
 
 
-def _academic_result(title="", url=""):
-    return {"title": title or "", "url": url or ""}
-
-
 def _semantic_scholar_search(query: str, limit: int):
     key = _s2_api_key()
     if not key:
         raise RuntimeError("SEMANTIC_SCHOLAR_API_KEY/S2_API_KEY missing")
-    params = parse.urlencode({"query": query, "limit": limit, "fields": "title,url"})
+    params = parse.urlencode(
+        {"query": query, "limit": limit, "fields": "paperId,title,url,publicationDate"}
+    )
     data = _http_json(
         f"https://api.semanticscholar.org/graph/v1/paper/search?{params}",
         headers={"x-api-key": key},
     )
     rows = data.get("data") or []
-    return {
-        "hits": int(data.get("total") or len(rows)),
-        "results": [_academic_result(r.get("title"), r.get("url")) for r in rows],
-    }
+    return ProviderSearchResult(
+        total=int(data.get("total") or len(rows)),
+        records=tuple(
+            ProviderRecord(
+                source_id=r.get("paperId") or r.get("url") or r.get("title") or "",
+                title=r.get("title") or "",
+                url=r.get("url") or "",
+                version=r.get("publicationDate") or "",
+            )
+            for r in rows
+        ),
+    )
 
 
 def _openalex_search(query: str, limit: int):
@@ -829,40 +868,29 @@ def _openalex_search(query: str, limit: int):
         params["mailto"] = os.getenv("OPENALEX_MAILTO")
     data = _http_json(f"https://api.openalex.org/works?{parse.urlencode(params)}")
     rows = data.get("results") or []
-    return {
-        "hits": int((data.get("meta") or {}).get("count") or len(rows)),
-        "results": [
-            _academic_result(r.get("title"), r.get("doi") or r.get("id")) for r in rows
-        ],
-    }
+    return ProviderSearchResult(
+        total=int((data.get("meta") or {}).get("count") or len(rows)),
+        records=tuple(
+            ProviderRecord(
+                source_id=r.get("id") or r.get("doi") or r.get("title") or "",
+                title=r.get("title") or "",
+                url=r.get("doi") or r.get("id") or "",
+                version=r.get("updated_date") or "",
+            )
+            for r in rows
+        ),
+    )
 
 
 def _merge_academic_searches(query: str, limit: int):
     academic_query = _owl_academic_query(query)
-    results, degraded, sources, totals = [], [], [], []
-
-    for name, search in (
-        ("semantic_scholar", _semantic_scholar_search),
-        ("openalex", _openalex_search),
-    ):
-        try:
-            payload = search(query, limit)
-            sources.append(name)
-            totals.append(payload["hits"])
-            for item in payload["results"]:
-                key = (item.get("url") or item.get("title") or "").lower()
-                if key and key not in {r["_key"] for r in results}:
-                    results.append({**item, "_key": key})
-        except Exception as e:
-            degraded.append(f"{name}: {e}")
-
-    return {
-        "hits": max(totals) if totals else 0,
-        "results": [{k: v for k, v in r.items() if k != "_key"} for r in results[:limit]],
-        "source": "+".join(sources) if sources else None,
-        "degraded": "; ".join(degraded) if degraded else None,
-        "query": academic_query,
-    }
+    gateway = EvidenceGateway(
+        (
+            FunctionEvidenceProvider("semantic_scholar", _semantic_scholar_search),
+            FunctionEvidenceProvider("openalex", _openalex_search),
+        )
+    )
+    return gateway.search(academic_query, limit)
 
 
 def real_en_search(k: int = 5):

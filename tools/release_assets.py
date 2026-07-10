@@ -18,6 +18,7 @@ EMBEDDED_MAIN_RUNTIME = "runtime/main-runtime.tar.gz"
 PUBLIC_FILES = [
     "muse_server.py",
     "blindspot.py",
+    "evidence.py",
     "prompt_assets.py",
     "adversary.py",
     "paperqa_bridge.py",
@@ -36,6 +37,7 @@ PUBLIC_DIRS = [
 REQUIRED_PATHS = [
     "muse_server.py",
     "blindspot.py",
+    "evidence.py",
     "prompt_assets.py",
     "adversary.py",
     "paperqa_bridge.py",

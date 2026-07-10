@@ -465,15 +465,28 @@ def test_scan_status_returns_unchanged_for_current_version(monkeypatch, tmp_path
     from fastapi.testclient import TestClient
 
     client = TestClient(muse_server.app)
+    evidence = {
+        "id": "evr_status",
+        "source": {"title": "Study", "url": "https://example.test/study"},
+        "retrieval": {"provider": "in-memory", "query": "query"},
+        "verification": {"status": "provider-retrieved", "degraded": False},
+    }
     with muse_server.SCAN_LOCK:
-        muse_server.SCAN.update(phase="scanning", topic="t", cards=[{"name": "A"}],
-                                output_dir=str(tmp_path), error=None, has_profile=False,
-                                version=42)
+        muse_server.SCAN.update(
+            phase="scanning",
+            topic="t",
+            cards=[{"name": "A", "evidence": [evidence]}],
+            output_dir=str(tmp_path),
+            error=None,
+            has_profile=False,
+            version=42,
+        )
     body = client.get("/scan/status?since=42").json()
     assert body["unchanged"] is True and body["version"] == 42
     assert "cards" not in body
     changed = client.get("/scan/status?since=41").json()
-    assert changed["unchanged"] is False and changed["cards"] == [{"name": "A"}]
+    assert changed["unchanged"] is False
+    assert changed["cards"][0]["evidence"] == [evidence]
     restarted_or_stale_client = client.get("/scan/status?since=43").json()
     assert restarted_or_stale_client["unchanged"] is False
 

@@ -1,4 +1,5 @@
 import json
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -145,7 +146,9 @@ def test_academic_en_search_uses_openalex_count_without_s2_key(monkeypatch, tmp_
     def fake_http(url, headers=None, timeout=20):
         seen.append(url)
         assert "api.openalex.org/works" in url
-        assert "search=%E5%B9%B3%E5%8F%B0%E6%95%B0%E6%8D%AE" in url
+        assert parse_qs(urlparse(url).query)["search"] == [
+            "Has anyone studied 平台数据?"
+        ]
         return {
             "meta": {"count": 42},
             "results": [{"title": "OpenAlex paper", "doi": "https://doi.org/oa"}],
@@ -158,6 +161,7 @@ def test_academic_en_search_uses_openalex_count_without_s2_key(monkeypatch, tmp_
     assert out["results"] == [{"title": "OpenAlex paper", "url": "https://doi.org/oa"}]
     assert out["source"] == "openalex"
     assert out["query"] == "Has anyone studied 平台数据?"
+    assert out["evidence"][0]["retrieval"]["query"] == "Has anyone studied 平台数据?"
     assert "semantic_scholar" in out["degraded"]
     assert len(seen) == 1
 
@@ -175,11 +179,17 @@ def test_academic_en_search_combines_s2_and_openalex(monkeypatch, tmp_path):
         seen.append((url, headers or {}))
         if "semanticscholar.org" in url:
             assert (headers or {}).get("x-api-key") == "s2-test"
+            assert parse_qs(urlparse(url).query)["query"] == [
+                "Has anyone studied 平台数据?"
+            ]
             return {
                 "total": 7,
                 "data": [{"title": "S2 paper", "url": "https://s2"}],
             }
         if "api.openalex.org/works" in url:
+            assert parse_qs(urlparse(url).query)["search"] == [
+                "Has anyone studied 平台数据?"
+            ]
             return {
                 "meta": {"count": 11},
                 "results": [{"title": "OpenAlex paper", "id": "https://openalex/W1"}],
@@ -206,6 +216,14 @@ def test_novelty_uses_academic_total_not_anchor_count():
         en_search=lambda _q: {
             "hits": 47,
             "results": [{"title": "A", "url": "u1"}, {"title": "B", "url": "u2"}],
+            "evidence": [
+                {
+                    "id": "evr_a",
+                    "source": {"title": "A", "url": "u1"},
+                    "retrieval": {"provider": "openalex", "query": "q"},
+                    "verification": {"status": "provider-retrieved", "degraded": False},
+                }
+            ],
             "source": "openalex",
             "degraded": "semantic_scholar: missing key",
         },
@@ -218,6 +236,7 @@ def test_novelty_uses_academic_total_not_anchor_count():
     assert card["en_source"] == "openalex"
     assert card["en_degraded"] == "semantic_scholar: missing key"
     assert card["anchors"] == [{"title": "A", "url": "u1"}, {"title": "B", "url": "u2"}]
+    assert card["evidence"][0]["id"] == "evr_a"
     assert card["gold"] is True
 
 
@@ -500,7 +519,20 @@ def test_run_scan_end_to_end_offline(tmp_path):
         output_dir=str(tmp_path),
         providers={"deepseek": llm_for("deepseek"), "gemini": llm_for("gemini")},
         decompose_llm=llm_for("decompose"),
-        en_search=lambda q: [{"title": "T", "url": "https://e.com/1"}] * 4,
+        en_search=lambda q: {
+            "hits": 4,
+            "results": [{"title": "T", "url": "https://e.com/1"}],
+            "evidence": [
+                {
+                    "id": "evr_e2e",
+                    "source": {"title": "T", "url": "https://e.com/1"},
+                    "retrieval": {"provider": "in-memory", "query": q},
+                    "verification": {"status": "provider-retrieved", "degraded": False},
+                }
+            ],
+            "source": "in-memory",
+            "degraded": None,
+        },
         zh_search=lambda q: [],
         own_search=lambda q: [1, 2] if "交易成本" in q else [],
         on_card=emitted.append,
@@ -516,12 +548,21 @@ def test_run_scan_end_to_end_offline(tmp_path):
     # 新颖性：en=4, zh=0 → 交叉空白 + 金标
     assert byname["交易成本"]["novelty"] == "交叉空白" and byname["交易成本"]["gold"] is True
     assert byname["交易成本"]["anchors"][0]["url"] == "https://e.com/1"
+    assert byname["交易成本"]["evidence"][0]["id"] == "evr_e2e"
     # 三类齐备
     assert {c["type"] for c in cards} == set(CARD_TYPES)
     # 落盘四件
     d = tmp_path / "docs" / "agents" / "muse"
     assert (d / "perspectives.md").exists() and (d / "questions.md").exists()
     assert (d / "sources.md").exists() and (d / "profile.md").read_text(encoding="utf-8") == "画像"
+    sources_text = (d / "sources.md").read_text(encoding="utf-8")
+    assert "evr_e2e" in sources_text
+    metadata = [
+        json.loads(line.removeprefix("  - EvidenceRef-JSON: "))
+        for line in sources_text.splitlines()
+        if line.startswith("  - EvidenceRef-JSON: ")
+    ]
+    assert byname["交易成本"]["evidence"][0] in metadata
 
 
 def test_feedback_roundtrip_and_suppression(tmp_path):
