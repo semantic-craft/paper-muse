@@ -30,6 +30,12 @@ secrets.toml
 app/build/
 app/PaperMuse.xcodeproj/
 /.claude/
+
+# Playwright MCP 浏览器验证的临时产物（设计 agent 自验时生成，勿提交）
+.playwright-mcp/
+
+# gpt-researcher 隔离沙盒 venv（对抗幕证伪 sidecar，重依赖不进主 venv）
+.venv-gptr/
 # >>> dev-link (Matt Pocock skills — machine-local symlinks, do not commit) >>>
 /.agents/skills/ask-matt
 /.agents/skills/code-review
@@ -44,9 +50,10 @@ app/PaperMuse.xcodeproj/
 /.agents/skills/resolving-merge-conflicts
 /.agents/skills/setup-matt-pocock-skills
 /.agents/skills/tdd
-/.agents/skills/to-issues
-/.agents/skills/to-prd
+/.agents/skills/to-spec
+/.agents/skills/to-tickets
 /.agents/skills/triage
+/.agents/skills/wayfinder
 /.agents/skills/git-guardrails-claude-code
 /.agents/skills/migrate-to-shoehorn
 /.agents/skills/scaffold-exercises
@@ -58,10 +65,10 @@ app/PaperMuse.xcodeproj/
 /.agents/skills/writing-great-skills
 /.agents/skills/edit-article
 /.agents/skills/obsidian-vault
+/.agents/skills/claude-handoff
+/.agents/skills/loop-me
+/.agents/skills/wizard
+/.agents/skills/writing-beats
+/.agents/skills/writing-fragments
+/.agents/skills/writing-shape
 # <<< dev-link <<<
-
-# Playwright MCP 浏览器验证的临时产物（设计 agent 自验时生成，勿提交）
-.playwright-mcp/
-
-# gpt-researcher 隔离沙盒 venv（对抗幕证伪 sidecar，重依赖不进主 venv）
-.venv-gptr/
