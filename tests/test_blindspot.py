@@ -29,6 +29,15 @@ def _card(name, model="m1", **kw):
     return base
 
 
+def _confirmed_cnki_empty():
+    return {
+        "hits": 0,
+        "results": [],
+        "evidence": [],
+        "status": {"provider": "cnki", "state": "empty", "hits": 0},
+    }
+
+
 def test_normalize_name_strips_noise():
     assert normalize_name("  交易成本 理论（TCE） ") == normalize_name("交易成本理论(tce)")
 
@@ -227,7 +236,7 @@ def test_novelty_uses_academic_total_not_anchor_count():
             "source": "openalex",
             "degraded": "semantic_scholar: missing key",
         },
-        zh_search=lambda _q: [],
+        zh_search=lambda _q: _confirmed_cnki_empty(),
         own_search=None,
         zh_keyword="著作权",
     )
@@ -299,6 +308,7 @@ def test_cnki_results_are_normalized_to_evidence_refs(monkeypatch, tmp_path):
     ("failure", "expected_state"),
     [
         ("NO_BROWSER_SESSION", "authentication-required"),
+        ("Browser session is required.", "authentication-required"),
         ("RATE_LIMIT", "rate-limited"),
         ("not-json", "bad-payload"),
         ("timeout", "timeout"),
@@ -364,7 +374,7 @@ def test_run_scan_streaming_merge_and_enrich(tmp_path, monkeypatch):
         providers={"fast": lambda p: "", "slow": lambda p: ""},
         decompose_llm=lambda p: "",
         en_search=lambda q: [{"title": "t", "url": "u"}] * 4,
-        zh_search=lambda q: [],
+        zh_search=lambda q: _confirmed_cnki_empty(),
         own_search=lambda q: [{"title": "t", "url": "u"}],
         on_card=on_card)
 
@@ -424,7 +434,8 @@ def test_run_scan_suppression_blocks_emit(tmp_path, monkeypatch):
     emitted = []
     cards = B.run_scan("主题", "", str(tmp_path), providers={"m": lambda p: ""},
                        decompose_llm=lambda p: "", en_search=lambda q: [],
-                       zh_search=lambda q: [], own_search=None, on_card=emitted.append)
+                       zh_search=lambda q: _confirmed_cnki_empty(), own_search=None,
+                       on_card=emitted.append)
     assert [c["name"] for c in cards] == ["A"] and emitted[0]["name"] == "A"
     assert cards[0]["own_hits"] is None and cards[0]["novelty"] == "交叉空白"
 
@@ -599,7 +610,7 @@ def test_run_scan_end_to_end_offline(tmp_path):
             "source": "in-memory",
             "degraded": None,
         },
-        zh_search=lambda q: [],
+        zh_search=lambda q: _confirmed_cnki_empty(),
         own_search=lambda q: [1, 2] if "交易成本" in q else [],
         on_card=emitted.append,
     )
@@ -731,6 +742,7 @@ def test_run_scan_only_treats_confirmed_cnki_empty_as_gold(tmp_path):
             },
         },
     )
+    unknown = scan(tmp_path / "unknown", [])
 
     assert confirmed["zh_hits"] == 0
     assert confirmed["gold"] is True
@@ -745,6 +757,9 @@ def test_run_scan_only_treats_confirmed_cnki_empty_as_gold(tmp_path):
     assert degraded["gold"] is False
     assert degraded["zh_status"]["state"] == "authentication-required"
     assert "不判定中文真零或金标" in degraded["novelty_reason"]
+    assert unknown["zh_hits"] is None
+    assert unknown["gold"] is False
+    assert unknown["zh_status"]["state"] == "unknown"
 
 
 def test_extract_json_multi_object_picks_payload():

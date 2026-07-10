@@ -21,6 +21,7 @@ SearchState = Literal[
     "bad-payload",
     "error",
     "degraded",
+    "unknown",
 ]
 
 
