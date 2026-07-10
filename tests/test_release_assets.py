@@ -12,6 +12,7 @@ def test_release_assets_stage_manifest_and_scan(tmp_path):
 
     assert (out / "muse_server.py").exists()
     assert (out / "paperqa_bridge.py").exists()
+    assert (out / "evidence.py").exists()
     assert (out / "prompt_assets.py").exists()
     assert (out / "requirements-paperqa.txt").exists()
     assert (out / "webui" / "index.html").exists()
@@ -32,6 +33,7 @@ def test_release_assets_stage_manifest_and_scan(tmp_path):
     assert manifest["sidecar_runtime"]["requirements"] == "requirements-gptr.txt"
     assert "webui/index.html" in manifest["required_paths"]
     assert "paperqa_bridge.py" in manifest["required_paths"]
+    assert "evidence.py" in manifest["required_paths"]
     assert "prompt_assets.py" in manifest["required_paths"]
     assert "requirements-paperqa.txt" in manifest["required_paths"]
     assert "tools/runtime_bootstrap.py" in manifest["required_paths"]
@@ -70,6 +72,14 @@ def test_adversary_ui_renders_rebuttal_and_meta_review():
     assert "author_rebuttal" in html
     assert "meta_review" in html
     assert "作者答辩" in html and "仲裁" in html
+
+
+def test_scan_ui_consumes_unified_evidence_refs():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert "c.evidence" in html
+    assert "verification.status" in html
+    assert "证据" in html
 
 
 def test_release_launch_does_not_write_bytecode_into_signed_bundle():
