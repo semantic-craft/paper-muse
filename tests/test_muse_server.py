@@ -433,6 +433,35 @@ def test_session_accepts_openai_model_without_deepseek(monkeypatch, tmp_path):
     assert muse_server.SESSION["model"] == "openai"
 
 
+def test_session_blocked_and_unclobbered_while_runner_locked(monkeypatch, tmp_path):
+    """回归：/session 的相位守卫 + 状态置位须与 /step、/report 同锁。RUNNER_LOCK 被在飞的
+    /step/report 持有时，新 /session 应 409 且绝不改写 SESSION——否则会把在飞会话的 runner
+    置 None、相位被 /step 的 finally 覆写回 ready → 后续 /step 拿 None runner 崩 500。"""
+    from fastapi.testclient import TestClient
+
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-realish")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-realish")
+    monkeypatch.setenv("ENCODER_API_TYPE", "openai")
+    monkeypatch.setattr(muse_server, "warm_start_bg", lambda _req: None)
+    sentinel = object()
+    muse_server.SESSION.update(phase="ready", runner=sentinel, topic="旧主题", model="openai")
+    client = TestClient(muse_server.app)
+
+    assert muse_server.RUNNER_LOCK.acquire(blocking=False)   # 模拟在飞的 /step 持锁
+    try:
+        resp = client.post("/session", json={"topic": "新主题", "model": "openai"})
+    finally:
+        muse_server.RUNNER_LOCK.release()
+
+    assert resp.status_code == 409
+    # SESSION 未被改写：在飞会话的 runner/相位/主题原封不动（修复前会被置 warming/None/新主题）
+    assert muse_server.SESSION["phase"] == "ready"
+    assert muse_server.SESSION["runner"] is sentinel
+    assert muse_server.SESSION["topic"] == "旧主题"
+    muse_server.SESSION.update(phase="idle", runner=None, topic="")   # 清理，勿污染后续测试
+
+
 def test_scan_bg_sets_has_profile_true_and_feeds_profile(monkeypatch, tmp_path):
     monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
