@@ -848,3 +848,50 @@ def test_perf_status_exposes_observability_counters():
     assert body["retrieval_cache"]["by_retriever"] == {}
     assert body["sidecar"] == {"single_invocations": 0, "batch_invocations": 0, "claims_requested": 0}
     assert body["llm_cache"]["available"] is False
+
+
+def _seed_graph_artifacts(tmp_path):
+    d = tmp_path / "docs" / "agents" / "muse"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "perspectives.md").write_text(
+        "# 切入点卡片：平台数据\n\n## 熵增视角（学科视角｜交叉空白｜🥇英热中冷）\n- 机制：x\n",
+        encoding="utf-8")
+    ref = {"id": "evr_1", "source": {"title": "Entropy", "url": "https://doi.org/x"},
+           "retrieval": {"provider": "openalex"}, "relation": "context",
+           "verification": {"status": "provider-retrieved"}}
+    (d / "sources.md").write_text(
+        "# 文献锚点：平台数据\n\n- [熵增视角] Entropy — https://doi.org/x\n"
+        "  - EvidenceRef-JSON: " + json.dumps(ref, ensure_ascii=False) + "\n",
+        encoding="utf-8")
+    (d / "failure-points.md").write_text(
+        "# 失败点\n\n## 主张 1：熵是隐喻（构思幕卡片送入）\n\n### [f2] 已有文献做过\n"
+        "- 类型：新颖性｜严重度：重大｜裁决：**已证伪**\n"
+        "- [证伪] Prior — https://doi.org/p · EvidenceRef `evr_2`\n", encoding="utf-8")
+
+
+def test_evidence_graph_endpoint_projects_cards_and_claims(tmp_path):
+    from fastapi.testclient import TestClient
+
+    _seed_graph_artifacts(tmp_path)
+    client = TestClient(muse_server.app)
+    r = client.get("/evidence/graph", params={"output_dir": str(tmp_path)})
+
+    assert r.status_code == 200
+    data = r.json()
+    assert [c["id"] for c in data["cards"]] == ["card:熵增视角"]
+    assert [c["id"] for c in data["claims"]] == ["claim:1"]
+    card_view = data["views"]["card:熵增视角"]
+    assert [e["ref_id"] for e in card_view["context"]] == ["evr_1"]
+    claim_view = data["views"]["claim:1"]
+    assert claim_view["failures"][0]["failure"]["id"] == "failure:f2"
+    assert [e["ref_id"] for e in claim_view["failures"][0]["refutes"]] == ["evr_2"]
+
+
+def test_evidence_graph_route_not_shadowed_by_evidence_id(tmp_path):
+    # "graph" 必须命中 /evidence/graph，而非被 /evidence/{evidence_id} 当作 id → 404
+    from fastapi.testclient import TestClient
+
+    client = TestClient(muse_server.app)
+    r = client.get("/evidence/graph", params={"output_dir": str(tmp_path)})
+    assert r.status_code == 200                       # 空目录 → 空投影，非 404
+    assert r.json()["cards"] == [] and r.json()["claims"] == []
