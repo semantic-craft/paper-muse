@@ -23,6 +23,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import blindspot
+import paperqa_bridge  # #46：自有库证据经它的隔离 .venv-paperqa 子进程取（主进程不 import paperqa）
 from blindspot import extract_json  # 复用带围栏/多对象/json_repair 兜底的 JSON 抠取
 from evidence import ProviderRecord, evidence_ref_from_record
 from prompt_assets import ADVERSARIAL_REVIEW_PERSONA, ADVERSARY_METHOD_PROMPT
@@ -310,9 +311,12 @@ def classify_evidence(claim_text: str, failure_statement: str, hits: list, llm_c
             seen.add(n)
             h = hits[n - 1]
             provider = str(h.get("provider") or "web")
-            source_kind = {
+            # 命中自带 source_kind 优先（如 PaperQA 自有库文档=library-document），
+            # 否则按 provider 归类——别让自有库证据被降级成 scholarly-work（#46）。
+            source_kind = str(h.get("source_kind") or "") or {
                 "cnki": "cnki-record",
                 "zsearch": "library-document",
+                "paperqa": "library-document",
             }.get(provider, "scholarly-work")
             locator = h.get("locator") if isinstance(h.get("locator"), dict) else {}
             out.append(
@@ -423,17 +427,86 @@ def meta_review(claim_text: str, failure: dict, evidence: list, rebuttal: dict,
     }
 
 
-# ---- 每主张证伪（#8 gpt-researcher sidecar 取证据池 → 逐失败点分类 → 代码定三态）----
+# ---- #46 双源证据：PaperQA 自有库证据并入对抗幕（按稳定 EvidenceRef id 去重）----
 
-def _apply_falsify_pool(claim, pool, classify_llm, author_llm=None, meta_llm=None):
-    sources = pool.get("sources") or []
+def _library_hit_from_ref(ref: dict) -> dict:
+    """PaperQA EvidenceRef → classify_evidence 可吃的命中形状。
+    保留 identity + locator + source_kind，使 classify 经 evidence_ref_from_record
+    重算出的 id 与原 EvidenceRef 一致——双源才能按稳定 id 去重、身份可回连 evidence.json。
+    自有库文档常无 web url：退回 locator 值 / identity 作可点锚，别被 classify 的 url 过滤误杀。"""
+    source = ref.get("source") or {}
+    locator = ref.get("locator") or {}
+    retrieval = ref.get("retrieval") or {}
+    verification = ref.get("verification") or {}
+    url = source.get("url") or locator.get("value") or source.get("identity") or ""
+    return {
+        "title": source.get("title") or "",
+        "url": url,
+        "content": locator.get("exact") or source.get("title") or "",
+        "provider": retrieval.get("provider") or "paperqa",
+        "source_kind": source.get("kind") or "library-document",
+        "source_id": retrieval.get("source_id") or "",
+        "version": source.get("version") or "",
+        "identity": source.get("identity") or "",
+        "locator": {
+            k: locator[k]
+            for k in ("kind", "value", "exact", "prefix", "suffix", "page")
+            if locator.get(k) is not None
+        },
+        "native": source.get("native") if isinstance(source.get("native"), dict) else None,
+        "verification_status": verification.get("status") or "provider-retrieved",
+        "query": retrieval.get("query") or "",
+        "provider_version": retrieval.get("provider_version") or "",
+        "index_version": retrieval.get("index_version") or "",
+    }
+
+
+def _library_pool_sources(library_search, claim):
+    """取一条主张的 PaperQA 自有库证据，展平成命中并返回 (hits, 降级原因)。
+    降级/异常绝不拖垮对抗幕：返回空证据 + 原因，外部证据一路照常。"""
+    if not library_search:
+        return [], None
+    try:
+        pool = library_search(claim["text"], claim.get("failures") or []) or {}
+    except Exception as e:
+        logging.warning(f"自有库取证异常（主张 {claim.get('id')} 仅用外部证据）：{e}")
+        return [], str(e)
+    hits = [_library_hit_from_ref(r)
+            for r in (pool.get("evidence") or []) if isinstance(r, dict)]
+    degradation = pool.get("degradation_reason") if pool.get("degraded") else None
+    return hits, degradation
+
+
+def _dedup_evidence(evidence: list) -> list:
+    """按稳定 EvidenceRef id 去重（同一文献同一 locator 跨源合并），先到先得保 provenance。"""
+    out, seen = [], set()
+    for e in evidence or []:
+        eid = e.get("id") if isinstance(e, dict) else None
+        if eid in seen:
+            continue
+        seen.add(eid)
+        out.append(e)
+    return out
+
+
+# ---- 每主张证伪（#8 gpt-researcher sidecar + #46 PaperQA 自有库 → 逐失败点分类 → 代码定三态）----
+
+def _apply_falsify_pool(claim, pool, classify_llm, author_llm=None, meta_llm=None,
+                        library_search=None):
+    gptr_sources = pool.get("sources") or []
     en_hits = pool.get("en_hits")            # 双面密度：每主张一份（池级），失败点共用
     zh_hits = pool.get("zh_hits")            # None = 中文/自有面全降级（明示未检）
     degradation = pool.get("degradation_reason") if pool.get("degraded") else None
     claim["sidecar_degradation"] = degradation
     claim["memo"] = pool.get("memo") or ""   # 证伪备忘录（gpt-researcher custom_report），落 md
+    # #46：并入 PaperQA 自有库证据。两源独立降级——一路空/崩不拖垮另一路；
+    # gptr 先、自有库后 → 同 id 冲突先到先得保 provenance；裁决恒在 decide_verdict。
+    library_hits, library_degradation = _library_pool_sources(library_search, claim)
+    claim["library_degradation"] = library_degradation
+    sources = gptr_sources + library_hits
     for f in claim["failures"]:
-        evidence = classify_evidence(claim["text"], f["statement"], sources, classify_llm)
+        evidence = _dedup_evidence(
+            classify_evidence(claim["text"], f["statement"], sources, classify_llm))
         f["evidence"] = evidence
         f["verdict"] = decide_verdict(evidence)
         f["en_hits"] = en_hits
@@ -448,9 +521,11 @@ def _apply_falsify_pool(claim, pool, classify_llm, author_llm=None, meta_llm=Non
     return claim
 
 
-def _falsify_claim(claim, falsify_search, classify_llm, author_llm=None, meta_llm=None):
+def _falsify_claim(claim, falsify_search, classify_llm, author_llm=None, meta_llm=None,
+                   library_search=None):
     """一条主张的证伪：调 falsify_search（真态=gpt-researcher sidecar，多源检索+证伪备忘录）
-    取该主张的**证据池**，再对每个失败点从池里分类成证据、代码定三态（decide_verdict）。
+    取该主张的**证据池**，可选并入 library_search（#46 PaperQA 自有库证据），
+    再对每个失败点从池里分类成证据、代码定三态（decide_verdict）。
     原地回填失败点对象（只换预置键的值，不加键——/adversary/status 轮询快照序列化安全）。
     检索失败/空池 → 该主张所有失败点判未决（无据不放行，抗注入不受影响：裁决恒在此代码里）。"""
     try:
@@ -458,7 +533,8 @@ def _falsify_claim(claim, falsify_search, classify_llm, author_llm=None, meta_ll
     except Exception as e:
         logging.warning(f"证伪检索异常（主张 {claim['id']} 全判未决）：{e}")
         pool = {}
-    return _apply_falsify_pool(claim, pool, classify_llm, author_llm=author_llm, meta_llm=meta_llm)
+    return _apply_falsify_pool(claim, pool, classify_llm, author_llm=author_llm,
+                               meta_llm=meta_llm, library_search=library_search)
 
 
 # ---- run_review 编排 + 落盘 ----
@@ -503,6 +579,8 @@ def _write_failure_points(output_dir, claims):
                     f"- [{stance}] {source.get('title', '')} — {source.get('url', '')} "
                     f"· EvidenceRef `{e.get('id', '')}`"
                 )
+        if claim.get("library_degradation"):
+            lines.append(f"\n> 自有库证据（PaperQA）降级：{claim['library_degradation']}")
         if claim.get("memo"):
             lines.append(f"\n### 证伪备忘录（gpt-researcher）\n\n{claim['memo'].strip()}")
     (d / "failure-points.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -511,7 +589,7 @@ def _write_failure_points(output_dir, claims):
 def run_review(source_text, has_draft, output_dir, review_llm, falsify_search,
                on_claim, persona=ADVERSARIAL_REVIEW_PERSONA, from_="input",
                redteam_llm=None, classify_llm=None, author_llm=None, meta_llm=None,
-               max_concurrent_claims=2, on_update=None):
+               max_concurrent_claims=2, on_update=None, library_search=None):
     """审稿回合机（spec §6）。流式（呼应扫描「先上墙后补徽标」）：
     逐条主张红队出失败点 → on_claim 即发（失败点带占位 en_hits/zh_hits/evidence/verdict）→
     每主张起线程异步证伪补挂（falsify_search 取证据池 → 逐失败点分类 → 作者答辩
@@ -546,7 +624,8 @@ def run_review(source_text, has_draft, output_dir, review_llm, falsify_search,
                 with gate:
                     _falsify_claim(
                         cl, falsify_search, classify_llm,
-                        author_llm=author_llm, meta_llm=meta_llm)
+                        author_llm=author_llm, meta_llm=meta_llm,
+                        library_search=library_search)
                     if on_update:
                         on_update(cl)
             t = threading.Thread(target=work, daemon=True)
@@ -562,7 +641,8 @@ def run_review(source_text, has_draft, output_dir, review_llm, falsify_search,
         for claim in claims:
             _apply_falsify_pool(
                 claim, pools.get(claim["id"], {}), classify_llm,
-                author_llm=author_llm, meta_llm=meta_llm)
+                author_llm=author_llm, meta_llm=meta_llm,
+                library_search=library_search)
             if on_update:
                 on_update(claim)
     else:
@@ -714,6 +794,27 @@ def real_falsify_search(sidecar_python=None, sidecar_script=None, want_memo=True
         return pools
 
     search.search_many = search_many
+    return search
+
+
+# #46 自有库证据 = PaperQA2，跑在隔离 .venv-paperqa（同 gpt-researcher，重依赖不进主 venv）。
+# 主引擎经 paperqa_bridge 子进程取带 locator 的 EvidenceRef；未配库/降级恒结构化返回、绝不崩。
+def real_library_search(pdf_dir=None, output_dir=None, timeout=180):
+    """真态自有库取证（#46）：包 paperqa_bridge.ask_self_library。
+    未配库 / PaperQA 缺失 / 降级 → 返回空证据 + 降级原因，绝不拖垮对抗幕
+    （GPTR 一路仍可用；裁决恒在 decide_verdict：无 refutes/supports 仍未决）。"""
+    def search(claim_text, failures):
+        try:
+            payload = paperqa_bridge.ask_self_library(
+                claim_text, pdf_dir=pdf_dir, output_dir=output_dir, timeout=timeout)
+        except Exception as e:
+            logging.warning(f"自有库取证异常（仅用外部证据）：{e}")
+            return {"evidence": [], "degraded": True, "degradation_reason": str(e)}
+        return {
+            "evidence": payload.get("evidence") or [],
+            "degraded": bool(payload.get("degraded")) or not payload.get("ok", True),
+            "degradation_reason": payload.get("message") or "",
+        }
     return search
 
 

@@ -19,6 +19,7 @@ from adversary import (
     SEVERITIES,
     VERDICTS,
 )
+from evidence import ProviderRecord, evidence_ref_from_record
 
 
 def _fake_sidecar_python(path, health_ok=True):
@@ -689,3 +690,159 @@ def test_pick_review_llm_honors_requested_provider():
     assert pick_review_llm({"openai": oa}, model="gpt-5") is oa
     with pytest.raises(RuntimeError, match="unavailable"):
         pick_review_llm({"deepseek": ds}, model="openai")
+
+
+# ---- #46 双源证据：对抗幕复用 PaperQA 自有库证据 + GPTR 外部证伪证据 ----
+
+def _library(refs, degraded=False, reason=""):
+    """伪 library_search：直接回一批 PaperQA EvidenceRef（真态=paperqa_bridge.ask_self_library）。"""
+    return lambda claim_text, failures: {
+        "evidence": refs, "degraded": degraded, "degradation_reason": reason}
+
+
+def _library_ref(url="zotero://select/library/items/ITEM1",
+                 identity="zotero:users:0:attachment:ATT1",
+                 title="自有库文献", exact="库内段落：撤回同意后影响仍持续", page=12):
+    """构造一条 PaperQA 风格的自有库 EvidenceRef（library-document + zotero 锚 + 页锚）。"""
+    return evidence_ref_from_record(
+        ProviderRecord(
+            source_id="ATT1", title=title, url=url, version="42",
+            source_kind="library-document", relation="supports", identity=identity,
+            locator_kind="pdf-page" if page is not None else "url",
+            locator_value=str(page) if page is not None else url,
+            exact=exact, page=page,
+            native={"provider": "zotero-local-api", "attachment_key": "ATT1"}),
+        "paperqa", "撤回同意是否可逆")
+
+
+def test_run_review_library_evidence_keeps_stable_id_and_library_kind(tmp_path):
+    """#46 AC5：自有库证据经对抗幕后 EvidenceRef id 不变、kind 仍 library-document
+    （身份可回连 evidence.json），且逐失败点由 LLM 重判立场（非默认全佐证）。"""
+    draft, _q, extract, redteam = _draft_with_claim()
+    ref = _library_ref()
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam]),
+        # 池里无 gptr 命中；组合列表第 1 条=自有库，判佐证
+        classify_llm=lambda p: json.dumps({"evidence": [{"n": 1, "stance": "佐证"}]}),
+        falsify_search=_pool([], en_hits=0, zh_hits=0),
+        library_search=_library([ref]),
+        on_claim=lambda c: None,
+    )
+    ev = claims[0]["failures"][0]["evidence"]
+    assert len(ev) == 1
+    assert ev[0]["id"] == ref["id"]                       # 稳定身份跨源不变
+    assert ev[0]["source"]["kind"] == "library-document"  # 未被降级成 scholarly-work
+    assert ev[0]["retrieval"]["provider"] == "paperqa"
+    assert ev[0]["relation"] == "supports"
+    assert claims[0]["failures"][0]["verdict"] == "有佐证"
+
+
+def test_run_review_merges_external_and_library_with_distinct_provenance(tmp_path):
+    """#46 AC1/AC3/AC6：一个失败点同时挂 GPTR 外部证据 + PaperQA 自有库证据，
+    各保 provider provenance；相反立场并存，代码裁决取证伪。"""
+    draft, _q, extract, redteam = _draft_with_claim()
+    ref = _library_ref()
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam]),
+        # 组合列表：1=外部(证伪) 2=自有库(佐证)
+        classify_llm=lambda p: json.dumps(
+            {"evidence": [{"n": 1, "stance": "证伪"}, {"n": 2, "stance": "佐证"}]}),
+        falsify_search=_pool(
+            [{"title": "外部反例", "url": "https://doi.org/e1",
+              "content": "反例", "provider": "web"}],
+            en_hits=3, zh_hits=1),
+        library_search=_library([ref]),
+        on_claim=lambda c: None,
+    )
+    ev = claims[0]["failures"][0]["evidence"]
+    assert {e["retrieval"]["provider"] for e in ev} == {"web", "paperqa"}
+    assert {e["source"]["kind"] for e in ev} == {"scholarly-work", "library-document"}
+    assert {e["relation"] for e in ev} == {"refutes", "supports"}
+    assert claims[0]["failures"][0]["verdict"] == "已证伪"   # 有证伪即击穿
+
+
+def test_run_review_dedups_same_doc_across_sources_by_stable_id(tmp_path):
+    """#46 AC2：同一文献同时来自外部与自有库（同 identity/url、同 locator）→ 按稳定 id 去重成一条。"""
+    draft, _q, extract, redteam = _draft_with_claim()
+    shared = "https://doi.org/shared"
+    ref = evidence_ref_from_record(
+        ProviderRecord(source_id="S", title="同一文献", url=shared, version="",
+                       source_kind="library-document", relation="supports", identity="",
+                       locator_kind="url", locator_value=shared, exact="库内命中"),
+        "paperqa", "q")
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam]),
+        classify_llm=lambda p: json.dumps(
+            {"evidence": [{"n": 1, "stance": "证伪"}, {"n": 2, "stance": "证伪"}]}),
+        falsify_search=_pool(
+            [{"title": "同一文献", "url": shared, "content": "外部命中", "provider": "web"}]),
+        library_search=_library([ref]),
+        on_claim=lambda c: None,
+    )
+    ev = claims[0]["failures"][0]["evidence"]
+    assert len(ev) == 1                       # 去重成一条（稳定 id 跨源合并）
+    assert ev[0]["id"] == ref["id"]
+
+
+def test_run_review_library_alone_can_drive_verdict_when_external_empty(tmp_path):
+    """#46 AC4（隔离）：GPTR 空池，自有库单源仍可给出裁决——一路降级不拖垮另一路。"""
+    draft, _q, extract, redteam = _draft_with_claim()
+    ref = _library_ref(exact="库内反证：机制方向相反")
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam]),
+        classify_llm=lambda p: json.dumps({"evidence": [{"n": 1, "stance": "证伪"}]}),
+        falsify_search=_pool([], en_hits=0, zh_hits=0),   # 外部全空
+        library_search=_library([ref]),
+        on_claim=lambda c: None,
+    )
+    fs = claims[0]["failures"]
+    assert all(f["verdict"] == "已证伪" for f in fs)
+    assert all(f["evidence"][0]["retrieval"]["provider"] == "paperqa" for f in fs)
+
+
+def test_run_review_library_failure_does_not_break_external(tmp_path):
+    """#46 AC4（隔离·反向）：自有库取证抛错 → 记 library_degradation、外部证据一路照常，不崩。"""
+    draft, _q, extract, redteam = _draft_with_claim()
+
+    def boom_library(claim_text, failures):
+        raise RuntimeError("paperqa venv missing")
+
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam]),
+        classify_llm=lambda p: json.dumps({"evidence": [{"n": 1, "stance": "证伪"}]}),
+        falsify_search=_pool(
+            [{"title": "外部反例", "url": "https://doi.org/e1",
+              "content": "反例", "provider": "web"}]),
+        library_search=boom_library,
+        on_claim=lambda c: None,
+    )
+    c = claims[0]
+    assert c["library_degradation"] == "paperqa venv missing"
+    assert all(f["verdict"] == "已证伪" for f in c["failures"])   # 外部证据照常
+    fp = (tmp_path / "docs" / "agents" / "muse" / "failure-points.md").read_text(encoding="utf-8")
+    assert "自有库证据（PaperQA）降级" in fp
+
+
+def test_real_library_search_wraps_paperqa_and_degrades_safely(monkeypatch):
+    """#46 AC1：real_library_search 请求 PaperQA 证据；PaperQA 缺失/抛错 → 结构化降级，不崩。"""
+    import adversary
+
+    def fake_ask(question, **kw):
+        return {"ok": True, "evidence": [{"id": "evr_x"}], "degraded": False, "message": ""}
+
+    monkeypatch.setattr(adversary.paperqa_bridge, "ask_self_library", fake_ask)
+    pool = adversary.real_library_search(output_dir="/tmp/x")("主张", [])
+    assert pool["evidence"] == [{"id": "evr_x"}] and pool["degraded"] is False
+
+    def boom_ask(question, **kw):
+        raise RuntimeError("missing venv")
+
+    monkeypatch.setattr(adversary.paperqa_bridge, "ask_self_library", boom_ask)
+    degraded = adversary.real_library_search()("主张", [])
+    assert degraded["evidence"] == [] and degraded["degraded"] is True
+    assert "missing venv" in degraded["degradation_reason"]
