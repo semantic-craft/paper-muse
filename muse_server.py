@@ -68,6 +68,23 @@ from pydantic import BaseModel
 import blindspot
 import adversary
 import paperqa_bridge
+import run_manifest  # #49：版本化无秘密 run manifest（scan/evidence/roundtable/adversary 各落一次）
+
+
+def _now_iso():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _emit_manifest(kind, output_dir, *, seed, started_at, **fields):
+    """#49 best-effort：落 run-manifest.jsonl（含 git 代码版本）。失败绝不拖垮研究运行。"""
+    if not output_dir:
+        return
+    try:
+        run_manifest.emit(kind, output_dir, seed=str(seed), started_at=started_at,
+                          ended_at=_now_iso(), **fields)
+    except Exception:
+        traceback.print_exc()
 
 
 def load_api_key(toml_file_path):
@@ -816,6 +833,8 @@ def _current_evidence_output_dir(explicit=None):
 
 @app.post("/evidence/ask")
 def evidence_ask(req: EvidenceAskReq):
+    started = _now_iso()
+    evidence_dir = _current_evidence_output_dir(req.output_dir)
     try:
         load_api_key(toml_file_path=str(_secrets_path()))
         payload = paperqa_bridge.ask_self_library(
@@ -826,13 +845,20 @@ def evidence_ask(req: EvidenceAskReq):
                 else None
             ),
             pdf_dir=req.pdf_dir,
-            output_dir=_current_evidence_output_dir(req.output_dir),
+            output_dir=evidence_dir,
             timeout=max(30, min(int(req.timeout), 3600)),
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, f"PaperQA 证据问答失败：{e}")
+    # #49：卡片证据问答落 manifest（seed=问题；关联返回的 evidence ids + 降级）
+    _emit_manifest(
+        "evidence", evidence_dir, seed=req.question, started_at=started,
+        evidence_ids=[e.get("id") for e in (payload.get("evidence") or [])
+                      if isinstance(e, dict) and e.get("id")],
+        degradation=([str(payload.get("message"))] if payload.get("degraded") else []),
+        artifacts=["sources.md", "evidence.json"])
     return payload
 
 
@@ -946,6 +972,7 @@ def _merge_roundtable_into_muse(paper_dir, topic, article, conversation):
 
 @app.post("/report")
 def report():
+    report_started = _now_iso()
     # 同 /step：相位检查/置位与执行同锁，堵并发 TOCTOU
     if not RUNNER_LOCK.acquire(blocking=False):
         raise HTTPException(409, "圆桌正忙（另一操作进行中）")
@@ -977,6 +1004,10 @@ def report():
                 files += ["../docs/agents/muse/mindmap.md", "../docs/agents/muse/questions.md(+圆桌)"]
             except Exception:
                 traceback.print_exc()  # 并入失败不该让已生成的报告 500
+            # #49：圆桌报告落 manifest（seed=主题；证据身份经知识库已在 instance_dump，此处记产物）
+            _emit_manifest("roundtable", os.path.dirname(output_dir), seed=SESSION["topic"] or "",
+                           started_at=report_started, model=SESSION["model"] or "",
+                           artifacts=["report.md", "conversation.md", "instance_dump.json", "log.json"])
             return {"output_dir": output_dir, "files": files}
         except Exception as e:
             raise HTTPException(500, f"生成报告失败：{e}")
@@ -987,6 +1018,7 @@ def report():
 
 
 def scan_bg(req: ScanReq):
+    started = _now_iso()
     try:
         load_api_key(toml_file_path=str(_secrets_path()))
         provs = blindspot.real_providers()
@@ -1006,6 +1038,13 @@ def scan_bg(req: ScanReq):
             en_search=blindspot.real_en_search(), zh_search=blindspot.real_cnki_search(),
             own_search=blindspot.real_own_search(), on_card=on_card, on_update=_scan_touch)
         _scan_replace_cards(cards)
+        _emit_manifest(
+            "scan", SCAN["output_dir"], seed=req.topic, started_at=started,
+            provider_capability={k: "ready" for k in provs},
+            has_profile=bool(profile.strip()),
+            evidence_ids=[e.get("id") for c in cards for e in (c.get("evidence") or [])
+                          if isinstance(e, dict) and e.get("id")],
+            artifacts=["perspectives.md", "questions.md", "sources.md", "angle-feedback.md"])
         _scan_update(phase="done")
     except Exception:
         _scan_update(error=traceback.format_exc(), phase="error")
@@ -1136,6 +1175,7 @@ def _resolve_draft(base, name):
 
 
 def adversary_bg(req: AdversaryReq):
+    started = _now_iso()
     try:
         load_api_key(toml_file_path=str(_secrets_path()))
         review_llm = adversary.real_review_llm(req.model) if req.model else adversary.real_review_llm()
@@ -1156,13 +1196,20 @@ def adversary_bg(req: AdversaryReq):
             ADV["source"] = source   # ② 稿面渲染 + 跨度定位靠它（轮询期即可读到）
             ADV["source_version"] = ADV["version"] + 1
             _adv_bump_locked()
-        adversary.run_review(
+        claims = adversary.run_review(
             source_text=source, has_draft=has_draft, output_dir=base, review_llm=review_llm,
             falsify_search=adversary.real_falsify_search(),   # #8 = gpt-researcher sidecar（隔离 venv）
             library_search=adversary.real_library_search(output_dir=base),  # #46 = PaperQA 自有库证据（隔离 venv，缺库自降级）
             on_claim=on_claim, from_=from_,
             author_llm=review_llm, meta_llm=review_llm,
             on_update=_adv_touch)
+        _emit_manifest(
+            "adversary", base, seed=(source or "")[:80], started_at=started, model=req.model or "",
+            evidence_ids=[e.get("id") for c in claims for f in c.get("failures", [])
+                          for e in f.get("evidence", []) if isinstance(e, dict) and e.get("id")],
+            degradation=sorted({d for c in claims
+                                for d in (c.get("sidecar_degradation"), c.get("library_degradation")) if d}),
+            artifacts=["failure-points.md"] + (["annotation-handoff.json"] if has_draft else []))
         _adv_update(phase="done")
     except Exception:
         _adv_update(error=traceback.format_exc(), phase="error")
@@ -1226,6 +1273,7 @@ def adversary_status(since: int | None = None):
 @app.get("/perf/status")
 def perf_status():
     return {
+        "code_version": run_manifest.code_version(),   # #49：smoke 读数携带代码版本，旧读数不冒充新代码
         "retrieval_cache": blindspot.retrieval_cache_stats(),
         "sidecar": adversary.sidecar_stats(),
         "sidecar_runtime": adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir()),
