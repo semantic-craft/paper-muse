@@ -282,6 +282,43 @@ def test_run_review_draft_end_to_end_offline(tmp_path):
     assert "证伪备忘录" in fp
 
 
+def test_run_review_draft_writes_reattachable_annotation_handoff(tmp_path):
+    """#48：草稿模式落 annotation-handoff.json——主张按草稿 span 产可重附着 selector，
+    meta 挂裁决 + evidence id，且 selector 能在草稿里重附着（verified）。"""
+    import json as _json
+    draft, quote, extract, redteam = _draft_with_claim()
+    run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam]),
+        classify_llm=lambda p: _json.dumps({"evidence": [{"n": 1, "stance": "证伪"}]}),
+        falsify_search=_pool(
+            [{"title": "反例文献", "url": "https://doi.org/e1", "content": "反例", "provider": "web"}],
+            en_hits=5, zh_hits=3),
+        on_claim=lambda c: None,
+    )
+    pkg = _json.loads((tmp_path / "docs" / "agents" / "muse" / "annotation-handoff.json")
+                      .read_text(encoding="utf-8"))
+    assert pkg["target"]["kind"] == "draft" and pkg["target"]["checksum"].startswith("sha256:")
+    ann = pkg["annotations"][0]
+    assert ann["annotation_id"] == "claim-1"
+    assert ann["attachment"]["status"] == "verified"
+    assert draft[ann["attachment"]["start"]:ann["attachment"]["end"]] == ann["quote"]["exact"]
+    assert "已证伪" in ann["meta"]["verdicts"]
+
+
+def test_run_review_line_mode_writes_no_annotation_handoff(tmp_path):
+    """#48：无稿模式无草稿锚 → 不产 annotation-handoff.json（证据各自锚在来源，不猜草稿位置）。"""
+    claims = run_review(
+        source_text="平台自治可替代执法", has_draft=False, output_dir=str(tmp_path),
+        review_llm=FakeLLM([json.dumps({"failures": [
+            {"statement": "自治缺强制力", "type": "机制缺环", "severity": "致命"}]})]),
+        classify_llm=lambda p: json.dumps({"evidence": []}),
+        falsify_search=_pool([], en_hits=0, zh_hits=0),
+        on_claim=lambda c: None,
+    )
+    assert claims and not (tmp_path / "docs" / "agents" / "muse" / "annotation-handoff.json").exists()
+
+
 def test_run_review_optional_rebuttal_and_meta_review_are_written(tmp_path):
     draft, quote, extract, redteam = _draft_with_claim()
     claims = run_review(

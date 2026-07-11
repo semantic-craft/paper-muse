@@ -22,6 +22,7 @@ import threading
 from copy import deepcopy
 from pathlib import Path
 
+import annotation  # #48：草稿锚失败点 → 可重附着批注交接包（annotation-handoff.json）
 import blindspot
 import paperqa_bridge  # #46：自有库证据经它的隔离 .venv-paperqa 子进程取（主进程不 import paperqa）
 from blindspot import extract_json  # 复用带围栏/多对象/json_repair 兜底的 JSON 抠取
@@ -586,6 +587,37 @@ def _write_failure_points(output_dir, claims):
     (d / "failure-points.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _write_annotation_handoff(output_dir, claims, source_text, has_draft):
+    """#48：草稿模式落 annotation-handoff.json——每条主张按草稿 span 产可重附着 selector，
+    meta 挂裁决 + 关联 evidence id，供 paper-annotator 等下游小改稿后重定位（无据不猜）。
+    无稿模式无草稿锚（证据各自锚在其来源，不在草稿）→ 跳过。"""
+    if not has_draft or not source_text:
+        return
+    items = []
+    for claim in claims:
+        span = claim.get("span")
+        if not span:
+            continue
+        items.append({
+            "id": f"claim-{claim['id']}",
+            "selector": annotation.selector_from_span(
+                source_text, span["offset"], span["length"]),
+            "meta": {
+                "claim": claim.get("text", ""),
+                "verdicts": [f.get("verdict") for f in claim.get("failures", [])],
+                "evidence_ids": [e.get("id") for f in claim.get("failures", [])
+                                 for e in f.get("evidence", [])],
+            },
+        })
+    if not items:
+        return
+    pkg = annotation.AnnotationSink().package_annotations(
+        items, source_text=source_text, target_kind="draft")
+    d = blindspot._muse_dir(output_dir)
+    (d / "annotation-handoff.json").write_text(
+        json.dumps(pkg, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def run_review(source_text, has_draft, output_dir, review_llm, falsify_search,
                on_claim, persona=ADVERSARIAL_REVIEW_PERSONA, from_="input",
                redteam_llm=None, classify_llm=None, author_llm=None, meta_llm=None,
@@ -649,6 +681,7 @@ def run_review(source_text, has_draft, output_dir, review_llm, falsify_search,
         for t in ts:
             t.join()
     _write_failure_points(output_dir, claims)
+    _write_annotation_handoff(output_dir, claims, source_text, has_draft)
     return claims
 
 
