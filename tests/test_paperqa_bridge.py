@@ -107,7 +107,7 @@ def test_answer_to_payload_extracts_context_references(tmp_path):
         formatted_answer = "格式化答案"
         answer = "纯答案"
         question = "问题"
-        context = [Context()]
+        contexts = [Context()]
 
     payload = paperqa_bridge.answer_to_payload(
         Answer(), question="fallback", pdf_dir=tmp_path
