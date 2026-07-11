@@ -47,6 +47,24 @@ def test_scrub_redacts_secret_named_keys_nested():
     assert clean["list"][0]["safe"] == 1
 
 
+def test_scrub_keeps_token_count_and_author_fields():
+    """回归：token/auth 曾裸子串匹配，误删含子串的合法预算/用量/作者键。
+    凭证形态（api_key/access_token/authorization/裸 auth）仍 redact，用量计数与 author 放行。"""
+    clean = M.scrub({
+        "api_key": "x", "access_token": "y", "authorization": "z", "auth": "w",
+        "budget": {"max_tokens": 8000, "used_tokens": 3200},
+        "perf": {"prompt_tokens": 200, "completion_tokens": 300, "total_tokens": 500,
+                 "token_count": 500},
+        "author": "张三", "authority": "最高法",
+    })
+    assert clean["api_key"] == M.REDACTED and clean["access_token"] == M.REDACTED
+    assert clean["authorization"] == M.REDACTED and clean["auth"] == M.REDACTED
+    assert clean["budget"] == {"max_tokens": 8000, "used_tokens": 3200}
+    assert clean["perf"] == {"prompt_tokens": 200, "completion_tokens": 300,
+                             "total_tokens": 500, "token_count": 500}
+    assert clean["author"] == "张三" and clean["authority"] == "最高法"
+
+
 def test_build_carries_no_profile_content_only_bool():
     m = _manifest(has_profile=True)
     assert m["has_profile"] is True

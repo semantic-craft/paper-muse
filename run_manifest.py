@@ -28,8 +28,13 @@ _LOCK = threading.Lock()
 _HERE = Path(__file__).resolve().parent
 
 # 键名像密钥/凭证/私密内容 → redact 其值（兜底：白名单构造本就不该带这些键）。
+# token/auth 用词边界收紧：本模块记录预算/耗时，LLM 用量键（total_tokens/max_tokens/
+# prompt_tokens…）与 author/authority 都含 token/auth 子串，裸子串匹配会误删合法数据。
+# 只 redact 凭证形态：\bauth\b、authorization、以及以 token 结尾的键（access_token /
+# auth_token / 裸 token），放行复数 *tokens 与 token_count 这类用量/计数键。
 _SECRET_KEY_RE = re.compile(
-    r"(?i)(api[_-]?key|secret|token|password|passwd|auth|bearer|cookie|credential|private_profile)")
+    r"(?i)(api[_-]?key|secret|password|passwd|bearer|cookie|credential|private_profile"
+    r"|\bauth\b|authorization|(?<![a-z])token(?![a-z_]))")
 # 值里像密钥的串 → redact（provider 能力等自由子字典误带 key 时兜底）。
 _SECRET_VAL_RE = re.compile(
     r"(sk-[A-Za-z0-9]{8,}|xox[baprs]-[A-Za-z0-9-]{8,}|ghp_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,})")
