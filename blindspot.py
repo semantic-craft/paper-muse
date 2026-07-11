@@ -149,7 +149,6 @@ def _merge_card_into(base: dict, incoming: dict, similarity=None) -> dict:
         if incoming["name"] not in aliases:
             aliases.append(incoming["name"])
     base["questions"] = _merge_unique(base.get("questions") or [], incoming.get("questions") or [])
-    base["anchors"] = _merge_unique(base.get("anchors") or [], incoming.get("anchors") or [])
     base["evidence"] = _merge_unique(
         base.get("evidence") or [], incoming.get("evidence") or []
     )
@@ -576,34 +575,18 @@ def _topic_zh_keyword(topic: str, llm_call):
 
 
 def _retrieval_payload(result, provider=None):
-    if isinstance(result, dict):
-        results = result.get("results") or result.get("anchors") or []
-        hits = int(result.get("hits", len(results)))
-        return {
-            "hits": hits,
-            "results": results,
-            "evidence": result.get("evidence") or [],
-            "source": result.get("source"),
-            "degraded": result.get("degraded"),
-            "status": result.get("status") or {
-                "provider": provider,
-                "state": (
-                    "unknown" if provider == "cnki" else ("empty" if hits == 0 else "ok")
-                ),
-                "hits": hits,
-                "message": None,
-            },
-            "identity_status": result.get("identity_status"),
-        }
-    results = result or []
-    hits = len(results)
+    # 只认 EvidenceGateway.search() 的公开 dict 契约；非 dict（None/空列表/检索异常回退）
+    # 一律归一为空面，不再吞非空裸列表或私有 anchors 键（#52 contract 收口）。
+    result = result if isinstance(result, dict) else {}
+    results = result.get("results") or []
+    hits = int(result.get("hits", len(results)))
     return {
         "hits": hits,
         "results": results,
-        "evidence": [],
-        "source": None,
-        "degraded": None,
-        "status": {
+        "evidence": result.get("evidence") or [],
+        "source": result.get("source"),
+        "degraded": result.get("degraded"),
+        "status": result.get("status") or {
             "provider": provider,
             "state": (
                 "unknown" if provider == "cnki" else ("empty" if hits == 0 else "ok")
@@ -611,7 +594,7 @@ def _retrieval_payload(result, provider=None):
             "hits": hits,
             "message": None,
         },
-        "identity_status": None,
+        "identity_status": result.get("identity_status"),
     }
 
 
@@ -630,7 +613,6 @@ def _novelty_for(card, topic, en_search, zh_search, own_search=None,
     card["en_source"] = en_payload["source"]
     card["en_degraded"] = en_payload["degraded"]
     card["evidence"] = en_payload["evidence"]
-    card["anchors"] = [{"title": r.get("title", ""), "url": r.get("url", "")} for r in en_payload["results"][:3]]
     if own_search is None:
         card["own_hits"] = None
         card["own_status"] = None
@@ -744,9 +726,6 @@ def _write_outputs(output_dir, topic, profile, cards):
                         ref, ensure_ascii=False, sort_keys=True, separators=(",", ":")
                     ),
                 ]
-        else:
-            for a in c.get("anchors", []):
-                slines.append(f"- [{c['name']}] {a['title']} — {a['url']}")
     (d / "perspectives.md").write_text("\n".join(lines), encoding="utf-8")
     (d / "questions.md").write_text("\n".join(qlines), encoding="utf-8")
     (d / "sources.md").write_text("\n".join(slines), encoding="utf-8")
@@ -798,7 +777,7 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
                     c.update(id=len(order) + 1, outlier=None, novelty=None, gold=None,
                              en_hits=None, en_source=None, en_degraded=None,
                              zh_hits=None, zh_status=None, own_hits=None, own_status=None,
-                             own_identity_status=None, novelty_reason=None, anchors=[],
+                             own_identity_status=None, novelty_reason=None,
                              evidence=[],
                              quality_score=None, elo_score=None, outlier_reason=None,
                              proximity_basis=None,

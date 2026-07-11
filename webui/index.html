@@ -1357,9 +1357,15 @@ const DEMO_CARDS = [
     ],
     novelty: "交叉空白", gold: true, outlier: false, own_hits: 2,
     en_hits: 47, zh_hits: 1,
-    anchors: [
-      { title: "Entropy, Information, and the Economics of Scarcity", url: "https://doi.org/10.1103/entropy.2019.0471" },
-      { title: "负熵、信息与市场秩序：一个跨学科综述", url: "https://kns.cnki.net/kcms/sample-4471" },
+    evidence: [
+      { id: "evr_demo_1a", relation: "context",
+        source: { kind: "web", title: "Entropy, Information, and the Economics of Scarcity", url: "https://doi.org/10.1103/entropy.2019.0471" },
+        retrieval: { provider: "openalex", query: "负熵积累 平台数据" },
+        verification: { status: "provider-retrieved", degraded: false } },
+      { id: "evr_demo_1b", relation: "context",
+        source: { kind: "web", title: "负熵、信息与市场秩序：一个跨学科综述", url: "https://kns.cnki.net/kcms/sample-4471" },
+        retrieval: { provider: "cnki", query: "负熵 信息秩序" },
+        verification: { status: "provider-retrieved", degraded: false } },
     ],
     source_models: ["deepseek", "gemini", "openai"],
   },
@@ -1376,9 +1382,15 @@ const DEMO_CARDS = [
     questions: ["同构若是事实，规范上我们该纠正它还是利用它？"],
     novelty: "边缘有人做", gold: false, outlier: false, own_hits: 3,
     en_hits: 210, zh_hits: 34,
-    anchors: [
-      { title: "The Iron Cage Revisited: Institutional Isomorphism", url: "https://doi.org/10.2307/2095101" },
-      { title: "平台治理规则的制度趋同现象研究", url: "https://kns.cnki.net/kcms/sample-2101" },
+    evidence: [
+      { id: "evr_demo_2a", relation: "context",
+        source: { kind: "web", title: "The Iron Cage Revisited: Institutional Isomorphism", url: "https://doi.org/10.2307/2095101" },
+        retrieval: { provider: "openalex", query: "制度同构 平台治理" },
+        verification: { status: "provider-retrieved", degraded: false } },
+      { id: "evr_demo_2b", relation: "context",
+        source: { kind: "web", title: "平台治理规则的制度趋同现象研究", url: "https://kns.cnki.net/kcms/sample-2101" },
+        retrieval: { provider: "cnki", query: "制度趋同 平台规则" },
+        verification: { status: "provider-retrieved", degraded: false } },
     ],
     source_models: ["openai", "gemini"],
   },
@@ -1398,9 +1410,15 @@ const DEMO_CARDS = [
     ],
     novelty: "主流", gold: false, outlier: false, own_hits: 0,
     en_hits: 156, zh_hits: 289,
-    anchors: [
-      { title: "Judicial Behavior in the Age of Big Data", url: "https://doi.org/10.1093/jla/laz009" },
-      { title: "基于裁判文书大数据的司法裁量实证研究", url: "https://kns.cnki.net/kcms/sample-2890" },
+    evidence: [
+      { id: "evr_demo_3a", relation: "context",
+        source: { kind: "web", title: "Judicial Behavior in the Age of Big Data", url: "https://doi.org/10.1093/jla/laz009" },
+        retrieval: { provider: "openalex", query: "裁判文书 量化分析" },
+        verification: { status: "provider-retrieved", degraded: false } },
+      { id: "evr_demo_3b", relation: "context",
+        source: { kind: "web", title: "基于裁判文书大数据的司法裁量实证研究", url: "https://kns.cnki.net/kcms/sample-2890" },
+        retrieval: { provider: "cnki", query: "司法裁量 大数据" },
+        verification: { status: "provider-retrieved", degraded: false } },
     ],
     source_models: ["deepseek", "openai", "gemini"],
   },
@@ -1417,8 +1435,11 @@ const DEMO_CARDS = [
     questions: ["规训视角除了批判，能否产出一条可裁判的规则？"],
     novelty: "交叉空白", gold: false, outlier: true, own_hits: 1,
     en_hits: 88, zh_hits: 12,
-    anchors: [
-      { title: "Discipline and Punish: The Birth of the Platform", url: "https://doi.org/10.1177/platform.2021.088" },
+    evidence: [
+      { id: "evr_demo_4a", relation: "context",
+        source: { kind: "web", title: "Discipline and Punish: The Birth of the Platform", url: "https://doi.org/10.1177/platform.2021.088" },
+        retrieval: { provider: "openalex", query: "规训权力 平台生命政治" },
+        verification: { status: "provider-retrieved", degraded: false } },
     ],
     source_models: ["gemini"],
   },
@@ -1438,9 +1459,15 @@ const DEMO_CARDS = [
     ],
     novelty: "边缘有人做", gold: false, outlier: false, own_hits: 0,
     en_hits: 320, zh_hits: 58,
-    anchors: [
-      { title: "The Problem of Social Cost, Revisited for Data", url: "https://doi.org/10.1086/coase.data" },
-      { title: "交易成本理论下的数据要素配置", url: "https://kns.cnki.net/kcms/sample-5801" },
+    evidence: [
+      { id: "evr_demo_5a", relation: "context",
+        source: { kind: "web", title: "The Problem of Social Cost, Revisited for Data", url: "https://doi.org/10.1086/coase.data" },
+        retrieval: { provider: "openalex", query: "交易成本 数据确权" },
+        verification: { status: "provider-retrieved", degraded: false } },
+      { id: "evr_demo_5b", relation: "context",
+        source: { kind: "web", title: "交易成本理论下的数据要素配置", url: "https://kns.cnki.net/kcms/sample-5801" },
+        retrieval: { provider: "cnki", query: "数据要素 配置" },
+        verification: { status: "provider-retrieved", degraded: false } },
     ],
     source_models: ["deepseek", "openai"],
   },
@@ -1457,8 +1484,11 @@ const DEMO_CARDS = [
     questions: ["拓扑中心性如何转译成法律上的「控制者」认定？"],
     novelty: "中文面未检", gold: false, outlier: false, own_hits: 0,
     en_hits: 64, zh_hits: null,
-    anchors: [
-      { title: "Structural Holes and Information Control in Platform Ecosystems", url: "https://doi.org/10.1016/socnet.2020.064" },
+    evidence: [
+      { id: "evr_demo_6a", relation: "context",
+        source: { kind: "web", title: "Structural Holes and Information Control in Platform Ecosystems", url: "https://doi.org/10.1016/socnet.2020.064" },
+        retrieval: { provider: "openalex", query: "结构洞 平台生态" },
+        verification: { status: "provider-retrieved", degraded: false } },
     ],
     source_models: ["openai", "gemini"],
   },
@@ -1478,9 +1508,15 @@ const DEMO_CARDS = [
     ],
     novelty: "交叉空白", gold: true, outlier: false, own_hits: 0,
     en_hits: 73, zh_hits: 3,
-    anchors: [
-      { title: "Governing Complex Adaptive Systems: Resilience over Prevention", url: "https://doi.org/10.1111/cas.2022.073" },
-      { title: "复杂系统治理与监管韧性的法学转向", url: "https://kns.cnki.net/kcms/sample-7303" },
+    evidence: [
+      { id: "evr_demo_7a", relation: "context",
+        source: { kind: "web", title: "Governing Complex Adaptive Systems: Resilience over Prevention", url: "https://doi.org/10.1111/cas.2022.073" },
+        retrieval: { provider: "openalex", query: "复杂适应系统 监管" },
+        verification: { status: "provider-retrieved", degraded: false } },
+      { id: "evr_demo_7b", relation: "context",
+        source: { kind: "web", title: "复杂系统治理与监管韧性的法学转向", url: "https://kns.cnki.net/kcms/sample-7303" },
+        retrieval: { provider: "cnki", query: "监管韧性 法学" },
+        verification: { status: "provider-retrieved", degraded: false } },
     ],
     source_models: ["deepseek", "gemini"],
   },
@@ -1515,13 +1551,6 @@ const NOVELTY_META = {
   "主流":         { cls: "nv-main" },
   "中文面未检":   { cls: "nv-none" },
 };
-function hostOf(url){ try { return new URL(url).hostname.replace(/^www\./,''); } catch(e){ return ""; } }
-function shortHost(url){
-  const h = hostOf(url);
-  if (h.includes("cnki")) return "cnki";
-  if (h.includes("doi")) return "doi";
-  return h;
-}
 
 /* ══ 研究者画像（A+B 合并：左栏就地可编辑 + 首次开笔卡，共享 PROFILE_DATA）══ */
 // 三要素的元数据：key / 左栏标签 / 占位 / 开笔卡上的楷体 hint
@@ -1746,7 +1775,7 @@ function entryHTML(c, i){
     ? `<div class="feasibility"><span class="h">Zotero 身份</span>${esc(retrievalStatusLabel(identityState, "身份补全"))}</div>`
     : "";
   const evidence = Array.isArray(c.evidence) ? c.evidence : [];
-  const anchorRows = evidence.length ? evidence.map(evidenceRef => {
+  const anchorRows = evidence.map(evidenceRef => {
     const source = evidenceRef.source || {};
     const locator = evidenceRef.locator || {};
     const retrieval = evidenceRef.retrieval || {};
@@ -1754,9 +1783,7 @@ function entryHTML(c, i){
     const detail = [retrieval.provider, verification.status, evidenceRef.id].filter(Boolean).join(" · ");
     const href = locator.kind === "zotero-select" ? locator.value : source.url;
     return `<li><a href="${esc(href)}" target="_blank" rel="noopener">${esc(source.title)}</a><span class="u">${esc(detail)}</span></li>`;
-  }) : (c.anchors || []).map(a =>
-    `<li><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a><span class="u">${esc(shortHost(a.url))}</span></li>`
-  );
+  });
   const anchors = anchorRows.join("");
   const questions = c.questions.map(q => `<li>${esc(q)}</li>`).join("");
   const libraryState = SELF_LIBRARY_STATE.get(String(c.id)) || {state: "idle", html: "", busy: false};
@@ -1798,7 +1825,7 @@ function entryHTML(c, i){
         ${modelsHTML(c)}
       </div>
       <details class="fold">
-        <summary>拷问 ${c.questions.length} · 证据 ${evidence.length} · 锚点 ${(c.anchors || []).length}</summary>
+        <summary>拷问 ${c.questions.length} · 证据 ${evidence.length}</summary>
         <div class="body">
           <ol class="q-list">${questions}</ol>
           <ul class="anchors">${anchors}</ul>
