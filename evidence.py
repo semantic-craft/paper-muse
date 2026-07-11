@@ -301,6 +301,24 @@ def _evidence_ref(
     }
 
 
+def evidence_ref_from_record(
+    record: ProviderRecord,
+    provider: str,
+    query: str,
+    *,
+    provider_version: str = "",
+    index_version: str = "",
+) -> EvidenceRef:
+    """Public adapter seam for turning provider-neutral records into EvidenceRef."""
+    return _evidence_ref(
+        record,
+        provider,
+        query,
+        provider_version=provider_version,
+        index_version=index_version,
+    )
+
+
 class EvidenceGateway:
     """Search providers behind one stable, serializable EvidenceRef contract."""
 
