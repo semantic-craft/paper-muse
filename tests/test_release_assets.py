@@ -100,6 +100,21 @@ def test_scan_ui_uses_zotero_locator_and_shows_identity_status():
     assert "Zotero 身份" in html
 
 
+def test_card_ui_exposes_recoverable_self_library_evidence_flow():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert "查询自有 PDF 库" in html
+    assert 'fetch("/evidence/ask"' in html
+    assert 'setSelfLibraryState(card, epoch, "loading"' in html
+    assert 'setSelfLibraryState(card, epoch, "success"' in html
+    assert 'setSelfLibraryState(card, epoch, "degraded"' in html
+    assert 'setSelfLibraryState(card, epoch, "error"' in html
+    assert "const SELF_LIBRARY_STATE = new Map()" in html
+    assert "applySelfLibraryState(card)" in html
+    assert "SELF_LIBRARY_STATE.clear()" in html
+    assert "EvidenceRef" in html
+
+
 def test_release_launch_does_not_write_bytecode_into_signed_bundle():
     source = (release_assets.ROOT / "app" / "Sources" / "MuseServer.swift").read_text(
         encoding="utf-8"

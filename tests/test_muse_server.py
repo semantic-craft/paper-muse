@@ -354,7 +354,13 @@ def test_evidence_ask_uses_current_scan_output_dir(monkeypatch, tmp_path):
 
     body = client.post(
         "/evidence/ask",
-        json={"question": "自有库里有没有反例？", "pdf_dir": str(tmp_path / "pdfs"), "timeout": 45},
+        json={
+            "question": "自有库里有没有反例？",
+            "card_id": 7,
+            "card_name": "形式可逆与实质不可逆",
+            "pdf_dir": str(tmp_path / "pdfs"),
+            "timeout": 45,
+        },
     ).json()
 
     assert body["ok"] is True
@@ -362,6 +368,35 @@ def test_evidence_ask_uses_current_scan_output_dir(monkeypatch, tmp_path):
     assert captured["pdf_dir"] == str(tmp_path / "pdfs")
     assert captured["output_dir"] == str(tmp_path / "paper")
     assert captured["timeout"] == 45
+    assert captured["target"] == {
+        "kind": "card",
+        "id": "7",
+        "name": "形式可逆与实质不可逆",
+    }
+
+
+def test_evidence_ref_can_be_read_by_id_without_parsing_markdown(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    expected = {"id": "evr_example", "source": {"title": "Local Paper"}}
+    monkeypatch.setattr(
+        muse_server.paperqa_bridge,
+        "read_evidence",
+        lambda output_dir, evidence_id: expected
+        if output_dir == str(tmp_path) and evidence_id == "evr_example"
+        else None,
+    )
+    client = TestClient(muse_server.app)
+
+    body = client.get(
+        "/evidence/evr_example", params={"output_dir": str(tmp_path)}
+    ).json()
+
+    assert body == expected
+    missing = client.get(
+        "/evidence/evr_missing", params={"output_dir": str(tmp_path)}
+    )
+    assert missing.status_code == 404
 
 
 def test_session_returns_setup_required_when_keys_missing(monkeypatch, tmp_path):

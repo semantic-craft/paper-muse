@@ -1,10 +1,147 @@
 from evidence import (
+    CorpusAnswer,
     EvidenceProviderError,
     EvidenceGateway,
+    FunctionCorpusProvider,
     FunctionEvidenceProvider,
     ProviderRecord,
     ProviderSearchResult,
 )
+
+
+def test_gateway_returns_corpus_answer_with_actual_evidence_bundle():
+    gateway = EvidenceGateway(
+        (),
+        corpus_providers=(
+            FunctionCorpusProvider(
+                "paperqa",
+                lambda question: CorpusAnswer(
+                    answer="撤回同意后，模型影响不会立即消失。",
+                    formatted_answer="撤回同意后，模型影响不会立即消失 [1]。",
+                    records=(
+                        ProviderRecord(
+                            source_id="zotero:users:0:attachment:ATT1:page:12",
+                            title="Data Lifecycle Study",
+                            url="zotero://select/library/items/ITEM1",
+                            version="42",
+                            source_kind="library-document",
+                            relation="supports",
+                            identity="zotero:users:0:attachment:ATT1",
+                            locator_kind="pdf-page",
+                            locator_value="12",
+                            exact="withdrawal does not remove learned influence",
+                            prefix="the experiment found that ",
+                            suffix=" across all model variants",
+                            page=12,
+                        ),
+                    ),
+                    provider_version="2026.3.18",
+                    index_version="idx-7",
+                ),
+            ),
+        ),
+    )
+
+    bundle = gateway.ask_corpus("撤回同意是否真正可逆？")
+
+    assert bundle["answer"] == "撤回同意后，模型影响不会立即消失。"
+    assert bundle["formatted_answer"].endswith("[1]。")
+    assert bundle["status"] == {
+        "provider": "paperqa",
+        "state": "ok",
+        "query": "撤回同意是否真正可逆？",
+        "hits": 1,
+        "message": None,
+    }
+    assert bundle["provider_version"] == "2026.3.18"
+    assert bundle["index_version"] == "idx-7"
+    ref = bundle["evidence"][0]
+    assert ref["relation"] == "supports"
+    assert ref["source"]["identity"] == "zotero:users:0:attachment:ATT1"
+    assert ref["source"]["version"] == "42"
+    assert ref["locator"] == {
+        "kind": "pdf-page",
+        "value": "12",
+        "exact": "withdrawal does not remove learned influence",
+        "prefix": "the experiment found that ",
+        "suffix": " across all model variants",
+        "page": 12,
+        "source_identity": "zotero:users:0:attachment:ATT1",
+        "source_version": "42",
+    }
+    assert ref["retrieval"] == {
+        "provider": "paperqa",
+        "query": "撤回同意是否真正可逆？",
+        "source_id": "zotero:users:0:attachment:ATT1:page:12",
+        "provider_version": "2026.3.18",
+        "index_version": "idx-7",
+    }
+
+
+def test_corpus_passages_in_same_attachment_have_distinct_evidence_ids():
+    def ask(_question):
+        return CorpusAnswer(
+            answer="two passages",
+            records=tuple(
+                ProviderRecord(
+                    source_id=f"ATT1:{page}",
+                    title="Local Paper",
+                    url="zotero://select/library/items/ITEM1",
+                    version="42",
+                    source_kind="library-document",
+                    identity="zotero:users:0:attachment:ATT1",
+                    locator_kind="pdf-page",
+                    locator_value=str(page),
+                    exact=exact,
+                    page=page,
+                )
+                for page, exact in ((12, "first passage"), (13, "second passage"))
+            ),
+        )
+
+    bundle = EvidenceGateway(
+        (), corpus_providers=(FunctionCorpusProvider("paperqa", ask),)
+    ).ask_corpus("question")
+
+    assert len({ref["id"] for ref in bundle["evidence"]}) == 2
+    assert {ref["source"]["identity"] for ref in bundle["evidence"]} == {
+        "zotero:users:0:attachment:ATT1"
+    }
+
+
+def test_corpus_bundle_id_changes_when_provider_index_changes():
+    def gateway(index_version):
+        return EvidenceGateway(
+            (),
+            corpus_providers=(
+                FunctionCorpusProvider(
+                    "paperqa",
+                    lambda _question: CorpusAnswer(
+                        answer="answer",
+                        records=(
+                            ProviderRecord(
+                                source_id="ATT1:12",
+                                title="Local Paper",
+                                url="zotero://select/library/items/ITEM1",
+                                identity="zotero:users:0:attachment:ATT1",
+                                locator_kind="pdf-page",
+                                locator_value="12",
+                                exact="passage",
+                                page=12,
+                            ),
+                        ),
+                        provider_version="2026.3.18",
+                        index_version=index_version,
+                    ),
+                ),
+            ),
+        )
+
+    first = gateway("idx-1").ask_corpus("question")
+    second = gateway("idx-2").ask_corpus("question")
+
+    assert first["evidence"][0]["id"] == second["evidence"][0]["id"]
+    assert first["id"] != second["id"]
 
 
 def test_gateway_normalizes_provider_results_into_stable_evidence_refs():
