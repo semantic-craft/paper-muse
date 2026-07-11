@@ -1639,6 +1639,17 @@ const DEMO = new URLSearchParams(location.search).has("demo");
 /* ══ 小工具 ══ */
 const $ = (sel, el = document) => el.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// 只放行安全 scheme 的 href：证据/来源 URL 来自外部 provider（OpenAlex/CNKI/PaperQA…），
+// 可能是 javascript:/data: 等——esc 只转义 &<>"、不校验 scheme，原样落地后点击即在
+// WKWebView 源内执行（并能调 museBridge open/reveal 任意本地路径）。非白名单 scheme 降级为
+// '#'。zotero:// 深链是合法定位符（locator.kind=zotero-select）；相对 URL 依页面 origin 解析。
+const safeUrl = (u) => {
+  if (!u) return "#";
+  try {
+    const p = new URL(String(u), location.href).protocol.toLowerCase();
+    return /^(https?|mailto|zotero):$/.test(p) ? String(u) : "#";
+  } catch (e) { return "#"; }
+};
 const TYPE_META = {
   "学科视角": { key: "view",   cls: "var(--pt-view)"   },
   "理论框架": { key: "theory", cls: "var(--pt-theory)" },
@@ -1650,6 +1661,11 @@ const NOVELTY_META = {
   "主流":         { cls: "nv-main" },
   "中文面未检":   { cls: "nv-none" },
 };
+// 流式扫描会送来字段不全/枚举外的半成品卡；元数据查表一律兜底，绝不让单张畸形卡
+// 抛 TypeError 掀翻整墙渲染（render 抛 → pollOnce catch 吞 → clearInterval 被跳过 →
+// 空墙 + 轮询定时器永不清除、泄漏整个会话）。
+const typeMeta = t => TYPE_META[t] || { key: "", cls: "var(--ink-2)" };
+const noveltyMeta = n => NOVELTY_META[n] || { cls: "nv-main" };
 
 /* ══ 研究者画像（A+B 合并：左栏就地可编辑 + 首次开笔卡，共享 PROFILE_DATA）══ */
 // 三要素的元数据：key / 左栏标签 / 占位 / 开笔卡上的楷体 hint
@@ -1780,8 +1796,8 @@ function pingProfileField(key){
 function renderNav(){
   const ul = $("#navList");
   ul.innerHTML = CARDS.map(c => {
-    const tm = TYPE_META[c.type];
-    const nm = NOVELTY_META[c.novelty];
+    const tm = typeMeta(c.type);
+    const nm = noveltyMeta(c.novelty);
     const nvShort = c.novelty === "边缘有人做" ? "边缘"
                   : c.novelty === "中文面未检" ? "未检"
                   : c.novelty;
@@ -1825,9 +1841,10 @@ function densityHTML(c){
 
 /* ══ 来源模型 ══ */
 function modelsHTML(c){
-  const solo = c.source_models.length === 1 ? " solo" : "";
-  const list = c.source_models.map(m => `<span class="m">${esc(m)}</span>`).join(" / ");
-  const label = c.source_models.length === 1 ? "孤源" : "合议";
+  const models = Array.isArray(c.source_models) ? c.source_models : [];
+  const solo = models.length === 1 ? " solo" : "";
+  const list = models.map(m => `<span class="m">${esc(m)}</span>`).join(" / ");
+  const label = models.length === 1 ? "孤源" : "合议";
   return `<span class="models${solo}"><span class="lab" style="font-size:9px;letter-spacing:.1em;text-transform:uppercase">${label}</span> ${list}</span>`;
 }
 
@@ -1862,7 +1879,7 @@ function becuzTagsHTML(c){
 
 /* ══ 一条手稿 entry ══ */
 function entryHTML(c, i){
-  const tm = TYPE_META[c.type];
+  const tm = typeMeta(c.type);
   const feas = c.feasibility
     ? `<div class="feasibility"><span class="h">可行性 · 数据从哪来</span>${esc(c.feasibility)}</div>`
     : "";
@@ -1881,16 +1898,17 @@ function entryHTML(c, i){
     const verification = evidenceRef.verification || {};
     const detail = [retrieval.provider, verification.status, evidenceRef.id].filter(Boolean).join(" · ");
     const href = locator.kind === "zotero-select" ? locator.value : source.url;
-    return `<li><a href="${esc(href)}" target="_blank" rel="noopener">${esc(source.title)}</a><span class="u">${esc(detail)}</span></li>`;
+    return `<li><a href="${esc(safeUrl(href))}" target="_blank" rel="noopener">${esc(source.title)}</a><span class="u">${esc(detail)}</span></li>`;
   });
   const anchors = anchorRows.join("");
-  const questions = c.questions.map(q => `<li>${esc(q)}</li>`).join("");
+  const questionList = Array.isArray(c.questions) ? c.questions : [];
+  const questions = questionList.map(q => `<li>${esc(q)}</li>`).join("");
   const libraryState = SELF_LIBRARY_STATE.get(String(c.id)) || {state: "idle", html: "", busy: false};
 
   // 窄窗内联旁注（宽屏 CSS 隐藏）
   const inlineAnno = `<div class="anno-inline">
       <span class="sig">朱批</span>
-      <span class="${NOVELTY_META[c.novelty].cls}">${esc(c.novelty)}</span> ·
+      <span class="${noveltyMeta(c.novelty).cls}">${esc(c.novelty)}</span> ·
       ${densityInline(c)}
       <div style="margin-top:4px">${sealsHTML(c) || '<span style="color:var(--ink-2)">无特记</span>'}</div>
     </div>`;
@@ -1924,7 +1942,7 @@ function entryHTML(c, i){
         ${modelsHTML(c)}
       </div>
       <details class="fold">
-        <summary>拷问 ${c.questions.length} · 证据 ${evidence.length}</summary>
+        <summary>拷问 ${questionList.length} · 证据 ${evidence.length}</summary>
         <div class="body">
           <ol class="q-list">${questions}</ol>
           <ul class="anchors">${anchors}</ul>
@@ -1956,7 +1974,7 @@ function densityInline(c){
 function renderMargins(){
   const box = $("#margins");
   box.innerHTML = CARDS.map(c => {
-    const nm = NOVELTY_META[c.novelty];
+    const nm = noveltyMeta(c.novelty);
     let zhLine;
     if (c.zh_hits === null) {
       zhLine = `<div class="sub">中文面未检 · 需 CNKI 会话</div>`;
@@ -2075,7 +2093,7 @@ async function askSelfLibrary(card, entry){
         const source = ref.source || {}, locator = ref.locator || {};
         const target = source.url || locator.value || "";
         const page = locator.page == null ? "" : ` · p. ${esc(locator.page)}`;
-        return `<li>${target ? `<a href="${esc(target)}" target="_blank" rel="noopener">${esc(source.title || ref.id)}</a>` : esc(source.title || ref.id)}${page} · EvidenceRef ${esc(ref.id)}</li>`;
+        return `<li>${target ? `<a href="${esc(safeUrl(target))}" target="_blank" rel="noopener">${esc(source.title || ref.id)}</a>` : esc(source.title || ref.id)}${page} · EvidenceRef ${esc(ref.id)}</li>`;
       }).join("");
       setSelfLibraryState(card, epoch, "success", `<div class="lib-state">success · 已写入 sources.md / evidence.json</div><div class="lib-answer">${esc(data.formatted_answer || data.answer)}</div>${rows ? `<ol class="lib-evidence">${rows}</ol>` : ""}`, false);
     }
@@ -2216,17 +2234,23 @@ function startPolling(){
   pollOnce();
 }
 async function pollOnce(){
+  let s;
   try {
     const url = SCAN_VERSION == null ? "/scan/status" : `/scan/status?since=${SCAN_VERSION}`;
-    const s = await (await fetch(url)).json();
-    if (s.unchanged) return;
-    if (typeof s.version === "number") SCAN_VERSION = s.version;
+    s = await (await fetch(url)).json();
+  } catch (e) { return; }   // 瞬时网络错误，下次轮询再试
+  if (s.unchanged) return;
+  if (typeof s.version === "number") SCAN_VERSION = s.version;
+  // 终态先落定：即便 render 意外抛错也必须停轮询，杜绝定时器泄漏
+  // （render 已对畸形卡兜底，此为双保险——渲染异常不该拖住轮询生命周期）。
+  const terminal = s.phase === "done" || s.phase === "error";
+  try {
     ingest(s.cards);
     if ("has_profile" in s) HAS_PROFILE = s.has_profile;   // 无画像 → render 出「发现力打折」（#4）
     render();
     setStatus(s.phase, s.error);
-    if (s.phase === "done" || s.phase === "error") { clearInterval(pollTimer); pollTimer = null; }
-  } catch (e) { /* 瞬时网络错误，下次轮询再试 */ }
+  } catch (e) { /* 渲染异常不拖住轮询生命周期 */ }
+  if (terminal) { clearInterval(pollTimer); pollTimer = null; }
 }
 
 /* ══ 轻提示 ══ */
@@ -2506,7 +2530,7 @@ function gvEvHTML(e, cls){
   const flags = (e.unresolved ? `<span class="gv-flag blocked">⛔ 未解析</span>` : "") +
     (e.degraded ? `<span class="gv-flag degraded">⚠ 降级${e.degraded_reasons && e.degraded_reasons.length ? "：" + esc(e.degraded_reasons[0]) : ""}</span>` : "");
   const title = esc(e.title || e.ref_id || "");
-  const a = e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${title}</a>` : `<span>${title}</span>`;
+  const a = e.url ? `<a href="${esc(safeUrl(e.url))}" target="_blank" rel="noopener">${title}</a>` : `<span>${title}</span>`;
   return `<div class="gv-ev ${cls}">${a}${flags}<div class="gv-ev-meta">${meta}</div></div>`;
 }
 
@@ -2781,7 +2805,7 @@ document.addEventListener("toggle", positionMargins, true);
     const items = ev.map(e => {
       const source = e.source || {}, retrieval = e.retrieval || {};
       const stance = e.relation === "refutes" ? "证伪" : e.relation === "supports" ? "佐证" : "上下文";
-      return `<li class="ev-item"><a href="${esc(source.url)}" target="_blank" rel="noopener">${esc(source.title || source.url)}</a><span class="ev-stance s-${esc(stance)}">${esc(stance)}</span><span class="ev-host">${esc(retrieval.provider || shortHost(source.url))} · EvidenceRef ${esc(e.id)}</span></li>`;
+      return `<li class="ev-item"><a href="${esc(safeUrl(source.url))}" target="_blank" rel="noopener">${esc(source.title || source.url)}</a><span class="ev-stance s-${esc(stance)}">${esc(stance)}</span><span class="ev-host">${esc(retrieval.provider || shortHost(source.url))} · EvidenceRef ${esc(e.id)}</span></li>`;
     }).join("");
     return `<details class="ev-fold"><summary>证据链 ${ev.length} · 呈</summary><ul class="ev-list">${items}</ul></details>`;
   }
