@@ -619,6 +619,33 @@ def test_warm_start_seeds_card_evidence_into_knowledge_base(monkeypatch):
     assert ref["id"] in ids
 
 
+def test_adversary_bg_writes_run_manifest_with_code_version(monkeypatch, tmp_path):
+    """#49：对抗幕跑完落 run-manifest.jsonl，含 kind/code_version/evidence 关联，且无秘密。"""
+    import run_manifest
+
+    monkeypatch.setattr(muse_server, "load_api_key", lambda **k: None)
+    monkeypatch.setattr(adversary, "real_review_llm", lambda *a, **k: (
+        lambda p: json.dumps({"failures": [{"statement": "自治缺强制力", "type": "机制缺环",
+                                            "severity": "致命"}]})))
+    monkeypatch.setattr(adversary, "real_falsify_search",
+                        lambda: (lambda claim, failures: {"sources": [], "en_hits": 0, "zh_hits": 0}))
+    monkeypatch.setattr(adversary, "real_library_search",
+                        lambda **k: (lambda claim, failures: {"evidence": [], "degraded": False}))
+    monkeypatch.setattr(run_manifest, "code_version", lambda: "testsha")
+
+    muse_server.ADV.update(phase="reviewing", mode="line", output_dir=str(tmp_path),
+                           version=0, source=None, source_version=0, claims=[], error=None)
+    muse_server.adversary_bg(AdversaryReq(mode="line", line="平台自治可替代执法"))
+
+    runs = run_manifest.read(tmp_path)
+    assert len(runs) == 1
+    m = runs[0]
+    assert m["kind"] == "adversary" and m["code_version"] == "testsha"
+    assert "failure-points.md" in m["artifacts"]
+    assert "***redacted***" not in json.dumps(m)          # 本例无秘密
+    assert "平台自治可替代执法" == muse_server.ADV["source"]  # 引擎照常跑完
+
+
 def test_warm_start_without_evidence_does_not_seed(monkeypatch):
     """#47：不带 evidence 的圆桌照常启动，不 seed（缺证据不拖垮热身）。"""
     from knowledge_storm.dataclass import KnowledgeBase
