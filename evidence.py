@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from typing import Callable, Iterable, Literal, Protocol, TypedDict
 
-
 SourceKind = Literal["scholarly-work", "cnki-record", "library-document"]
-LocatorKind = Literal["url", "provider-id", "zotero-select"]
-EvidenceRelation = Literal["discovery", "context"]
+LocatorKind = Literal["url", "provider-id", "zotero-select", "pdf-page"]
+EvidenceRelation = Literal["discovery", "supports", "refutes", "context"]
 VerificationStatus = Literal["provider-retrieved", "unresolved", "identity-enriched"]
 SearchState = Literal[
     "ok",
@@ -52,16 +52,31 @@ class EvidenceSource(EvidenceSourceRequired, total=False):
     native: ZoteroNativeIdentity
 
 
-class EvidenceLocator(TypedDict):
+class EvidenceLocatorRequired(TypedDict):
     kind: LocatorKind
     value: str
+
+
+class EvidenceLocator(EvidenceLocatorRequired, total=False):
     exact: str
+    prefix: str
+    suffix: str
+    page: int
+    start: int
+    end: int
+    source_identity: str
+    source_version: str
 
 
-class RetrievalProvenance(TypedDict):
+class RetrievalProvenanceRequired(TypedDict):
     provider: str
     query: str
     source_id: str
+
+
+class RetrievalProvenance(RetrievalProvenanceRequired, total=False):
+    provider_version: str
+    index_version: str
 
 
 class EvidenceVerification(TypedDict):
@@ -88,6 +103,19 @@ class RetrievalStatus(TypedDict):
     message: str | None
 
 
+class EvidenceBundle(TypedDict):
+    """Provider-neutral corpus answer plus the exact evidence used for it."""
+
+    id: str
+    question: str
+    answer: str
+    formatted_answer: str
+    evidence: list[EvidenceRef]
+    status: RetrievalStatus
+    provider_version: str
+    index_version: str
+
+
 class EvidenceProviderError(RuntimeError):
     """A provider failure whose state is safe to expose through the API."""
 
@@ -110,6 +138,12 @@ class ProviderRecord:
     identity: str = ""
     locator_kind: LocatorKind | None = None
     locator_value: str = ""
+    exact: str = ""
+    prefix: str = ""
+    suffix: str = ""
+    page: int | None = None
+    start: int | None = None
+    end: int | None = None
     native: ZoteroNativeIdentity | None = None
 
 
@@ -119,6 +153,23 @@ class ProviderSearchResult:
 
     total: int
     records: tuple[ProviderRecord, ...]
+
+
+@dataclass(frozen=True)
+class CorpusAnswer:
+    """Provider-neutral answer returned by an isolated corpus adapter."""
+
+    answer: str
+    records: tuple[ProviderRecord, ...]
+    formatted_answer: str = ""
+    provider_version: str = ""
+    index_version: str = ""
+
+
+class CorpusProvider(Protocol):
+    name: str
+
+    def ask(self, question: str) -> CorpusAnswer: ...
 
 
 class EvidenceProvider(Protocol):
@@ -142,6 +193,17 @@ class FunctionEvidenceProvider:
         return self._search(query, limit)
 
 
+class FunctionCorpusProvider:
+    """Small adapter for isolated corpus functions and contract fixtures."""
+
+    def __init__(self, name: str, ask: Callable[[str], CorpusAnswer]):
+        self.name = name
+        self._ask = ask
+
+    def ask(self, question: str) -> CorpusAnswer:
+        return self._ask(question)
+
+
 def _source_identity(record: ProviderRecord, provider: str) -> str:
     if record.identity:
         return record.identity.strip()
@@ -157,7 +219,14 @@ def _evidence_id(identity: str) -> str:
     return f"evr_{digest}"
 
 
-def _evidence_ref(record: ProviderRecord, provider: str, query: str) -> EvidenceRef:
+def _evidence_ref(
+    record: ProviderRecord,
+    provider: str,
+    query: str,
+    *,
+    provider_version: str = "",
+    index_version: str = "",
+) -> EvidenceRef:
     identity = _source_identity(record, provider)
     locator_value = record.locator_value or record.url or record.source_id
     source = {
@@ -169,19 +238,61 @@ def _evidence_ref(record: ProviderRecord, provider: str, query: str) -> Evidence
     }
     if record.native:
         source["native"] = record.native
+    locator: EvidenceLocator = {
+        "kind": record.locator_kind or ("url" if record.url else "provider-id"),
+        "value": locator_value,
+        "exact": record.exact or record.title,
+    }
+    for key, value in (
+        ("prefix", record.prefix),
+        ("suffix", record.suffix),
+        ("page", record.page),
+        ("start", record.start),
+        ("end", record.end),
+    ):
+        if value not in (None, ""):
+            locator[key] = value  # type: ignore[literal-required]
+    if record.locator_kind == "pdf-page" or any(
+        value not in (None, "")
+        for value in (
+            record.prefix,
+            record.suffix,
+            record.page,
+            record.start,
+            record.end,
+        )
+    ):
+        locator["source_identity"] = identity
+        if record.version:
+            locator["source_version"] = record.version
+    retrieval: RetrievalProvenance = {
+        "provider": provider,
+        "query": query,
+        "source_id": record.source_id,
+    }
+    if provider_version:
+        retrieval["provider_version"] = provider_version
+    if index_version:
+        retrieval["index_version"] = index_version
+    evidence_identity = identity
+    if record.locator_kind == "pdf-page" or any(
+        value not in (None, "")
+        for value in (
+            record.prefix,
+            record.suffix,
+            record.page,
+            record.start,
+            record.end,
+        )
+    ):
+        evidence_identity += "\n" + json.dumps(
+            locator, ensure_ascii=False, sort_keys=True
+        )
     return {
-        "id": _evidence_id(identity),
+        "id": _evidence_id(evidence_identity),
         "source": source,
-        "locator": {
-            "kind": record.locator_kind or ("url" if record.url else "provider-id"),
-            "value": locator_value,
-            "exact": record.title,
-        },
-        "retrieval": {
-            "provider": provider,
-            "query": query,
-            "source_id": record.source_id,
-        },
+        "locator": locator,
+        "retrieval": retrieval,
         "relation": record.relation,
         "verification": {
             "status": record.verification_status,
@@ -193,8 +304,59 @@ def _evidence_ref(record: ProviderRecord, provider: str, query: str) -> Evidence
 class EvidenceGateway:
     """Search providers behind one stable, serializable EvidenceRef contract."""
 
-    def __init__(self, providers: Iterable[EvidenceProvider]):
+    def __init__(
+        self,
+        providers: Iterable[EvidenceProvider],
+        *,
+        corpus_providers: Iterable[CorpusProvider] = (),
+    ):
         self.providers = tuple(providers)
+        self.corpus_providers = tuple(corpus_providers)
+
+    def ask_corpus(self, question: str) -> EvidenceBundle:
+        q = " ".join(str(question or "").split())
+        if not q:
+            raise ValueError("question is required")
+        if not self.corpus_providers:
+            raise EvidenceProviderError("unavailable", "No corpus provider configured")
+        provider = self.corpus_providers[0]
+        answer = provider.ask(q)
+        evidence = [
+            _evidence_ref(
+                record,
+                provider.name,
+                q,
+                provider_version=answer.provider_version,
+                index_version=answer.index_version,
+            )
+            for record in answer.records
+        ]
+        bundle_identity = "\n".join(
+            [
+                provider.name,
+                answer.provider_version,
+                answer.index_version,
+                q.casefold(),
+                *(ref["id"] for ref in evidence),
+            ]
+        )
+        return {
+            "id": "evb_"
+            + hashlib.sha256(bundle_identity.encode("utf-8")).hexdigest()[:24],
+            "question": q,
+            "answer": answer.answer,
+            "formatted_answer": answer.formatted_answer or answer.answer,
+            "evidence": evidence,
+            "status": {
+                "provider": provider.name,
+                "state": "ok" if evidence and answer.answer.strip() else "empty",
+                "query": q,
+                "hits": len(evidence),
+                "message": None,
+            },
+            "provider_version": answer.provider_version,
+            "index_version": answer.index_version,
+        }
 
     def search(self, query: str, limit: int) -> dict:
         evidence_by_id = {}
