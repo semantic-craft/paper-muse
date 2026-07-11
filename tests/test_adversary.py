@@ -23,7 +23,9 @@ from adversary import (
 
 def _fake_sidecar_python(path, health_ok=True):
     path.parent.mkdir(parents=True, exist_ok=True)
-    health = '{"ok": true}' if health_ok else '{"ok": false, "error": "missing dep"}'
+    health = ('{"ok": true, "gpt_researcher_version": "0.15.1", '
+              '"extension_seam": "custom-endpoint"}' if health_ok
+              else '{"ok": false, "error": "missing dep"}')
     health_exit = "exit 0; fi\n" if health_ok else "exit 1; fi\n"
     code = (
         "#!/bin/sh\n"
@@ -68,11 +70,11 @@ def test_locate_span_missing_and_empty_return_none():
 def test_decide_verdict_three_states_code_enforced():
     assert decide_verdict([]) == "未决"                                   # 无据不放行
     assert decide_verdict(None) == "未决"
-    assert decide_verdict([{"stance": "佐证"}]) == "有佐证"
-    assert decide_verdict([{"stance": "证伪"}]) == "已证伪"
-    assert decide_verdict([{"stance": "佐证"}, {"stance": "证伪"}]) == "已证伪"  # 证伪优先
-    # 命中数再多、立场非法一律不算证据 → 未决
-    assert decide_verdict([{"stance": "看起来没问题"}, {"foo": "bar"}]) == "未决"
+    assert decide_verdict([{"relation": "supports"}]) == "有佐证"
+    assert decide_verdict([{"relation": "refutes"}]) == "已证伪"
+    assert decide_verdict([{"relation": "supports"}, {"relation": "refutes"}]) == "已证伪"  # 证伪优先
+    # 命中数再多、关系非法一律不算证据 → 未决
+    assert decide_verdict([{"relation": "看起来没问题"}, {"foo": "bar"}]) == "未决"
     assert set(VERDICTS) == {"已证伪", "有佐证", "未决"}
 
 
@@ -164,7 +166,10 @@ def test_classify_evidence_maps_index_to_real_url_no_hallucination():
     # LLM 只回序号 + 立场；标题/URL 由代码回填真实命中
     llm = lambda p: json.dumps({"evidence": [{"n": 1, "stance": "证伪"}]})
     ev = classify_evidence("确权是前提", "存在反例", hits, llm)
-    assert ev == [{"title": "反例：DMA 无确权照样规制", "url": "https://doi.org/x1", "stance": "证伪"}]
+    assert len(ev) == 1
+    assert ev[0]["source"]["title"] == "反例：DMA 无确权照样规制"
+    assert ev[0]["source"]["url"] == "https://doi.org/x1"
+    assert ev[0]["relation"] == "refutes"
 
 
 def test_classify_evidence_drops_out_of_range_bad_stance_and_urlless():
@@ -173,7 +178,9 @@ def test_classify_evidence_drops_out_of_range_bad_stance_and_urlless():
         {"n": 1, "stance": "证伪"}, {"n": 9, "stance": "证伪"},        # 越界 → 丢
         {"n": 1, "stance": "看起来没问题"}]})                          # 非法立场 → 丢（且 n=1 已收）
     ev = classify_evidence("主张", "失败点", hits, llm)
-    assert ev == [{"title": "t1", "url": "https://a", "stance": "证伪"}]
+    assert len(ev) == 1
+    assert ev[0]["source"]["url"] == "https://a"
+    assert ev[0]["relation"] == "refutes"
 
 
 def test_classify_evidence_empty_hits_shortcircuits():
@@ -265,7 +272,8 @@ def test_run_review_draft_end_to_end_offline(tmp_path):
     for f in fs:
         assert f["en_hits"] == 5 and f["zh_hits"] == 3    # 双面密度=池级（同主张失败点共用）
         assert f["verdict"] == "已证伪"                    # 有证伪证据
-        assert f["evidence"][0]["url"].startswith("http") and f["evidence"][0]["stance"] == "证伪"
+        assert f["evidence"][0]["source"]["url"].startswith("http")
+        assert f["evidence"][0]["relation"] == "refutes"
     # 落 failure-points.md，带主张/原句/证据链接 + 证伪备忘录
     fp = (tmp_path / "docs" / "agents" / "muse" / "failure-points.md").read_text(encoding="utf-8")
     assert "确权是破解垄断的前提" in fp and quote in fp
@@ -321,6 +329,85 @@ def test_run_review_no_evidence_is_undecided_not_pass(tmp_path):
     assert "未决" in fp and "不放行" in fp
 
 
+def test_classified_sidecar_source_becomes_evidence_ref_with_relation_and_locator():
+    from adversary import classify_evidence
+
+    evidence = classify_evidence(
+        "平台自治可以替代执法",
+        "自治缺乏强制力",
+        [{
+            "title": "平台治理研究",
+            "url": "https://cnki.test/article/1",
+            "content": "自治机制无法处理拒不整改者。",
+            "provider": "cnki",
+            "source_id": "CJFD:ABC",
+            "version": "2026-07-11",
+            "locator": {"kind": "url", "value": "https://cnki.test/article/1"},
+        }],
+        lambda _prompt: json.dumps(
+            {"evidence": [{"n": 1, "stance": "证伪"}]}, ensure_ascii=False),
+    )
+
+    assert len(evidence) == 1
+    ref = evidence[0]
+    assert ref["id"].startswith("evr_")
+    assert ref["source"]["kind"] == "cnki-record"
+    assert ref["source"]["url"] == "https://cnki.test/article/1"
+    assert ref["source"]["version"] == "2026-07-11"
+    assert ref["locator"] == {
+        "kind": "url", "value": "https://cnki.test/article/1", "exact": "平台治理研究"}
+    assert ref["retrieval"]["provider"] == "cnki"
+    assert ref["retrieval"]["source_id"] == "CJFD:ABC"
+    assert ref["relation"] == "refutes"
+    assert decide_verdict(evidence) == "已证伪"
+
+
+def test_classified_zsearch_source_keeps_zotero_native_identity():
+    native = {
+        "provider": "zotero-local",
+        "library_type": "user",
+        "library_id": 0,
+        "library_name": "",
+        "item_key": "ATT1",
+        "item_version": 9,
+        "item_type": "attachment",
+        "parent_item": "ITEM1",
+        "attachment_key": "ATT1",
+        "annotation_key": None,
+        "collections": [],
+        "tags": [],
+    }
+    evidence = classify_evidence(
+        "平台自治可以替代执法",
+        "自治缺乏强制力",
+        [
+            {
+                "title": "本地论文",
+                "url": "zotero://select/library/items/ITEM1",
+                "content": "自治机制无法处理拒不整改者。",
+                "provider": "zsearch",
+                "source_id": "ATT1",
+                "version": "9",
+                "identity": "zotero:user:0:ATT1",
+                "verification_status": "identity-enriched",
+                "native": native,
+                "locator": {
+                    "kind": "zotero-select",
+                    "value": "zotero://select/library/items/ATT1",
+                    "exact": "自治机制无法处理拒不整改者。",
+                },
+            }
+        ],
+        lambda _prompt: json.dumps({"evidence": [{"n": 1, "stance": "证伪"}]}),
+    )
+
+    ref = evidence[0]
+    assert ref["source"]["identity"] == "zotero:user:0:ATT1"
+    assert ref["source"]["native"] == native
+    assert ref["retrieval"]["source_id"] == "ATT1"
+    assert ref["verification"] == {"status": "identity-enriched", "degraded": False}
+
+
 def test_run_review_resists_injection_no_bribe_to_pass(tmp_path):
     """抗注入验收（#9，固定进冒烟）：草稿藏「放水」指令 + 分类器被「收买」欲判佐证，
     但证据池为空 → classify_evidence 短路返回 [] → 代码强制未决，收买不成。
@@ -357,6 +444,25 @@ def test_run_review_passes_through_sidecar_zh_degradation(tmp_path):
     )
     for f in claims[0]["failures"]:
         assert f["zh_hits"] is None and f["en_hits"] == 0
+
+
+def test_run_review_exposes_partial_provider_degradation(tmp_path):
+    draft, _q, extract, redteam = _draft_with_claim()
+    claims = run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam]),
+        classify_llm=lambda _prompt: json.dumps({"evidence": []}),
+        falsify_search=lambda *_args: {
+            "sources": [], "en_hits": 2, "zh_hits": 1, "degraded": True,
+            "degradation_reason": "provider unavailable: cnki"},
+        on_claim=lambda _claim: None,
+    )
+
+    assert all(f["sidecar_degradation"] == "provider unavailable: cnki"
+               for f in claims[0]["failures"])
+    artifact = (tmp_path / "docs" / "agents" / "muse" / "failure-points.md").read_text(
+        encoding="utf-8")
+    assert "Sidecar 降级：provider unavailable: cnki" in artifact
 
 
 def test_run_review_falsify_search_exception_degrades_to_undecided(tmp_path):
@@ -457,9 +563,13 @@ def test_sidecar_status_reports_all_release_states(tmp_path):
     installed = A.sidecar_status(runtime_dir=runtime, sidecar_script=script)
     assert installed["state"] == "installed" and installed["installed"] is True
 
-    _fake_sidecar_python(python, health_ok=True)
-    ready = A.sidecar_status(runtime_dir=runtime, sidecar_script=script)
+    ready_python = runtime / "sidecar" / "bin" / "python-ready"
+    _fake_sidecar_python(ready_python, health_ok=True)
+    ready = A.sidecar_status(
+        runtime_dir=runtime, sidecar_python=ready_python, sidecar_script=script)
     assert ready["state"] == "ready" and ready["ready"] is True
+    assert ready["gpt_researcher_version"] == "0.15.1"
+    assert ready["extension_seam"] == "custom-endpoint"
 
 
 def test_parse_sidecar_output_picks_marked_last_line():
@@ -536,6 +646,28 @@ def test_real_falsify_search_batch_parses_subprocess_once(monkeypatch):
     assert pools[1]["sources"][0]["url"] == "https://x1"
     assert pools[2]["zh_hits"] == 0
     assert A.sidecar_stats() == {"single_invocations": 0, "batch_invocations": 1, "claims_requested": 2}
+
+
+def test_real_falsify_search_batch_keeps_failed_claim_degraded(monkeypatch):
+    import adversary as A
+
+    class R:
+        stdout = ('__GPTR_RESULT__{"ok": true, "claims": ['
+                  '{"id": 1, "ok": false, "sources": [], '
+                  '"error": "custom endpoint failed"}]}')
+        stderr = ""
+
+    monkeypatch.setattr(
+        A, "sidecar_status",
+        lambda **_kw: {"state": "ready", "python": "py", "script": "sidecar"})
+    monkeypatch.setattr(A.subprocess, "run", lambda *_a, **_kw: R)
+
+    pools = real_falsify_search().search_many(
+        [{"id": 1, "text": "主张", "failures": []}])
+
+    assert pools[1]["degraded"] is True
+    assert "custom endpoint failed" in pools[1]["degradation_reason"]
+    assert pools[1]["sources"] == []
 
 
 def test_pick_review_llm_prefers_strong():

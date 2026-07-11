@@ -76,6 +76,15 @@ def test_adversary_ui_renders_rebuttal_and_meta_review():
     assert "作者答辩" in html and "仲裁" in html
 
 
+def test_adversary_ui_consumes_evidence_ref_and_provider_degradation():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert "e.source || {}" in html
+    assert "e.relation" in html
+    assert "sidecar_degradation" in html
+    assert "EvidenceRef" in html
+
+
 def test_scan_ui_consumes_unified_evidence_refs():
     html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
 

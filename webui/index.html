@@ -2488,11 +2488,17 @@ document.addEventListener("toggle", positionMargins, true);
   }
   function evidenceHTML(fp){
     if (fp.verdict == null) return `<span class="ev-pending">证据检索中…</span>`;
-    if (fp.verdict === "未决")
-      return `<div class="undec-block"><div class="ub-title"><span class="stamp">不放行</span>未检得任何证据</div><div class="ub-hint">解锁：<b>补检索</b> · 换检索词 · 需 CNKI 会话补中文面</div></div>`;
+    if (fp.verdict === "未决") {
+      const degraded = fp.sidecar_degradation ? ` · provider degraded：${esc(fp.sidecar_degradation)}` : "";
+      return `<div class="undec-block"><div class="ub-title"><span class="stamp">不放行</span>未检得任何证据</div><div class="ub-hint">解锁：<b>补检索</b> · 换检索词 · 需 CNKI 会话补中文面${degraded}</div></div>`;
+    }
     const ev = fp.evidence || [];
     if (!ev.length) return `<span class="ev-pending">（无证据条目）</span>`;
-    const items = ev.map(e => `<li class="ev-item"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title || e.url)}</a><span class="ev-stance s-${esc(e.stance)}">${esc(e.stance)}</span><span class="ev-host">${esc(shortHost(e.url))}</span></li>`).join("");
+    const items = ev.map(e => {
+      const source = e.source || {}, retrieval = e.retrieval || {};
+      const stance = e.relation === "refutes" ? "证伪" : e.relation === "supports" ? "佐证" : "上下文";
+      return `<li class="ev-item"><a href="${esc(source.url)}" target="_blank" rel="noopener">${esc(source.title || source.url)}</a><span class="ev-stance s-${esc(stance)}">${esc(stance)}</span><span class="ev-host">${esc(retrieval.provider || shortHost(source.url))} · EvidenceRef ${esc(e.id)}</span></li>`;
+    }).join("");
     return `<details class="ev-fold"><summary>证据链 ${ev.length} · 呈</summary><ul class="ev-list">${items}</ul></details>`;
   }
   function arbitrationHTML(fp){
