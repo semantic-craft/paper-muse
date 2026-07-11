@@ -297,8 +297,11 @@ def classify_evidence(claim_text: str, failure_statement: str, hits: list, llm_c
     )
     try:
         raw = extract_json(llm_call(prompt)).get("evidence", [])
-    except (ValueError, KeyError):
-        return []  # 分类坏输出不该让整条失败点崩：无证据即后续判未决
+    except Exception:
+        # 坏 JSON（ValueError/KeyError）或 LLM 瞬时故障（限流 429/超时/连接重置，抛
+        # ConnectionError/RuntimeError 等）都不该掀翻整场审查：无证据即后续判未决。
+        # 与 author_rebuttal / meta_review 的 except Exception 优雅降级保持一致。
+        return []
     out, seen = [], set()
     for e in raw:
         if not isinstance(e, dict):
