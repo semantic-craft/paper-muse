@@ -292,8 +292,8 @@ def answer_to_payload(answer_response, *, question: str, pdf_dir: str | Path) ->
     root = session or answer_response
     contexts = _get(root, "contexts")
     if not isinstance(contexts, (list, tuple)):
-        legacy_context = _get(root, "context", []) or []
-        contexts = legacy_context if isinstance(legacy_context, (list, tuple)) else []
+        # 锁定版 paper-qa==2026.3.18 只发 contexts（复数）；旧单数 context 迁移壳已删（#52）。
+        contexts = []
     context = [_context_item(c) for c in contexts]
     raw_status = _get(answer_response, "status", "success")
     agent_status = str(getattr(raw_status, "value", raw_status) or "success").lower()
