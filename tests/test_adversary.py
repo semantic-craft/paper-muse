@@ -190,6 +190,19 @@ def test_classify_evidence_empty_hits_shortcircuits():
     assert ev == [] and not called   # 无命中直接返回，不浪费 LLM 调用
 
 
+def test_classify_evidence_transient_llm_error_degrades_not_crashes():
+    """回归：真实 provider 限流/超时/连接重置抛的是 ConnectionError/RuntimeError 等，
+    非 ValueError/KeyError。窄捕获会让这类瞬时抖动穿透 → 掀翻整场审查、丢弃已算主张、
+    不落 failure-points.md。应像 author_rebuttal/meta_review 一样降级为空证据（后续判未决）。"""
+    hits = [{"title": "t1", "url": "https://a"}]
+
+    def flaky_llm(prompt):
+        raise ConnectionError("429 rate limited")
+
+    ev = classify_evidence("主张", "失败点", hits, flaky_llm)
+    assert ev == []   # 优雅降级，不抛
+
+
 # ---- 作者答辩 + 仲裁（不拥有最终裁决权）----
 
 def test_author_rebuttal_parses_stance_and_no_evidence_prompt():
