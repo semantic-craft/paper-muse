@@ -1,0 +1,509 @@
+<!-- 证据图 · 方向三 · 对账台账（审计表 ledger / reconciliation）——密集表格，逐行核验，旗标显式 -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>证据对账台 · evidence_graph #53</title>
+<style>
+  /* ============ 色 token（照搬 04-the-journal，明暗双主题） ============ */
+  :root {
+    --paper:      #FBFAF7;
+    --ink:        #161412;
+    --ink-soft:   #4A443E;
+    --ink-faint:  #8A8177;
+    --rule:       #DCD6CB;
+    --rule-soft:  #ECE7DE;
+    --oxblood:    #6E2233;
+    --oxblood-ink:#5A1B29;
+    --gold:       #9A7B2E;
+    --field:      #FFFFFF;
+    --stamp-bg:   rgba(110,34,51,.06);
+    --quote-tint: #F6F1EC;
+    --nov-cnki:   #3C6E5A;   /* 支持/佐证 = 墨绿 */
+    /* 关系色（引用既有 token，随主题翻） */
+    --supports:   var(--nov-cnki);
+    --refutes:    var(--oxblood);
+    --context:    var(--ink-faint);
+    /* 旗标底纹 */
+    --tint-degraded:   rgba(154,123,46,.10);
+    --tint-unresolved: rgba(110,34,51,.08);
+    --tint-clean:      rgba(60,110,90,.06);
+
+    --serif: "Songti SC", "STSong", "New York", "Palatino", "Baskerville", Georgia, serif;
+    --serif-en: "New York", "Iowan Old Style", "Palatino", "Baskerville", Georgia, serif;
+    --kai: "Kaiti SC", "STKaiti", "Songti SC", serif;
+    --mono: "SF Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    --paper:      #161311;
+    --ink:        #EDE7DB;
+    --ink-soft:   #C4BBAC;
+    --ink-faint:  #8C8474;
+    --rule:       #3A342D;
+    --rule-soft:  #2A2620;
+    --oxblood:    #B5566A;
+    --oxblood-ink:#C46A7D;
+    --gold:       #C6A94E;
+    --field:      #1E1A17;
+    --stamp-bg:   rgba(181,86,106,.10);
+    --quote-tint: #1E1A17;
+    --nov-cnki:   #6FB59A;
+    --tint-degraded:   rgba(198,169,78,.13);
+    --tint-unresolved: rgba(181,86,106,.13);
+    --tint-clean:      rgba(111,181,154,.09);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); line-height: 1.6; font-size: 16px;
+    transition: background .35s ease, color .35s ease;
+    text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 56px); }
+
+  /* ============ 报头 ============ */
+  .masthead { padding: 32px 0 0; }
+  .masthead-top {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 18px; flex-wrap: wrap;
+    border-bottom: 3px double var(--oxblood); padding-bottom: 8px;
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .32em;
+    text-transform: uppercase; color: var(--oxblood); font-weight: 600;
+  }
+  .toggle {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+    text-transform: uppercase; background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--rule); border-radius: 999px; padding: 6px 14px;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    transition: border-color .2s, color .2s;
+  }
+  .toggle:hover { border-color: var(--oxblood); color: var(--oxblood); }
+  .toggle:focus-visible { outline: 2px solid var(--oxblood); outline-offset: 2px; }
+  .title {
+    font-family: var(--serif); font-weight: 900;
+    font-size: clamp(30px, 5vw, 52px); line-height: 1.02; letter-spacing: -.02em;
+    margin: 16px 0 4px;
+  }
+  .title .sep { color: var(--oxblood); font-weight: 400; padding: 0 .1em; }
+  .subtitle {
+    font-family: var(--kai); font-size: 15px;
+    color: var(--oxblood); margin: 0 0 12px;
+  }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 5px 24px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-faint);
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    padding: 8px 0; font-variant-numeric: tabular-nums;
+  }
+  .meta b { color: var(--ink-soft); font-weight: 600; }
+
+  /* ============ 汇总条 tally ============ */
+  .tally {
+    display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 6px;
+    align-items: stretch;
+  }
+  .tally-cell {
+    border: 1px solid var(--rule); padding: 9px 15px 8px; min-width: 96px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .tally-cell .num {
+    font-family: var(--mono); font-size: 22px; font-weight: 700; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .tally-cell .lab {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .tally-cell.base .num { color: var(--ink); }
+  .tally-cell.degraded  { border-color: var(--gold);    background: var(--tint-degraded); }
+  .tally-cell.degraded .num { color: var(--gold); }
+  .tally-cell.unresolved{ border-color: var(--oxblood); background: var(--tint-unresolved); }
+  .tally-cell.unresolved .num { color: var(--oxblood); }
+  .tally-cell.superseded .num { color: var(--ink-faint); text-decoration: line-through; }
+
+  /* ============ 台账区块 ============ */
+  .section { margin: 30px 0 8px; }
+  .sec-head {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    border-top: 2px solid var(--ink); padding-top: 12px; margin-bottom: 4px;
+  }
+  .sec-kind {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--oxblood); font-weight: 700;
+  }
+  .sec-title { font-family: var(--serif); font-weight: 800; font-size: 20px; margin: 0; }
+  .chip {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .1em;
+    text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 2px;
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  }
+  .chip.cat { color: var(--ink-soft); border: 1px solid var(--rule); }
+  .chip.cat .sw { width: 8px; height: 8px; display: inline-block; }
+  .chip.gap {
+    color: var(--paper); background: var(--gold); border: 1px solid var(--gold);
+    box-shadow: 0 0 0 3px var(--stamp-bg);
+  }
+  .chip.seal { color: var(--gold); border: 1px solid var(--gold); background: var(--stamp-bg); }
+  .chip.origin { color: var(--ink-faint); border: 1px dashed var(--rule); }
+
+  /* ============ 台账表 ============ */
+  .ledger-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 10px 0 0; }
+  table.ledger {
+    width: 100%; min-width: 760px; border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  table.ledger thead th {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--ink-faint); font-weight: 600;
+    text-align: left; padding: 6px 12px; border-bottom: 1.5px solid var(--ink);
+    white-space: nowrap;
+  }
+  table.ledger td {
+    padding: 11px 12px; border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+  table.ledger td:first-child { border-left: 3px solid transparent; }
+  tr.r-degraded  td:first-child { border-left-color: var(--gold); }
+  tr.r-degraded  td { background: var(--tint-degraded); }
+  tr.r-clean     td:first-child { border-left-color: var(--nov-cnki); }
+  tr.r-clean     td { background: var(--tint-clean); }
+
+  /* 立场 chip */
+  .stance {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; font-weight: 700; white-space: nowrap;
+  }
+  .stance .sq { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  .stance.supports { color: var(--supports); } .stance.supports .sq { background: var(--supports); }
+  .stance.refutes  { color: var(--refutes); }  .stance.refutes  .sq { background: var(--refutes); }
+  .stance.context  { color: var(--context); }  .stance.context  .sq { background: var(--context); }
+
+  /* 条目 */
+  .item-title { font-family: var(--serif); font-size: 15px; color: var(--ink); line-height: 1.4; }
+  .item-en { font-family: var(--serif-en); }
+  .evref {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em;
+    color: var(--oxblood); margin-top: 3px;
+  }
+  .evref .tag { color: var(--ink-faint); }
+  .url {
+    display: block; font-family: var(--mono); font-size: 9px; color: var(--ink-faint);
+    word-break: break-all; margin-top: 2px;
+  }
+  /* 来源 / 核验 列 */
+  .provider { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+  .provider .via {
+    display: block; font-size: 8.5px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-faint); margin-top: 3px;
+  }
+  .verify { font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft); white-space: nowrap; }
+  .verify.ok::before { content: "✓ "; color: var(--nov-cnki); }
+  .verify.warn { color: var(--gold); }
+  .verify.none { color: var(--oxblood); font-weight: 700; }
+
+  /* 旗标 badge */
+  .flag {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+    text-transform: uppercase; font-weight: 700; padding: 4px 9px; border-radius: 2px;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; line-height: 1.15;
+  }
+  .flag .g { font-size: 12px; }
+  .flag.ok { color: var(--ink-faint); border: 1px solid var(--rule); font-weight: 600; }
+  .flag.degraded { color: var(--gold); border: 1px solid var(--gold); background: var(--stamp-bg); }
+  .flag.unresolved { color: var(--paper); background: var(--oxblood); border: 1px solid var(--oxblood); }
+  .flag.superseded { color: var(--ink-faint); border: 1px dashed var(--ink-faint); text-decoration: line-through; }
+  .flag-reason {
+    font-family: var(--mono); font-size: 9px; color: var(--gold);
+    margin-top: 5px; max-width: 200px; line-height: 1.4;
+  }
+  .flag-reason code { color: var(--oxblood); font-size: 9px; }
+
+  /* 失败点带 band（全宽分组行） */
+  tr.band td {
+    background: var(--quote-tint); border-top: 2px solid var(--oxblood);
+    border-bottom: 1px solid var(--rule); padding: 12px;
+  }
+  .band-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .band .fid { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--oxblood); }
+  .band .fstate { font-family: var(--serif); font-weight: 700; font-size: 15px; color: var(--ink); }
+  .band-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+  .mchip {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 2px; border: 1px solid var(--rule); color: var(--ink-soft);
+  }
+  .mchip.sev-fatal { color: var(--oxblood); border-color: var(--oxblood); font-weight: 700; }
+  .mchip.sev-major { color: var(--gold); border-color: var(--gold); font-weight: 700; }
+  .mchip.v-pending { color: var(--ink-faint); }
+  .mchip.v-refuted { color: var(--oxblood); border-color: var(--oxblood); font-weight: 700; }
+
+  /* 空态 / 无证据行 */
+  tr.empty td { color: var(--ink-faint); font-family: var(--mono); font-size: 11px; padding: 9px 12px; }
+  table.ledger tr.noevid td {
+    background: var(--tint-unresolved); border-left: 3px solid var(--oxblood);
+    padding: 12px; border-bottom: 1px solid var(--rule);
+  }
+  .noevid-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .noevid-note { font-family: var(--kai); font-size: 12px; color: var(--ink-soft); }
+
+  /* 子台账：反馈 / 批注 */
+  .subledger { margin: 14px 0 0; }
+  .subhead {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink-faint); border-bottom: 1px dotted var(--rule); padding-bottom: 5px; margin-bottom: 2px;
+  }
+  .subrow {
+    display: grid; grid-template-columns: 108px 1fr auto; align-items: center;
+    gap: 12px; padding: 9px 4px; border-bottom: 1px solid var(--rule-soft);
+    border-left: 3px solid transparent; padding-left: 9px;
+  }
+  .subrow .ts { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+  .subrow .verdict { font-family: var(--serif); font-size: 14px; color: var(--ink); }
+  .subrow.current { border-left-color: var(--nov-cnki); }
+  .subrow.superseded { opacity: .55; border-left-color: var(--ink-faint); }
+  .subrow.superseded .verdict { text-decoration: line-through; color: var(--ink-faint); }
+  .subrow.unresolved { border-left-color: var(--oxblood); background: var(--tint-unresolved); }
+  .subrow .who { font-family: var(--mono); font-size: 10px; color: var(--ink-soft); }
+  .st-badge {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+    font-weight: 700; padding: 3px 9px; border-radius: 2px; white-space: nowrap;
+  }
+  .st-badge.current { color: var(--nov-cnki); border: 1px solid var(--nov-cnki); }
+  .st-badge.superseded { color: var(--ink-faint); border: 1px dashed var(--ink-faint); text-decoration: line-through; }
+  .st-badge.unresolved { color: var(--paper); background: var(--oxblood); border: 1px solid var(--oxblood); }
+
+  /* 页脚 */
+  .colophon {
+    border-top: 3px double var(--oxblood); margin-top: 34px; padding: 16px 0 46px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-faint); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0 0; }
+  .legend .li { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; color: var(--ink-faint); text-transform: uppercase; }
+  .legend .li .sq { width: 9px; height: 9px; border-radius: 2px; }
+
+  ::selection { background: var(--oxblood); color: #FBFAF7; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 560px) { .subrow { grid-template-columns: 1fr auto; } .subrow .ts { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="masthead-top">
+      <span class="eyebrow">证据图投影 · #53 · evidence_graph.py</span>
+      <button class="toggle" id="themeToggle" type="button" aria-label="切换明暗主题">
+        <span id="themeGlyph">☾</span><span id="themeText">暗版</span>
+      </button>
+    </div>
+    <h1 class="title">证据对账台<span class="sep">·</span>台账核验</h1>
+    <p class="subtitle">逐行核验：未解析定位符 / 降级 provider / 被修正反馈显式列旗，绝不当 verified。</p>
+    <div class="meta">
+      <span><b>投影</b>&nbsp;只读 · 幂等 · nodes/edges</span>
+      <span><b>视图</b>&nbsp;evidence_for_card · evidence_for_claim</span>
+      <span><b>关系</b>&nbsp;supports · refutes · context · deepens · annotates</span>
+    </div>
+  </header>
+
+  <!-- 汇总条 -->
+  <div class="tally" aria-label="台账汇总">
+    <div class="tally-cell base"><span class="num">3</span><span class="lab">条证据</span></div>
+    <div class="tally-cell degraded"><span class="num">1</span><span class="lab">降级 provider</span></div>
+    <div class="tally-cell unresolved"><span class="num">2</span><span class="lab">未决 · 失败点/批注</span></div>
+    <div class="tally-cell superseded"><span class="num">1</span><span class="lab">被修正反馈</span></div>
+  </div>
+  <div class="legend" aria-hidden="true">
+    <span class="li"><span class="sq" style="background:var(--supports)"></span>支持 supports</span>
+    <span class="li"><span class="sq" style="background:var(--refutes)"></span>证伪 refutes</span>
+    <span class="li"><span class="sq" style="background:var(--context)"></span>上下文 context</span>
+    <span class="li"><span class="g">⚠</span>降级</span>
+    <span class="li"><span class="g">⛔</span>未决 · 不放行</span>
+  </div>
+
+  <!-- ============ 卡片视图 ============ -->
+  <section class="section" aria-labelledby="card-h">
+    <div class="sec-head">
+      <span class="sec-kind">evidence_for_card</span>
+      <h2 class="sec-title" id="card-h">熵增视角与信息不对称的负熵逻辑</h2>
+      <span class="chip cat"><span class="sw" style="background:var(--oxblood)"></span>学科视角</span>
+      <span class="chip gap">交叉空白 · 金矿</span>
+      <span class="chip seal">🥇 金标</span>
+    </div>
+
+    <div class="ledger-scroll">
+      <table class="ledger">
+        <thead>
+          <tr>
+            <th style="width:120px">立场 STANCE</th>
+            <th>条目 · EvidenceRef</th>
+            <th style="width:130px">来源 PROVIDER</th>
+            <th style="width:130px">核验 VERIFY</th>
+            <th style="width:200px">旗标 FLAGS</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="r-clean">
+            <td><span class="stance supports"><span class="sq"></span>支持</span></td>
+            <td>
+              <div class="item-title item-en">Entropy, Information, and the Economics of Scarcity</div>
+              <div class="evref">EvidenceRef <span class="tag">·</span> evr_1a</div>
+              <a class="url" href="https://doi.org/10.1103/entropy.2019.0471" target="_blank" rel="noopener">https://doi.org/10.1103/entropy.2019.0471</a>
+            </td>
+            <td><span class="provider">openalex<span class="via">provider-retrieved</span></span></td>
+            <td><span class="verify ok">已回填</span></td>
+            <td><span class="flag ok">通过 · 无旗标</span></td>
+          </tr>
+
+          <tr class="r-degraded">
+            <td><span class="stance context"><span class="sq"></span>上下文</span></td>
+            <td>
+              <div class="item-title">负熵、信息与市场秩序：一个跨学科综述</div>
+              <div class="evref">EvidenceRef <span class="tag">·</span> evr_1b</div>
+              <a class="url" href="https://kns.cnki.net/kcms/sample-4471" target="_blank" rel="noopener">https://kns.cnki.net/kcms/sample-4471</a>
+            </td>
+            <td><span class="provider">cnki<span class="via">provider-retrieved</span></span></td>
+            <td><span class="verify warn">provider-retrieved</span></td>
+            <td>
+              <span class="flag degraded"><span class="g">⚠</span>PROVIDER 降级</span>
+              <div class="flag-reason">degradation: <code>semantic_scholar: missing key</code></div>
+            </td>
+          </tr>
+
+          <tr class="empty">
+            <td><span class="stance refutes"><span class="sq"></span>证伪</span></td>
+            <td colspan="4">— 无对应证据（无证伪来源）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 子台账：后续判断 / feedback（deepens） -->
+    <div class="subledger">
+      <div class="subhead">后续判断 · feedback · deepens 该卡</div>
+      <div class="subrow superseded">
+        <span class="ts">2026-07-01</span>
+        <span><span class="verdict">新且值得深挖</span> &nbsp;<span class="who">evt · deepens</span></span>
+        <span class="st-badge superseded">已被修正</span>
+      </div>
+      <div class="subrow current">
+        <span class="ts">2026-07-08</span>
+        <span><span class="verdict">已知</span> &nbsp;<span class="who">evt · deepens · supersedes ↑</span></span>
+        <span class="st-badge current">当前 CURRENT</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 主张视图 ============ -->
+  <section class="section" aria-labelledby="claim-h">
+    <div class="sec-head">
+      <span class="sec-kind">evidence_for_claim</span>
+      <h2 class="sec-title" id="claim-h">主张 #1 · 熵是隐喻不是机制</h2>
+      <span class="chip origin">源自构思幕卡片 · origin card</span>
+    </div>
+
+    <div class="ledger-scroll">
+      <table class="ledger">
+        <thead>
+          <tr>
+            <th style="width:120px">立场 STANCE</th>
+            <th>条目 · EvidenceRef</th>
+            <th style="width:130px">来源 PROVIDER</th>
+            <th style="width:130px">核验 VERIFY</th>
+            <th style="width:200px">旗标 FLAGS</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- 失败点 f1：未决，无证据 -->
+          <tr class="band">
+            <td colspan="5">
+              <div class="band-line">
+                <span class="fid">[f1]</span>
+                <span class="fstate">缺乏可测量的熵定义</span>
+              </div>
+              <div class="band-meta">
+                <span class="mchip">类型 · 概念</span>
+                <span class="mchip sev-fatal">严重度 · 致命</span>
+                <span class="mchip v-pending">裁决 · 未决</span>
+              </div>
+            </td>
+          </tr>
+          <tr class="noevid">
+            <td colspan="5">
+              <div class="noevid-line">
+                <span class="flag unresolved"><span class="g">⛔</span>未检得证据 · 不放行</span>
+                <span class="noevid-note">该失败点无任何 supports / refutes / context 证据 —— 裁决未决，投影中标 <b>unresolved</b>，不得当已核验。</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- 失败点 f2：已证伪，有一条 refutes 证据 -->
+          <tr class="band">
+            <td colspan="5">
+              <div class="band-line">
+                <span class="fid">[f2]</span>
+                <span class="fstate">已有文献做过同构解释</span>
+              </div>
+              <div class="band-meta">
+                <span class="mchip">类型 · 新颖性</span>
+                <span class="mchip sev-major">严重度 · 重大</span>
+                <span class="mchip v-refuted">裁决 · 已证伪</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="stance refutes"><span class="sq"></span>证伪</span></td>
+            <td>
+              <div class="item-title item-en">Prior isomorphism study</div>
+              <div class="evref">EvidenceRef <span class="tag">·</span> evr_2</div>
+              <a class="url" href="https://doi.org/prior" target="_blank" rel="noopener">https://doi.org/prior</a>
+            </td>
+            <td><span class="provider">openalex<span class="via">provider-retrieved</span></span></td>
+            <td><span class="verify ok">已回填</span></td>
+            <td><span class="flag ok">通过 · 无旗标</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 子台账：批注交接 / annotation（annotates） -->
+    <div class="subledger">
+      <div class="subhead">批注交接 · annotation · annotates 主张 #1</div>
+      <div class="subrow unresolved">
+        <span class="ts">claim-1</span>
+        <span><span class="verdict">批注回挂主张 #1</span> &nbsp;<span class="who">attachment.status = unresolved</span></span>
+        <span class="st-badge unresolved">回挂失败 · 定位未决</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="colophon">
+    <span>证据对账台 · 方向三 · 审计台账拼版</span>
+    <span>静态视觉稿 · 数据写死 · 离线自包含</span>
+  </footer>
+
+</div>
+
+<script>
+  /* 明暗切换：仅此一处 JS */
+  var root = document.documentElement;
+  function applyTheme(t) {
+    root.setAttribute("data-theme", t);
+    var dark = t === "dark";
+    document.getElementById("themeGlyph").textContent = dark ? "☀" : "☾";
+    document.getElementById("themeText").textContent = dark ? "明版" : "暗版";
+  }
+  applyTheme(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.getElementById("themeToggle").addEventListener("click", function () {
+    applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+  });
+</script>
+</body>
+</html>

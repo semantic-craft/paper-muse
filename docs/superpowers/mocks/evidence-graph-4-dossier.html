@@ -1,0 +1,573 @@
+<!-- 证据卷宗（文书阅读 · dossier / 案卷）· #53 证据关系审阅备忘：卡片一卷、主张一卷，逐段读证据的来龙去脉；不放行 / 降级 / 已被修正 / 失附 四态各有戳记 -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>证据卷宗 · 证据关系审阅</title>
+<style>
+  /* ============ 色 token（承 04-the-journal，明暗双主题） ============ */
+  :root {
+    --paper:      #FBFAF7;
+    --ink:        #161412;
+    --ink-soft:   #4A443E;
+    --ink-faint:  #8A8177;
+    --rule:       #DCD6CB;
+    --rule-soft:  #ECE7DE;
+    --oxblood:    #6E2233;   /* 编辑主色：深酒红 */
+    --oxblood-ink:#5A1B29;
+    --gold:       #9A7B2E;   /* 古金印章 / 警示 */
+    --field:      #FFFFFF;
+    --stamp-bg:   rgba(110,34,51,.06);
+    --quote-tint: #F6F1EC;
+    --seal-shadow: rgba(22,20,18,.04);
+    /* 证据关系三色：支持=绿 / 证伪=酒红 / 上下文=中性灰 */
+    --support:    #3C6E5A;
+    --refute:     var(--oxblood);
+    --context:    var(--ink-faint);
+    /* 不放行 / 未决 / 失附：朱红危度，刻意区别于酒红证伪 */
+    --hazard:     #A83232;
+    --hazard-wash:rgba(168,50,50,.07);
+    --caution-bg: rgba(154,123,46,.08);
+
+    --serif-cn: "Songti SC", "STSong", "Songti TC", serif;
+    --serif-en: "New York", "Iowan Old Style", "Palatino", "Baskerville", Georgia, serif;
+    --serif: "Songti SC", "STSong", "New York", "Palatino", "Baskerville", Georgia, serif;
+    --kai: "Kaiti SC", "STKaiti", "Songti SC", serif;
+    --mono: "SF Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    --paper:      #161311;
+    --ink:        #EDE7DB;
+    --ink-soft:   #C4BBAC;
+    --ink-faint:  #8C8474;
+    --rule:       #3A342D;
+    --rule-soft:  #2A2620;
+    --oxblood:    #B5566A;
+    --oxblood-ink:#C46A7D;
+    --gold:       #C6A94E;
+    --field:      #1E1A17;
+    --stamp-bg:   rgba(181,86,106,.10);
+    --quote-tint: #1E1A17;
+    --seal-shadow: rgba(0,0,0,.25);
+    --support:    #6FB59A;
+    --hazard:     #D8695C;
+    --hazard-wash:rgba(216,105,92,.12);
+    --caution-bg: rgba(198,169,78,.11);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    line-height: 1.68;
+    font-size: 17px;
+    transition: background .35s ease, color .35s ease;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 56px); }
+  a { color: inherit; }
+  ::selection { background: var(--oxblood); color: #FBFAF7; }
+
+  /* ============ 报头 ============ */
+  .masthead { padding: 34px 0 0; }
+  .masthead-top {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 20px; flex-wrap: wrap;
+    border-bottom: 3px double var(--oxblood); padding-bottom: 8px;
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .3em;
+    text-transform: uppercase; color: var(--oxblood); font-weight: 600;
+  }
+  .toggle {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+    text-transform: uppercase; background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--rule); border-radius: 999px; padding: 6px 14px;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    transition: border-color .2s, color .2s;
+  }
+  .toggle:hover { border-color: var(--oxblood); color: var(--oxblood); }
+  .toggle:focus-visible { outline: 2px solid var(--oxblood); outline-offset: 2px; }
+
+  .masthead-title {
+    font-family: var(--serif-cn); font-weight: 900;
+    font-size: clamp(38px, 8vw, 74px); line-height: .98;
+    letter-spacing: .02em; margin: 20px 0 10px; color: var(--ink);
+  }
+  .masthead-title .sep { color: var(--oxblood); font-weight: 400; padding: 0 .14em; }
+  .masthead-title .sub { font-size: .3em; letter-spacing: .04em; font-weight: 700; color: var(--ink-faint); }
+
+  .masthead-meta {
+    display: flex; flex-wrap: wrap; gap: 6px 26px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-faint);
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    padding: 9px 0; font-variant-numeric: tabular-nums;
+  }
+  .masthead-meta b { color: var(--ink-soft); font-weight: 600; }
+
+  /* 两卷切换 */
+  .vols { display: flex; align-items: flex-end; gap: 0; margin-top: 20px; }
+  .vol {
+    font-family: var(--serif-cn); font-weight: 700; font-size: 16px; letter-spacing: .06em;
+    padding: 9px 20px 11px; cursor: pointer; background: transparent; border: 0;
+    color: var(--ink-faint); border-bottom: 2px solid transparent;
+  }
+  .vol .fn { display: block; font-family: var(--mono); font-size: 8.5px; letter-spacing: .12em;
+    text-transform: none; color: var(--ink-faint); margin-top: 3px; font-weight: 400; }
+  .vol[aria-selected="true"] { color: var(--oxblood); border-bottom-color: var(--oxblood); }
+  .vol[aria-selected="true"] .fn { color: var(--oxblood); }
+  .vol:focus-visible { outline: 2px solid var(--oxblood); outline-offset: -4px; }
+  .vols-rule { border-bottom: 1px solid var(--rule); flex: 1; }
+
+  /* ============ 凡例 ============ */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center;
+    padding: 14px 0 2px; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+  }
+  .legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .sw { width: 10px; height: 10px; flex: none; border-radius: 2px; }
+  .legend .sw.b { border: 1px solid currentColor; }
+  .lg.s-support { color: var(--support); } .lg.s-support .sw { background: var(--support); }
+  .lg.s-refute  { color: var(--refute); }  .lg.s-refute .sw  { background: var(--refute); }
+  .lg.s-context { color: var(--context); } .lg.s-context .sw { background: var(--context); }
+  .lg.s-hazard  { color: var(--hazard); }
+  .lg.s-caution { color: var(--gold); }
+  .lg.s-super   { color: var(--ink-faint); }
+
+  /* ============ 卷宗 ============ */
+  .dossier[hidden] { display: none; }
+  .dossier { padding: 26px 0 8px; }
+
+  /* 案由封面 */
+  .cover {
+    position: relative; border: 1px solid var(--rule); background: var(--stamp-bg);
+    padding: 22px 24px 20px; margin-bottom: 8px;
+  }
+  .cover-no {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .24em; text-transform: uppercase;
+    color: var(--oxblood); font-weight: 600; display: block; margin-bottom: 10px;
+  }
+  .cover-title {
+    font-family: var(--serif-cn); font-weight: 800; line-height: 1.14;
+    font-size: clamp(24px, 4.4vw, 38px); letter-spacing: -.01em; margin: 0 0 14px;
+    color: var(--ink); max-width: 42ch;
+  }
+  .cover-title .q { color: var(--oxblood); font-weight: 400; }
+  .cover-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--ink-soft); }
+  .cover-meta .cm { display: inline-flex; align-items: center; gap: 6px; }
+  .cover-meta .swatch { width: 9px; height: 9px; display: inline-block; flex: none; border: .5px solid rgba(0,0,0,.15); }
+  [data-theme="dark"] .cover-meta .swatch { border-color: rgba(255,255,255,.18); }
+  .cover-meta b { color: var(--ink-faint); font-weight: 400; }
+  .cover-seals { position: absolute; top: 18px; right: 20px; }
+
+  /* 印记 seal（承 journal 金章） */
+  .seal {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+    font-weight: 600; padding: 4px 9px 4px 6px; border-radius: 2px; line-height: 1; white-space: nowrap;
+  }
+  .seal .mark { font-family: var(--serif-cn); font-weight: 800; font-size: 11px; line-height: 1;
+    display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; }
+  .seal.gold { color: var(--gold); border: 1px solid var(--gold); background: var(--stamp-bg); }
+  .seal.gold .mark { background: var(--gold); color: var(--paper); }
+
+  /* 编者开场白 + 抽言（楷体嗓音，遵「中文不斜体」——以字体换嗓而非 italic） */
+  .memo-lead { font-family: var(--serif); font-size: 16.5px; line-height: 1.78;
+    color: var(--ink-soft); margin: 20px 2px 6px; }
+  .memo-lead .lead-tag { font-family: var(--mono); font-size: 9px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--oxblood); display: block; margin-bottom: 5px; }
+  .memo-quote {
+    position: relative; font-family: var(--kai); font-style: normal;
+    font-size: clamp(17px, 2.3vw, 21px); line-height: 1.6; color: var(--oxblood);
+    border-top: 2px solid var(--oxblood); border-bottom: 2px solid var(--oxblood);
+    background: var(--quote-tint); padding: 22px 26px 18px 30px; margin: 18px 0 6px;
+  }
+  .memo-quote::before { content: "\201C"; position: absolute; left: 8px; top: -8px;
+    font-family: var(--serif-en); font-weight: 700; font-size: 74px; line-height: 1;
+    color: var(--oxblood); opacity: .42; }
+  .memo-quote .ql { display: block; font-family: var(--mono); font-size: 9px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--oxblood); opacity: .8; margin-bottom: 8px; font-weight: 600; }
+
+  /* ============ 栏目 section ============ */
+  .section { --rel: var(--ink-soft); margin: 34px 0 0; }
+  .section.r-support { --rel: var(--support); }
+  .section.r-context { --rel: var(--context); }
+  .section.r-refute  { --rel: var(--refute); }
+  .section.r-feedback{ --rel: var(--gold); }
+  .section.r-hazard  { --rel: var(--hazard); }
+  .section.r-annot   { --rel: var(--oxblood); }
+  .sec-eyebrow { font-family: var(--mono); font-size: 9.5px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--rel); font-weight: 600; margin-bottom: 6px; }
+  .sec-head { font-family: var(--serif-cn); font-weight: 700; color: var(--ink);
+    font-size: clamp(20px, 3vw, 26px); line-height: 1.2; margin: 0;
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .sec-head::before { content: ""; align-self: center; width: 3px; height: .92em;
+    background: var(--rel); flex: none; }
+  .sec-count { font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    color: var(--ink-faint); font-weight: 400; }
+  .sec-rule { height: 1px; background: var(--rule); margin: 11px 0 18px; }
+
+  /* 证据脚注式条目 */
+  .ev { border-left: 2px solid var(--rel); padding: 2px 0 2px 18px; margin: 0 0 20px; }
+  .ev-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .ev-rel { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; text-transform: uppercase;
+    font-weight: 700; color: var(--rel); border: 1px solid var(--rel); border-radius: 2px;
+    padding: 2px 7px; flex: none; }
+  .ev-title { font-family: var(--serif); font-style: normal; font-size: 17px; line-height: 1.45;
+    color: var(--ink); font-weight: 600; }
+  .ev-appa { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+    margin: 8px 0 0; font-family: var(--mono); font-size: 10px; letter-spacing: .05em; color: var(--ink-faint); }
+  .prov { color: var(--ink-soft); border: 1px solid var(--rule); border-radius: 2px;
+    padding: 2px 7px; text-transform: uppercase; letter-spacing: .1em; }
+  .retrieved { color: var(--support); letter-spacing: .08em; }
+  .retrieved::before { content: "◆ "; font-size: 8px; }
+  .evr { color: var(--ink-faint); letter-spacing: .06em; }
+  .evr b { color: var(--ink-soft); font-weight: 600; }
+  .ev-url { display: block; margin-top: 7px; font-family: var(--mono); font-size: 10.5px;
+    color: var(--ink-faint); text-decoration: none; word-break: break-all;
+    border-bottom: 1px solid var(--rule); padding-bottom: 1px; width: fit-content; max-width: 100%; }
+  .ev-url::before { content: "↳ "; color: var(--rel); }
+  .ev-url:hover { color: var(--oxblood); border-bottom-color: var(--oxblood); }
+
+  /* 存目·无（空栏目） */
+  .empty-note { font-family: var(--kai); font-size: 15.5px; color: var(--ink-faint);
+    padding-left: 18px; border-left: 2px dashed var(--rule); }
+  .empty-note b { font-family: var(--mono); font-size: 9px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--ink-faint); font-weight: 600; margin-right: 8px; }
+
+  /* ⚠ 供应源降级（gold 警示） */
+  .caution { margin: 10px 0 4px 18px; border: 1px dashed var(--gold); background: var(--caution-bg);
+    padding: 11px 14px; }
+  .caution .c-label { font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--gold); font-weight: 700; display: flex; align-items: center; gap: 7px; }
+  .caution .c-reason { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+  .caution .c-reason code { color: var(--gold); }
+
+  /* ⛔ 未决 · 不放行（朱红危度封条） */
+  .hazard { position: relative; border: 1.5px solid var(--hazard); background: var(--hazard-wash);
+    padding: 18px 20px 16px; margin: 4px 0 0; overflow: hidden; }
+  .hazard::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 6px;
+    background: repeating-linear-gradient(45deg, var(--hazard), var(--hazard) 9px, transparent 9px, transparent 18px);
+    opacity: .85; }
+  .hazard .h-stamp { font-family: var(--serif-cn); font-weight: 800; font-size: 15px;
+    letter-spacing: .12em; color: var(--hazard); display: inline-flex; align-items: center; gap: 8px;
+    border: 1.5px solid var(--hazard); padding: 5px 12px; border-radius: 2px; margin: 6px 0 12px; }
+  .hazard .h-body { font-family: var(--serif); font-size: 15.5px; line-height: 1.7; color: var(--ink-soft); margin: 0; }
+  .emph { text-emphasis: filled var(--hazard); -webkit-text-emphasis: filled var(--hazard);
+    text-emphasis-position: under; -webkit-text-emphasis-position: under; font-weight: 600; color: var(--ink); }
+
+  /* 失败点裁决元行 */
+  .verdict { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .08em; color: var(--ink-faint); margin: 8px 0 14px; }
+  .vchip { border: 1px solid var(--rule); border-radius: 2px; padding: 2px 8px; text-transform: uppercase; letter-spacing: .1em; }
+  .vchip.sev { color: var(--oxblood); border-color: var(--oxblood); }
+  .vchip.v-pending { color: var(--hazard); border-color: var(--hazard); font-weight: 700; }
+  .vchip.v-refuted { color: var(--refute); border-color: var(--refute); font-weight: 700; }
+
+  /* 后续判断 · 编者复核（feedback：superseded / current） */
+  .fb { display: flex; gap: 14px; align-items: baseline; padding: 12px 0; border-bottom: 1px dotted var(--rule); }
+  .fb:last-child { border-bottom: 0; }
+  .fb .fb-date { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--ink-faint);
+    flex: none; width: 92px; font-variant-numeric: tabular-nums; }
+  .fb .fb-body { flex: 1; }
+  .fb .fb-verdict { font-family: var(--serif-cn); font-weight: 700; font-size: 17px; color: var(--ink); }
+  .fb .fb-tag { font-family: var(--mono); font-size: 9px; letter-spacing: .16em; text-transform: uppercase;
+    margin-left: 10px; padding: 2px 8px; border-radius: 2px; white-space: nowrap; }
+  .fb.current .fb-tag { color: var(--support); border: 1px solid var(--support); }
+  .fb.current .fb-verdict::after { content: ""; }
+  .fb.superseded { opacity: .5; }
+  .fb.superseded .fb-verdict { text-decoration: line-through; text-decoration-color: var(--hazard);
+    text-decoration-thickness: 1.5px; color: var(--ink-faint); }
+  .fb.superseded .fb-tag { color: var(--hazard); border: 1px solid var(--hazard); }
+  .fb-note { font-family: var(--kai); font-size: 13.5px; color: var(--ink-faint); margin-top: 5px; }
+  .fb-note .arrow { color: var(--oxblood); }
+
+  /* 编者朱批 annotation（失附 · unresolved） */
+  .zhupi { position: relative; font-family: var(--kai); font-size: 16px; line-height: 1.65;
+    color: var(--oxblood); border-left: 3px solid var(--oxblood); background: var(--stamp-bg);
+    padding: 14px 18px 14px 20px; margin: 0; }
+  .zhupi .z-id { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-faint); display: block; margin-bottom: 5px; }
+  .zhupi.unresolved { border-left-color: var(--hazard); background: var(--hazard-wash); color: var(--ink-soft); }
+  .zhupi .fail-tag { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono);
+    font-size: 9px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; color: var(--hazard);
+    border: 1px solid var(--hazard); border-radius: 2px; padding: 3px 9px; margin-top: 10px; }
+
+  /* colophon */
+  .colophon { border-top: 3px double var(--oxblood); margin-top: 44px; padding: 18px 0 50px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-faint); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+
+  @media (max-width: 560px) {
+    .fb { flex-direction: column; gap: 4px; }
+    .fb .fb-date { width: auto; }
+    .cover-seals { position: static; margin-bottom: 12px; }
+    .cover { padding-top: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 报头 ============ -->
+  <header class="masthead">
+    <div class="masthead-top">
+      <span class="eyebrow">证据关系 · 审阅备忘 · #53</span>
+      <button class="toggle" id="themeToggle" type="button" aria-label="切换明暗主题">
+        <span id="themeGlyph">☾</span><span id="themeText">暗版</span>
+      </button>
+    </div>
+
+    <h1 class="masthead-title">证据卷宗<span class="sep">·</span><span class="sub">EVIDENCE DOSSIER</span></h1>
+
+    <div class="masthead-meta">
+      <span><b>案号</b>&nbsp;EVG · 2026·07</span>
+      <span><b>体例</b>&nbsp;审稿备忘 / 逐段读证</span>
+      <span><b>两卷</b>&nbsp;卡片证据 · 主张证伪</span>
+    </div>
+
+    <nav class="vols" role="tablist" aria-label="卷次">
+      <button class="vol" role="tab" id="tabCard" aria-selected="true" type="button">
+        卷一 · 卡片证据<span class="fn">evidence_for_card()</span>
+      </button>
+      <button class="vol" role="tab" id="tabClaim" aria-selected="false" type="button">
+        卷二 · 主张证伪<span class="fn">evidence_for_claim()</span>
+      </button>
+      <span class="vols-rule" aria-hidden="true"></span>
+    </nav>
+
+    <div class="legend" aria-label="凡例">
+      <span class="lg s-support"><span class="sw"></span>支持 supports</span>
+      <span class="lg s-refute"><span class="sw"></span>证伪 refutes</span>
+      <span class="lg s-context"><span class="sw"></span>上下文 context</span>
+      <span class="lg s-hazard">⛔ 未检得证据 · 不放行</span>
+      <span class="lg s-caution">⚠ 供应源降级</span>
+      <span class="lg s-super">— 已被修正 / 失附</span>
+    </div>
+  </header>
+
+  <!-- ============ 卷一 · 卡片证据 ============ -->
+  <article class="dossier" id="dossierCard" role="tabpanel" aria-labelledby="tabCard">
+
+    <div class="cover">
+      <div class="cover-seals">
+        <span class="seal gold" title="金标：英文面成熟 × 中文法学空白"><span class="mark">金</span>金标</span>
+      </div>
+      <span class="cover-no">卷一 · CARD · evidence_for_card</span>
+      <h2 class="cover-title"><span class="q">「</span>熵增视角与信息不对称的负熵逻辑<span class="q">」</span></h2>
+      <div class="cover-meta">
+        <span class="cm"><span class="swatch" style="background:var(--oxblood)"></span><b>类目</b>&nbsp;学科视角</span>
+        <span class="cm"><b>新颖性</b>&nbsp;交叉空白</span>
+        <span class="cm"><b>定级</b>&nbsp;🥇 金标</span>
+      </div>
+    </div>
+
+    <p class="memo-lead">
+      <span class="lead-tag">编者按 · 本卷收录</span>
+      本卷汇一条支持材料、一条上下文材料与两则后续复核。证伪一栏至今空缺——
+      英文面 47 篇成熟、中文法学面仅得一条上下文，佐证了「金标」的判定；然而，
+      唯一的中文来源在检索时遭遇供应源降级，其可信度须打折看待。
+    </p>
+
+    <figure class="memo-quote">
+      <span class="ql">审阅备忘 · 一句话</span>
+      英热中冷坐实了金矿成色，可这座矿至今没人试着证伪——空着的证伪栏，本身就是下一步该补的功课。
+    </figure>
+
+    <!-- 支持 -->
+    <section class="section r-support">
+      <div class="sec-eyebrow">Supports</div>
+      <h3 class="sec-head">支持这条的<span class="sec-count">1 条</span></h3>
+      <div class="sec-rule"></div>
+      <div class="ev">
+        <div class="ev-head">
+          <span class="ev-rel">支持</span>
+          <cite class="ev-title">Entropy, Information, and the Economics of Scarcity</cite>
+        </div>
+        <div class="ev-appa">
+          <span class="prov">openalex</span>
+          <span class="retrieved">供应源直取</span>
+          <span class="evr">EvidenceRef <b>evr_1a</b></span>
+        </div>
+        <a class="ev-url" href="https://doi.org/10.1103/entropy.2019.0471" target="_blank" rel="noopener">https://doi.org/10.1103/entropy.2019.0471</a>
+      </div>
+    </section>
+
+    <!-- 上下文（含供应源降级） -->
+    <section class="section r-context">
+      <div class="sec-eyebrow">Context</div>
+      <h3 class="sec-head">作为上下文的<span class="sec-count">1 条</span></h3>
+      <div class="sec-rule"></div>
+      <div class="ev">
+        <div class="ev-head">
+          <span class="ev-rel">上下文</span>
+          <cite class="ev-title">负熵、信息与市场秩序：一个跨学科综述</cite>
+        </div>
+        <div class="ev-appa">
+          <span class="prov">cnki</span>
+          <span class="retrieved">供应源直取</span>
+          <span class="evr">EvidenceRef <b>evr_1b</b></span>
+        </div>
+        <a class="ev-url" href="https://kns.cnki.net/kcms/sample-4471" target="_blank" rel="noopener">https://kns.cnki.net/kcms/sample-4471</a>
+        <div class="caution">
+          <div class="c-label">⚠ 供应源降级 · 结果不完整</div>
+          <div class="c-reason">本条检索时有一路供应源失效，命中或有遗漏：<code>semantic_scholar: missing key</code></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 证伪（存目·无） -->
+    <section class="section r-refute">
+      <div class="sec-eyebrow">Refutes</div>
+      <h3 class="sec-head">试图证伪的<span class="sec-count">0 条 · 存目</span></h3>
+      <div class="sec-rule"></div>
+      <p class="empty-note"><b>存目 · 无</b>此卷未见任何证伪材料。空缺不等于无懈可击——只是尚无人来打。</p>
+    </section>
+
+    <!-- 后续判断 -->
+    <section class="section r-feedback">
+      <div class="sec-eyebrow">Feedback · 编者复核</div>
+      <h3 class="sec-head">后续判断<span class="sec-count">2 则 · 后者现行</span></h3>
+      <div class="sec-rule"></div>
+      <div class="fb superseded">
+        <span class="fb-date">2026-07-01</span>
+        <div class="fb-body">
+          <span class="fb-verdict">新且值得深挖</span>
+          <span class="fb-tag">已被修正 · superseded</span>
+          <div class="fb-note">初判存照，后经复核推翻 <span class="arrow">→</span> 见下一则</div>
+        </div>
+      </div>
+      <div class="fb current">
+        <span class="fb-date">2026-07-08</span>
+        <div class="fb-body">
+          <span class="fb-verdict">已知</span>
+          <span class="fb-tag">现行 · current</span>
+          <div class="fb-note">复核后落定：此路已在射程内，非新增盲区</div>
+        </div>
+      </div>
+    </section>
+  </article>
+
+  <!-- ============ 卷二 · 主张证伪 ============ -->
+  <article class="dossier" id="dossierClaim" role="tabpanel" aria-labelledby="tabClaim" hidden>
+
+    <div class="cover">
+      <span class="cover-no">卷二 · CLAIM #1 · evidence_for_claim</span>
+      <h2 class="cover-title"><span class="q">「</span>熵是隐喻不是机制<span class="q">」</span></h2>
+      <div class="cover-meta">
+        <span class="cm"><b>体裁</b>&nbsp;反驳主张 claim</span>
+        <span class="cm"><b>编号</b>&nbsp;claim-1</span>
+        <span class="cm"><b>出处</b>&nbsp;源自构思幕卡片</span>
+      </div>
+    </div>
+
+    <p class="memo-lead">
+      <span class="lead-tag">编者按 · 本卷收录</span>
+      此卷为该主张的证伪备忘，收两处失败点：其一致命而<span class="emph">未检得证据</span>，
+      依规不予放行；其二已由一条外部文献证伪。卷末附一则编者朱批，其定位在草稿改动后失附、悬而未决。
+    </p>
+
+    <!-- 失败点 f1：未决·不放行 -->
+    <section class="section r-hazard">
+      <div class="sec-eyebrow">Failure f1 · Unresolved</div>
+      <h3 class="sec-head">失败点 f1 · 悬而未决 · 不放行<span class="sec-count">缺乏可测量的熵定义</span></h3>
+      <div class="sec-rule"></div>
+      <div class="verdict">
+        <span class="vchip">类型 · 概念</span>
+        <span class="vchip sev">严重度 · 致命</span>
+        <span class="vchip v-pending">裁决 · 未决</span>
+      </div>
+      <div class="hazard">
+        <span class="h-stamp">⛔ 未检得证据 · 不放行</span>
+        <p class="h-body">检索未得任何直接证据支持或推翻此失败点。依卷宗规矩，<span class="emph">无证据不放行</span>——
+          该失败点既不能证成、也不能销案，须挂起待补检，不得据此裁决主张成立与否。</p>
+      </div>
+    </section>
+
+    <!-- 失败点 f2：已证伪 -->
+    <section class="section r-refute">
+      <div class="sec-eyebrow">Failure f2 · Refuted</div>
+      <h3 class="sec-head">失败点 f2 · 已证伪<span class="sec-count">已有文献做过同构解释</span></h3>
+      <div class="sec-rule"></div>
+      <div class="verdict">
+        <span class="vchip">类型 · 新颖性</span>
+        <span class="vchip sev">严重度 · 重大</span>
+        <span class="vchip v-refuted">裁决 · 已证伪</span>
+      </div>
+      <div class="ev">
+        <div class="ev-head">
+          <span class="ev-rel">证伪</span>
+          <cite class="ev-title">Prior isomorphism study</cite>
+        </div>
+        <div class="ev-appa">
+          <span class="prov">openalex</span>
+          <span class="evr">EvidenceRef <b>evr_2</b></span>
+        </div>
+        <a class="ev-url" href="https://doi.org/prior" target="_blank" rel="noopener">https://doi.org/prior</a>
+      </div>
+    </section>
+
+    <!-- 编者朱批：失附·unresolved -->
+    <section class="section r-annot">
+      <div class="sec-eyebrow">Annotation · 朱批</div>
+      <h3 class="sec-head">编者朱批<span class="sec-count">1 则 · 定位未决</span></h3>
+      <div class="sec-rule"></div>
+      <div class="zhupi unresolved">
+        <span class="z-id">claim-1 · annotation</span>
+        草稿改动后，此批注未能重新附着到原文位置，定位<span class="emph">未能重附着</span>——
+        原指处已随修订漂移，暂无法锚定。
+        <span class="fail-tag">失附 · 定位 unresolved</span>
+      </div>
+    </section>
+  </article>
+
+  <footer class="colophon">
+    <span>证据卷宗 · 文书阅读式审阅备忘</span>
+    <span>静态视觉稿 · 数据写死 · 离线自包含</span>
+  </footer>
+
+</div>
+
+<script>
+  /* ====== 明暗切换 ====== */
+  var root = document.documentElement;
+  function applyTheme(t) {
+    root.setAttribute("data-theme", t);
+    var dark = t === "dark";
+    document.getElementById("themeGlyph").textContent = dark ? "☀" : "☾";
+    document.getElementById("themeText").textContent = dark ? "明版" : "暗版";
+  }
+  (function initTheme() {
+    var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    applyTheme(prefersDark ? "dark" : "light");
+  })();
+  document.getElementById("themeToggle").addEventListener("click", function () {
+    applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+  });
+
+  /* ====== 两卷切换 ====== */
+  var tabCard = document.getElementById("tabCard");
+  var tabClaim = document.getElementById("tabClaim");
+  var dCard = document.getElementById("dossierCard");
+  var dClaim = document.getElementById("dossierClaim");
+  function showVol(which) {
+    var card = which === "card";
+    tabCard.setAttribute("aria-selected", card ? "true" : "false");
+    tabClaim.setAttribute("aria-selected", card ? "false" : "true");
+    dCard.hidden = !card;
+    dClaim.hidden = card;
+  }
+  tabCard.addEventListener("click", function () { showVol("card"); });
+  tabClaim.addEventListener("click", function () { showVol("claim"); });
+</script>
+</body>
+</html>
