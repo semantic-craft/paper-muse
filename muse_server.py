@@ -562,6 +562,8 @@ class SessionReq(BaseModel):
     retriever: str = "tavily"       # tavily | perplexity | mixed
     fulltext: bool = False          # True = Jina Reader 全文增强 top3
     output_dir: str | None = None
+    card_id: str | int | None = None       # #47：从哪张构思卡进的圆桌（溯源用）
+    evidence: list | None = None           # #47：卡片已有的 EvidenceRef 列表，seed 进知识库
 
 
 class StepReq(BaseModel):
@@ -758,6 +760,13 @@ def warm_start_bg(req: SessionReq):
             # 引擎会吞热身异常（只打印不重抛），空对话即失败
             if not runner.conversation_history:
                 raise RuntimeError("热身失败（对话为空），检查服务端日志")
+            # #47：热身后把卡片携带的已有证据 seed 进知识库（insert_under_root，确定性）。
+            # 证据身份经 Information.meta["evidence_id"] 贯穿知识库/报告/instance_dump；
+            # 无证据安全空转。懒 import：knowledge_storm 此时已由 build_runner 加载。
+            if req.evidence:
+                import roundtable_evidence
+                roundtable_evidence.seed_card_evidence(
+                    getattr(runner, "knowledge_base", None), req.evidence)
         SESSION["phase"] = "ready"
     except Exception:
         SESSION["error"] = traceback.format_exc()
