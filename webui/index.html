@@ -145,7 +145,7 @@
     padding: 2px 2px 4px; line-height: 1.4;
   }
   .puzzle-input:focus { border-bottom-color: var(--vermilion); outline: none; }
-  .puzzle-input::placeholder { color: var(--ink-2); font-style: italic; opacity: .8; }
+  .puzzle-input::placeholder { color: var(--ink-2); font-style: normal; opacity: .8; }
 
   /* ── 三段式骨架 ─────────────────────────────── */
   .desk {
@@ -610,7 +610,7 @@
   .pval:focus { outline: none; background: var(--sel-wash); border-bottom: 1px solid var(--vermilion); }
   .pval[data-empty="true"]::before {
     content: attr(data-placeholder);
-    color: var(--ink-2); font-style: italic;
+    color: var(--ink-2); font-style: normal;
   }
   .pval-wrap .pen {
     position: absolute; top: 1px; right: -12px;
@@ -672,7 +672,7 @@
   .p-form .pff:focus { border-bottom-color: var(--vermilion); outline: none; }
   .p-form .pff:focus ~ .hint { color: var(--vermilion); }
   .p-form .pff[data-empty="true"]::before {
-    content: attr(data-placeholder); color: var(--ink-2); opacity: .7; font-style: italic;
+    content: attr(data-placeholder); color: var(--ink-2); opacity: .7; font-style: normal;
   }
   .p-form .hint {
     display: block; margin-top: 5px;
@@ -850,7 +850,7 @@
   .p-what { font-family: var(--serif-zh); font-size: 14px; line-height: 1.55; color: var(--ink-2); margin: 0; }
   .p-feed { font-family: var(--kai); font-size: 13px; line-height: 1.5; color: var(--vermilion); margin: 5px 0 0; opacity: .92; }
   .p-feed .arrow { font-family: var(--mono); font-style: normal; margin-right: 4px; opacity: .7; }
-  .p-note { font-family: var(--serif-zh); font-size: 12.5px; color: var(--ink-2); margin: 5px 0 0; font-style: italic; }
+  .p-note { font-family: var(--serif-zh); font-size: 12.5px; color: var(--ink-2); margin: 5px 0 0; font-style: normal; }
   .p-acts { grid-area: acts; display: flex; gap: 4px; margin-top: 12px; align-items: center; }
   .p-act {
     font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
