@@ -252,16 +252,14 @@ def _evidence_ref(
     ):
         if value not in (None, ""):
             locator[key] = value  # type: ignore[literal-required]
-    if record.locator_kind == "pdf-page" or any(
+    # 「是否含定位符细节」判据只算一次：既决定 locator.source_identity/version 是否写入，
+    # 又参与 evidence_id 派生（下方）。两处必须同源——分开重算若将来漏改一处，会让同一记录
+    # 的 id 判定抖动、破坏图重建幂等（#14）。
+    has_locator_detail = record.locator_kind == "pdf-page" or any(
         value not in (None, "")
-        for value in (
-            record.prefix,
-            record.suffix,
-            record.page,
-            record.start,
-            record.end,
-        )
-    ):
+        for value in (record.prefix, record.suffix, record.page, record.start, record.end)
+    )
+    if has_locator_detail:
         locator["source_identity"] = identity
         if record.version:
             locator["source_version"] = record.version
@@ -275,16 +273,7 @@ def _evidence_ref(
     if index_version:
         retrieval["index_version"] = index_version
     evidence_identity = identity
-    if record.locator_kind == "pdf-page" or any(
-        value not in (None, "")
-        for value in (
-            record.prefix,
-            record.suffix,
-            record.page,
-            record.start,
-            record.end,
-        )
-    ):
+    if has_locator_detail:
         evidence_identity += "\n" + json.dumps(
             locator, ensure_ascii=False, sort_keys=True
         )
