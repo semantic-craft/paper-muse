@@ -619,6 +619,24 @@ def test_warm_start_seeds_card_evidence_into_knowledge_base(monkeypatch):
     assert ref["id"] in ids
 
 
+def test_scan_feedback_records_event_and_derives_suppression(tmp_path):
+    """#50：/scan/feedback 记不可变事件，并由投影重建 angle-feedback 抑制面。"""
+    from fastapi.testclient import TestClient
+    import feedback_events
+
+    muse_server.SCAN.update(
+        phase="done", output_dir=str(tmp_path),
+        cards=[{"id": 1, "name": "控制论视角", "evidence": [{"id": "evr_1"}]}])
+    client = TestClient(muse_server.app)
+
+    assert client.post("/scan/feedback", json={"name": "控制论视角", "verdict": "已知"}).json() == {"ok": True}
+
+    events = feedback_events.read_events(tmp_path)
+    assert len(events) == 1
+    assert events[0]["verdict"] == "已知" and events[0]["evidence_ids"] == ["evr_1"]
+    assert blindspot.normalize_name("控制论视角") in blindspot.load_suppressed(str(tmp_path))
+
+
 def test_adversary_bg_writes_run_manifest_with_code_version(monkeypatch, tmp_path):
     """#49：对抗幕跑完落 run-manifest.jsonl，含 kind/code_version/evidence 关联，且无秘密。"""
     import run_manifest
