@@ -402,6 +402,22 @@
     margin-left: 8px; opacity: 0; transition: opacity .2s;
   }
   .verdict[data-chosen] .vmark { opacity: 1; }
+  .self-library {
+    color: var(--own); background: none; border: 1px solid var(--own);
+    font-family: var(--serif-zh); font-size: 12px; line-height: 1.5;
+    padding: 3px 10px; cursor: pointer; margin-left: auto;
+  }
+  .self-library:hover, .self-library[aria-busy="true"] { background: var(--own); color: var(--paper); }
+  .self-library[disabled] { cursor: wait; opacity: .68; }
+  .self-library-result { margin: 10px 0 0; padding: 10px 12px; border-left: 2px solid var(--hair-strong); }
+  .self-library-result[hidden] { display: none; }
+  .self-library-result[data-state="loading"] { color: var(--ink-2); }
+  .self-library-result[data-state="success"] { border-left-color: var(--own); }
+  .self-library-result[data-state="degraded"], .self-library-result[data-state="error"] { border-left-color: var(--gold); }
+  .self-library-result .lib-state { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+  .self-library-result .lib-answer { font-family: var(--kai); font-size: 14px; line-height: 1.65; margin: 6px 0; }
+  .self-library-result .lib-evidence { margin: 7px 0 0; padding-left: 18px; font-family: var(--sans); font-size: 11px; line-height: 1.6; }
+  .self-library-result .lib-evidence a { color: var(--ink); }
 
   /* ── 右栏：朱批旁注 ─────────────────────────── */
   .margins { position: relative; padding: 30px 24px 0 0; }
@@ -1472,6 +1488,8 @@ const DEMO_CARDS = [
 
 /* ══ 运行态 ══ */
 let CARDS = [];            // 当前墙上的卡：真扫描=/scan/status 快照；?demo=DEMO_CARDS
+const SELF_LIBRARY_STATE = new Map(); // card id → {state, html, busy}; render() 重建 DOM 后恢复
+let SELF_LIBRARY_EPOCH = 0;
 let PROFILE = DEMO_PROFILE;
 // 研究者画像 live 态：真界面起空；DEMO 态用 DEMO_PROFILE 预填以便预览（见启动 init）
 let PROFILE_DATA = { field: "", stance: "", familiar: "" };  // 画像三要素，困惑不在此列（#3）
@@ -1741,6 +1759,7 @@ function entryHTML(c, i){
   );
   const anchors = anchorRows.join("");
   const questions = c.questions.map(q => `<li>${esc(q)}</li>`).join("");
+  const libraryState = SELF_LIBRARY_STATE.get(String(c.id)) || {state: "idle", html: "", busy: false};
 
   // 窄窗内联旁注（宽屏 CSS 隐藏）
   const inlineAnno = `<div class="anno-inline">
@@ -1793,9 +1812,11 @@ function entryHTML(c, i){
       <button class="vbtn v-na" type="button" data-v="na" data-verdict="新但不适用">新但不适用</button>
       <button class="vbtn deep v-deep" type="button" data-v="deep" data-verdict="新且值得深挖">新且值得深挖</button>
       <span class="vmark">✓ 已批</span>
+      <button class="self-library" type="button" title="让 PaperQA 查询自有 PDF 库并保留证据定位" ${libraryState.busy ? 'disabled aria-busy="true"' : ""}>查询自有 PDF 库</button>
       <button class="drill" type="button" title="以这张卡为种子起圆桌深挖"
-        style="margin-left:auto;background:none;border:none;color:var(--vermilion);font-family:var(--mono);font-size:11px;letter-spacing:.04em;cursor:pointer;padding:4px 2px">深挖圆桌 →</button>
+        style="background:none;border:none;color:var(--vermilion);font-family:var(--mono);font-size:11px;letter-spacing:.04em;cursor:pointer;padding:4px 2px">深挖圆桌 →</button>
     </div>
+    <div class="self-library-result" data-state="${esc(libraryState.state)}" role="status" aria-live="polite" ${libraryState.state === "idle" ? "hidden" : ""}>${libraryState.html}</div>
   </article>`;
 }
 
@@ -1865,10 +1886,81 @@ function wireEntries(){
     });
     const drillBtn = entry.querySelector(".drill");
     if (drillBtn) drillBtn.addEventListener("click", () => drill(c));
+    const libraryBtn = entry.querySelector(".self-library");
+    if (libraryBtn) libraryBtn.addEventListener("click", () => askSelfLibrary(c, entry));
     entry.querySelectorAll(".becuz-tag").forEach(tag => {
       tag.addEventListener("click", () => pingProfileField(tag.dataset.target));
     });
   });
+}
+
+function applySelfLibraryState(card){
+  const state = SELF_LIBRARY_STATE.get(String(card.id));
+  const current = document.getElementById("entry-" + card.id);
+  if (!state || !current) return;
+  const panel = current.querySelector(".self-library-result");
+  const button = current.querySelector(".self-library");
+  if (panel) {
+    panel.hidden = state.state === "idle";
+    panel.dataset.state = state.state;
+    panel.innerHTML = state.html;
+  }
+  if (button) {
+    button.disabled = !!state.busy;
+    if (state.busy) button.setAttribute("aria-busy", "true");
+    else button.removeAttribute("aria-busy");
+  }
+}
+
+function setSelfLibraryState(card, epoch, state, html, busy){
+  if (epoch !== SELF_LIBRARY_EPOCH) return;
+  SELF_LIBRARY_STATE.set(String(card.id), {state, html, busy: !!busy});
+  applySelfLibraryState(card);
+}
+
+function selfLibraryQuestion(card){
+  const prompt = (card.questions || [])[0];
+  return prompt || `围绕「${card.name}」查询自有 PDF 库：${card.mechanism || "请给出可定位的证据"}`;
+}
+
+async function askSelfLibrary(card, entry){
+  const button = entry.querySelector(".self-library");
+  const panel = entry.querySelector(".self-library-result");
+  if (!button || !panel || button.disabled) return;
+  const epoch = SELF_LIBRARY_EPOCH;
+  if (DEMO) {
+    setSelfLibraryState(card, epoch, "degraded", `<div class="lib-state">provider degraded</div><div class="lib-answer">演示模式不查询真实 PDF 库；回到本地应用后可重试。</div>`, false);
+    return;
+  }
+  setSelfLibraryState(card, epoch, "loading", `<div class="lib-state">loading</div><div class="lib-answer">正在查询自有 PDF 库并核对实际使用的引文…</div>`, true);
+  try {
+    const response = await fetch("/evidence/ask", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ question: selfLibraryQuestion(card), card_id: card.id, card_name: card.name })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || ("HTTP " + response.status));
+    if (!data.ok) {
+      const reason = data.message || (data.status && data.status.message) || "PaperQA 当前不可用";
+      setSelfLibraryState(card, epoch, "degraded", `<div class="lib-state">provider degraded · 可重试</div><div class="lib-answer">${esc(reason)}</div>`, false);
+    } else {
+      const evidence = Array.isArray(data.evidence) ? data.evidence : [];
+      const rows = evidence.map(ref => {
+        const source = ref.source || {}, locator = ref.locator || {};
+        const target = source.url || locator.value || "";
+        const page = locator.page == null ? "" : ` · p. ${esc(locator.page)}`;
+        return `<li>${target ? `<a href="${esc(target)}" target="_blank" rel="noopener">${esc(source.title || ref.id)}</a>` : esc(source.title || ref.id)}${page} · EvidenceRef ${esc(ref.id)}</li>`;
+      }).join("");
+      setSelfLibraryState(card, epoch, "success", `<div class="lib-state">success · 已写入 sources.md / evidence.json</div><div class="lib-answer">${esc(data.formatted_answer || data.answer)}</div>${rows ? `<ol class="lib-evidence">${rows}</ol>` : ""}`, false);
+    }
+  } catch (error) {
+    setSelfLibraryState(card, epoch, "error", `<div class="lib-state">error · 可重试</div><div class="lib-answer">${esc(error.message || error)}</div>`, false);
+  } finally {
+    const state = SELF_LIBRARY_STATE.get(String(card.id));
+    if (epoch === SELF_LIBRARY_EPOCH && state && state.busy) {
+      setSelfLibraryState(card, epoch, state.state, state.html, false);
+    }
+  }
 }
 
 /* 三键反馈 → 服务端抑制表（demo 态不联网） */
@@ -1975,6 +2067,8 @@ async function startScan(){
     setStatus("done");
     return;
   }
+  SELF_LIBRARY_EPOCH += 1;
+  SELF_LIBRARY_STATE.clear();
   setStatus("scanning");
   try {
     await saveProfile();   // 画像先落机器级 researcher.md（扫描据其物化快照，源头恒为机器级）
@@ -2394,11 +2488,17 @@ document.addEventListener("toggle", positionMargins, true);
   }
   function evidenceHTML(fp){
     if (fp.verdict == null) return `<span class="ev-pending">证据检索中…</span>`;
-    if (fp.verdict === "未决")
-      return `<div class="undec-block"><div class="ub-title"><span class="stamp">不放行</span>未检得任何证据</div><div class="ub-hint">解锁：<b>补检索</b> · 换检索词 · 需 CNKI 会话补中文面</div></div>`;
+    if (fp.verdict === "未决") {
+      const degraded = fp.sidecar_degradation ? ` · provider degraded：${esc(fp.sidecar_degradation)}` : "";
+      return `<div class="undec-block"><div class="ub-title"><span class="stamp">不放行</span>未检得任何证据</div><div class="ub-hint">解锁：<b>补检索</b> · 换检索词 · 需 CNKI 会话补中文面${degraded}</div></div>`;
+    }
     const ev = fp.evidence || [];
     if (!ev.length) return `<span class="ev-pending">（无证据条目）</span>`;
-    const items = ev.map(e => `<li class="ev-item"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title || e.url)}</a><span class="ev-stance s-${esc(e.stance)}">${esc(e.stance)}</span><span class="ev-host">${esc(shortHost(e.url))}</span></li>`).join("");
+    const items = ev.map(e => {
+      const source = e.source || {}, retrieval = e.retrieval || {};
+      const stance = e.relation === "refutes" ? "证伪" : e.relation === "supports" ? "佐证" : "上下文";
+      return `<li class="ev-item"><a href="${esc(source.url)}" target="_blank" rel="noopener">${esc(source.title || source.url)}</a><span class="ev-stance s-${esc(stance)}">${esc(stance)}</span><span class="ev-host">${esc(retrieval.provider || shortHost(source.url))} · EvidenceRef ${esc(e.id)}</span></li>`;
+    }).join("");
     return `<details class="ev-fold"><summary>证据链 ${ev.length} · 呈</summary><ul class="ev-list">${items}</ul></details>`;
   }
   function arbitrationHTML(fp){

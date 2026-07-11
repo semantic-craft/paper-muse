@@ -588,6 +588,8 @@ class FeedbackReq(BaseModel):
 
 class EvidenceAskReq(BaseModel):
     question: str
+    card_id: int | str | None = None
+    card_name: str | None = None
     pdf_dir: str | None = None
     output_dir: str | None = None
     timeout: int = paperqa_bridge.DEFAULT_TIMEOUT
@@ -809,6 +811,11 @@ def evidence_ask(req: EvidenceAskReq):
         load_api_key(toml_file_path=str(_secrets_path()))
         payload = paperqa_bridge.ask_self_library(
             req.question,
+            target=(
+                {"kind": "card", "id": str(req.card_id), "name": req.card_name or ""}
+                if req.card_id is not None or req.card_name
+                else None
+            ),
             pdf_dir=req.pdf_dir,
             output_dir=_current_evidence_output_dir(req.output_dir),
             timeout=max(30, min(int(req.timeout), 3600)),
@@ -818,6 +825,17 @@ def evidence_ask(req: EvidenceAskReq):
     except Exception as e:
         raise HTTPException(500, f"PaperQA 证据问答失败：{e}")
     return payload
+
+
+@app.get("/evidence/{evidence_id}")
+def evidence_by_id(evidence_id: str, output_dir: str | None = None):
+    base = _current_evidence_output_dir(output_dir)
+    if not base:
+        raise HTTPException(404, "No evidence output directory is active")
+    evidence = paperqa_bridge.read_evidence(base, evidence_id)
+    if evidence is None:
+        raise HTTPException(404, f"EvidenceRef not found: {evidence_id}")
+    return evidence
 
 
 @app.post("/session")

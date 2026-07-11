@@ -24,6 +24,7 @@ from pathlib import Path
 
 import blindspot
 from blindspot import extract_json  # 复用带围栏/多对象/json_repair 兜底的 JSON 抠取
+from evidence import ProviderRecord, evidence_ref_from_record
 from prompt_assets import ADVERSARIAL_REVIEW_PERSONA, ADVERSARY_METHOD_PROMPT
 
 FAILURE_TYPES = ["样本偏差", "内生性", "概念滑坡", "反例", "机制缺环", "规范·实证混淆"]  # 提示词枚举，非强校验
@@ -146,7 +147,15 @@ def sidecar_status(runtime_dir=None, sidecar_python=None, sidecar_script=None) -
         except (json.JSONDecodeError, IndexError):
             payload = {}
         if payload.get("ok") is True:
-            return {**base, "state": "ready", "installed": True, "ready": True, "message": "sidecar ready"}
+            return {
+                **base,
+                "state": "ready",
+                "installed": True,
+                "ready": True,
+                "message": "sidecar ready",
+                "gpt_researcher_version": payload.get("gpt_researcher_version"),
+                "extension_seam": payload.get("extension_seam"),
+            }
 
     message = failure or (health.stderr or health.stdout or "sidecar health check failed")[-500:]
     state = "failed" if failure else "installed"
@@ -181,11 +190,11 @@ def decide_verdict(evidence) -> str:
     """三态仲裁（代码强制，抗注入核心）：
     没有任何带合法立场的证据 → 未决（无据不放行，无论检索命中数多少——命中≠证据）；
     有「证伪」证据 → 已证伪；只有「佐证」→ 有佐证。"""
-    stances = [e.get("stance") for e in (evidence or [])
-               if isinstance(e, dict) and e.get("stance") in STANCES]
-    if not stances:
+    relations = [e.get("relation") for e in (evidence or [])
+                 if isinstance(e, dict) and e.get("relation") in {"refutes", "supports"}]
+    if not relations:
         return "未决"
-    return "已证伪" if "证伪" in stances else "有佐证"
+    return "已证伪" if "refutes" in relations else "有佐证"
 
 
 # ---- 主张抽取（注入式 LM）----
@@ -265,7 +274,7 @@ def red_team(claim_text: str, llm_call, persona: str = ADVERSARIAL_REVIEW_PERSON
 # ---- 证据分类（注入式 LM）：把原始检索命中判成证据（命中≠证据）----
 
 def classify_evidence(claim_text: str, failure_statement: str, hits: list, llm_call) -> list:
-    """检索命中 → 该失败点的证据集 [{title, url, stance}]。
+    """检索命中 → 该失败点的统一 EvidenceRef 集。
     只留与失败点**直接相关**且能定性（证伪削弱主张 / 佐证支持主张）的命中；无关命中丢弃。
     LLM 只回序号 + 立场，标题/URL 由代码从原始命中回填——**杜绝 URL 幻觉**（证据必须真实可点）。"""
     hits = [h for h in (hits or []) if isinstance(h, dict) and h.get("url")]
@@ -300,7 +309,43 @@ def classify_evidence(claim_text: str, failure_statement: str, hits: list, llm_c
         if 1 <= n <= len(hits) and stance in STANCES and n not in seen:
             seen.add(n)
             h = hits[n - 1]
-            out.append({"title": h.get("title", ""), "url": h["url"], "stance": stance})
+            provider = str(h.get("provider") or "web")
+            source_kind = {
+                "cnki": "cnki-record",
+                "zsearch": "library-document",
+            }.get(provider, "scholarly-work")
+            locator = h.get("locator") if isinstance(h.get("locator"), dict) else {}
+            out.append(
+                evidence_ref_from_record(
+                    ProviderRecord(
+                        source_id=str(h.get("source_id") or h["url"]),
+                        title=str(h.get("title") or h["url"]),
+                        url=str(h["url"]),
+                        version=str(h.get("version") or ""),
+                        source_kind=source_kind,
+                        relation="refutes" if stance == "证伪" else "supports",
+                        identity=str(h.get("identity") or ""),
+                        locator_kind=locator.get("kind") or "url",
+                        locator_value=str(locator.get("value") or h["url"]),
+                        exact=str(locator.get("exact") or h.get("title") or ""),
+                        prefix=str(locator.get("prefix") or ""),
+                        suffix=str(locator.get("suffix") or ""),
+                        page=locator.get("page"),
+                        verification_status=str(
+                            h.get("verification_status") or "provider-retrieved"
+                        ),
+                        native=(
+                            h.get("native")
+                            if isinstance(h.get("native"), dict)
+                            else None
+                        ),
+                    ),
+                    provider,
+                    str(h.get("query") or claim_text),
+                    provider_version=str(h.get("provider_version") or ""),
+                    index_version=str(h.get("index_version") or ""),
+                )
+            )
     return out
 
 
@@ -308,7 +353,9 @@ def _evidence_brief(evidence: list) -> str:
     if not evidence:
         return "（无直接证据）"
     return "\n".join(
-        f"- {e.get('stance', '?')}：{e.get('title', '') or '(无标题)'} — {e.get('url', '')}"
+        f"- { {'refutes': '证伪', 'supports': '佐证'}.get(e.get('relation'), '?') }："
+        f"{(e.get('source') or {}).get('title', '') or '(无标题)'} — "
+        f"{(e.get('source') or {}).get('url', '')}"
         for e in evidence[:8]
     )
 
@@ -450,7 +497,12 @@ def _write_failure_points(output_dir, claims):
             if f.get("sidecar_degradation"):
                 lines.append(f"- Sidecar 降级：{f['sidecar_degradation']}")
             for e in f.get("evidence", []):
-                lines.append(f"- [{e['stance']}] {e['title']} — {e['url']}")
+                source = e.get("source") or {}
+                stance = {"refutes": "证伪", "supports": "佐证"}.get(e.get("relation"), "上下文")
+                lines.append(
+                    f"- [{stance}] {source.get('title', '')} — {source.get('url', '')} "
+                    f"· EvidenceRef `{e.get('id', '')}`"
+                )
         if claim.get("memo"):
             lines.append(f"\n### 证伪备忘录（gpt-researcher）\n\n{claim['memo'].strip()}")
     (d / "failure-points.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -646,7 +698,19 @@ def real_falsify_search(sidecar_python=None, sidecar_script=None, want_memo=True
         for item in res.get("claims", []):
             cid = item.get("id")
             if cid is not None:
-                pools[cid] = item
+                pools[cid] = (
+                    item
+                    if item.get("ok")
+                    else _degraded_pool(
+                        {"state": "failed", "message": item.get("error") or "sidecar claim failed"}
+                    )
+                )
+        for claim in claims:
+            cid = claim.get("id")
+            if cid is not None and cid not in pools:
+                pools[cid] = _degraded_pool(
+                    {"state": "failed", "message": "sidecar omitted claim result"}
+                )
         return pools
 
     search.search_many = search_many

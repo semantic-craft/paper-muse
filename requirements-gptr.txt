@@ -11,5 +11,7 @@
 # 主引擎入口：adversary.real_falsify_search() → .venv-gptr/bin/python gptr_sidecar.py
 # 需要的 key（从主进程 env 继承）：OPENAI_API_KEY、TAVILY_API_KEY。CNKI 需 Chrome 会话（opencli），
 # 无会话时该面降级明示（zh 面退到 zsearch）。OPENAI_BASE_URL 由 sidecar 显式钉官方端点。
+# 0.15.1 已验证支持公开 RETRIEVER=tavily,custom + RETRIEVER_ENDPOINT；CNKI/zsearch
+# 由 sidecar 的 loopback endpoint 聚合，不修改 gpt-researcher 私有 registry/parser。
 
 gpt-researcher==0.15.1

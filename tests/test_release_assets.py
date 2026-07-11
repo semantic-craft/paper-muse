@@ -76,6 +76,15 @@ def test_adversary_ui_renders_rebuttal_and_meta_review():
     assert "作者答辩" in html and "仲裁" in html
 
 
+def test_adversary_ui_consumes_evidence_ref_and_provider_degradation():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert "e.source || {}" in html
+    assert "e.relation" in html
+    assert "sidecar_degradation" in html
+    assert "EvidenceRef" in html
+
+
 def test_scan_ui_consumes_unified_evidence_refs():
     html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
 
@@ -98,6 +107,21 @@ def test_scan_ui_uses_zotero_locator_and_shows_identity_status():
     assert "c.own_identity_status" in html
     assert 'locator.kind === "zotero-select"' in html
     assert "Zotero 身份" in html
+
+
+def test_card_ui_exposes_recoverable_self_library_evidence_flow():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert "查询自有 PDF 库" in html
+    assert 'fetch("/evidence/ask"' in html
+    assert 'setSelfLibraryState(card, epoch, "loading"' in html
+    assert 'setSelfLibraryState(card, epoch, "success"' in html
+    assert 'setSelfLibraryState(card, epoch, "degraded"' in html
+    assert 'setSelfLibraryState(card, epoch, "error"' in html
+    assert "const SELF_LIBRARY_STATE = new Map()" in html
+    assert "applySelfLibraryState(card)" in html
+    assert "SELF_LIBRARY_STATE.clear()" in html
+    assert "EvidenceRef" in html
 
 
 def test_release_launch_does_not_write_bytecode_into_signed_bundle():
