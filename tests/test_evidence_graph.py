@@ -229,6 +229,30 @@ def test_evidence_for_card_groups_support_context_feedback(tmp_path):
     assert verdicts == {"新且值得深挖": True, "已知": False}
 
 
+def test_card_discovery_evidence_surfaces_as_context(tmp_path):
+    """回归：构思幕检索证据的 relation 是 ProviderRecord 默认 "discovery"（非图 stance 词表）。
+    修复前该边落成 relation="discovery"，被 evidence_for_card 静默丢弃 → 卡片抽屉显示「无来源」，
+    且违反「图关系 ⊆ 规范集」。修复后规范到 "context"，在上下文分组可见。"""
+    muse = _muse(tmp_path)
+    (muse / "perspectives.md").write_text(_PERSPECTIVES, encoding="utf-8")
+    ref = {"id": "evr_disc", "source": {"title": "Discovered hit", "url": "https://ex/d"},
+           "locator": {"kind": "url", "value": "https://ex/d"},
+           "retrieval": {"provider": "openalex"}, "relation": "discovery",
+           "verification": {"status": "provider-retrieved", "degraded": False}}
+    (muse / "sources.md").write_text(
+        "# 文献锚点\n\n- [熵增视角] Discovered hit — https://ex/d\n"
+        "  - EvidenceRef-JSON: " + json.dumps(ref, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8")
+    graph = evidence_graph.build_graph(tmp_path)
+    # 边被规范到 context，不落非规范的 discovery，不违反关系不变量
+    assert _has_edge(graph, "evidence:evr_disc", "card:熵增视角", "context")
+    assert {e["relation"] for e in graph["edges"]} <= {
+        "supports", "refutes", "context", "derived-from", "annotates", "deepens"}
+    # 卡片抽屉真能查到这条来源（修复前此处为空）
+    view = evidence_graph.evidence_for_card(graph, "熵增视角")
+    assert [e["ref_id"] for e in view["context"]] == ["evr_disc"]
+
+
 def test_evidence_for_claim_groups_failures_and_annotations(tmp_path):
     _seed_all(tmp_path)
     graph = evidence_graph.build_graph(tmp_path)

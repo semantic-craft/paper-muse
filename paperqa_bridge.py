@@ -367,19 +367,21 @@ def paperqa_payload_to_bundle(payload: dict, *, question: str, status: dict) -> 
     references = (
         payload.get("references") if isinstance(payload.get("references"), list) else []
     )
+    # sidecar 路径里 references 与 context 分开返回、chunk 可能缺 url，需从 references 回填。
+    # 但 _extract_references 跳过无题无址项并按 (title,url) 去重，故 references 与 context
+    # 下标错位——旧代码按下标回填会把后一篇文献的 url 挂到无址的孤儿 chunk 上（张冠李戴、
+    # 契约保真破坏）。改按标题建索引精确匹配：无标题或标题对不上则不回填（宁缺毋滥）。
+    ref_url_by_title = {}
+    for r in references:
+        if isinstance(r, dict) and r.get("title") and r.get("url"):
+            ref_url_by_title.setdefault(r["title"], r["url"])
     context = []
-    for index, raw_item in enumerate(raw_context):
+    for raw_item in raw_context:
         if not isinstance(raw_item, dict):
             continue
         item = dict(raw_item)
-        if (
-            not item.get("url")
-            and index < len(references)
-            and isinstance(references[index], dict)
-        ):
-            reference = references[index]
-            if not item.get("title") or reference.get("title") == item.get("title"):
-                item["url"] = reference.get("url") or ""
+        if not item.get("url") and item.get("title") in ref_url_by_title:
+            item["url"] = ref_url_by_title[item["title"]]
         context.append(item)
     answer = CorpusAnswer(
         answer=str(payload.get("answer") or ""),

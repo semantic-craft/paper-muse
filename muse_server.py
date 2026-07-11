@@ -896,27 +896,37 @@ def evidence_by_id(evidence_id: str, output_dir: str | None = None):
 
 @app.post("/session")
 def create_session(req: SessionReq):
-    if SESSION["phase"] in ("warming", "stepping"):
-        raise HTTPException(409, "圆桌正忙，等当前操作结束再开新主题")
-    topic = req.topic.strip()
-    if not topic:
-        raise HTTPException(400, "主题不能为空")
+    # 相位守卫 + 状态置位必须与 /step、/report 同锁：否则「检查 phase → 改写 SESSION
+    # （phase=warming, runner=None）」这段与并发 /step 的「检查 ready → 置 stepping →
+    # finally 改回 ready」交错——/step 的 finally 会把正在预热的新会话相位覆写回 ready，
+    # 而 runner 已被本 handler 置 None → 后续 /step 拿 None runner 崩 500。
+    if not RUNNER_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "圆桌正忙（另一操作进行中）")
     try:
-        _require_setup(_roundtable_required_keys(req))
-    except SetupRequiredError as e:
-        _raise_setup_http(e)
-    req.topic = topic
-    provider, model = _roundtable_model_spec(req.model)
-    base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
-    SESSION.update(
-        phase="warming",
-        topic=topic,
-        model=provider,
-        runner=None,
-        progress=[],
-        error=None,
-        output_dir=os.path.join(base, f"costorm_{sanitize_topic(topic)}"),
-    )
+        if SESSION["phase"] in ("warming", "stepping"):
+            raise HTTPException(409, "圆桌正忙，等当前操作结束再开新主题")
+        topic = req.topic.strip()
+        if not topic:
+            raise HTTPException(400, "主题不能为空")
+        try:
+            _require_setup(_roundtable_required_keys(req))
+        except SetupRequiredError as e:
+            _raise_setup_http(e)
+        req.topic = topic
+        provider, model = _roundtable_model_spec(req.model)
+        base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
+        SESSION.update(
+            phase="warming",
+            topic=topic,
+            model=provider,
+            runner=None,
+            progress=[],
+            error=None,
+            output_dir=os.path.join(base, f"costorm_{sanitize_topic(topic)}"),
+        )
+    finally:
+        RUNNER_LOCK.release()
+    # 预热耗时（分钟级），必须在释放锁后起后台线程；warming 相位已挡住并发 /step/report。
     threading.Thread(target=warm_start_bg, args=(req,), daemon=True).start()
     return {"ok": True, "topic": topic, "model": provider, "llm": model, "output_dir": SESSION["output_dir"]}
 

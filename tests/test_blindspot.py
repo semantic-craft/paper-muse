@@ -406,6 +406,33 @@ def test_run_scan_streaming_merge_and_enrich(tmp_path, monkeypatch):
     assert len(a["evidence"]) == 1  # en 面 EvidenceRef 贯穿到卡
 
 
+def test_emitted_card_carries_merge_target_keys_from_preset(tmp_path, monkeypatch):
+    """回归：上墙后原地更新「只换值不加键」。_merge_card_into 会写 merged_angles / feasibility，
+    这两键必须在 fresh 预置里就存在——否则第二家枚举出同角度卡时给已上墙的活卡片新增键，
+    与 /scan/status 并发序列化撞 RuntimeError: dictionary changed size during iteration。
+    只用单家：在 on_card（卡刚上墙、任何合并之前）即断言两键已存在，确定性、无时序依赖。"""
+    import blindspot as B
+
+    monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
+    monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "kw")
+    keys_at_emit = {}
+
+    def on_card(c):
+        keys_at_emit[c["name"]] = set(c.keys())
+
+    B.run_scan(
+        "主题", "", str(tmp_path),
+        providers={"m": lambda p: json.dumps({"cards": [
+            {"type": "学科视角", "name": "熵增视角", "mechanism": "m",
+             "why_nonobvious": "w", "steelman": "s", "questions": ["q"]}]})},
+        decompose_llm=lambda p: "",
+        en_search=lambda q: [], zh_search=lambda q: [], own_search=None,
+        on_card=on_card)
+
+    assert "merged_angles" in keys_at_emit["熵增视角"]
+    assert "feasibility" in keys_at_emit["熵增视角"]
+
+
 def test_run_scan_merges_angle_variants_in_live_wall(tmp_path, monkeypatch):
     import blindspot as B
 

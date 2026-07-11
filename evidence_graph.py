@@ -271,7 +271,11 @@ def build_graph(output_dir) -> dict:
             {"id": _nid("card", norm), "kind": "card", "name": card_name})
         card_id_by_norm.setdefault(norm, card_node_id)
         ev_id = g.node(_evidence_node_from_ref(ref))
-        g.edge(ev_id, card_node_id, ref.get("relation", "context"))
+        # provider 级 relation（构思幕检索证据默认 "discovery"）规范到图的 stance 词表：
+        # 只有 supports/refutes 是明确表态，其余（discovery 及未知）都归「上下文来源」，
+        # 否则该边落成非规范关系 → 被 evidence_for_card 静默丢弃、卡片抽屉显示无来源。
+        rel = ref.get("relation", "context")
+        g.edge(ev_id, card_node_id, rel if rel in ("supports", "refutes") else "context")
 
     # --- 证据仓：evidence.json 的 evidence 注册表（补全身份桩的 ref 详情）---
     store = _read_json(d / "evidence.json") or {}
