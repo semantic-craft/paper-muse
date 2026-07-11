@@ -1,0 +1,476 @@
+<!-- 证据抽屉 · 主从式 master-detail — 左栏锚点列表（按卡片/按主张 Tab），点选后右栏抽屉就地展开该锚点的 支持/证伪/上下文 分层证据 + 后续判断 timeline。关系色：支持=绿(nov-cnki) 证伪=酒红(oxblood) 上下文=灰(ink-faint)。四类一等公民警示信号：⛔未检得证据·不放行 / ⚠供给降级 / 已被修正 superseded / 锚点失附 unresolved —— 均刻意区别于「已验证证据」。 -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>证据抽屉 · evidence graph</title>
+<style>
+  /* ============ 色 token（沿用「学报」母版，明暗双主题） ============ */
+  :root {
+    --paper:#FBFAF7; --ink:#161412; --ink-soft:#4A443E; --ink-faint:#8A8177;
+    --rule:#DCD6CB; --rule-soft:#ECE7DE;
+    --oxblood:#6E2233; --oxblood-ink:#5A1B29; --gold:#9A7B2E;
+    --field:#FFFFFF; --stamp-bg:rgba(110,34,51,.06); --quote-tint:#F6F1EC; --seal-shadow:rgba(22,20,18,.04);
+    --cat-view:#6E2233; --cat-theory:#2B2622; --cat-method:#9A7B2E;
+    --nov-gold:#9A7B2E; --nov-edge:#6E2233; --nov-main:#8A8177; --nov-cnki:#3C6E5A;
+    /* 关系语义别名（跟随主题解析） */
+    --supports:var(--nov-cnki); --refutes:var(--oxblood); --context:var(--ink-faint); --warn:var(--gold);
+    --warn-tint:rgba(154,123,46,.10); --block-tint:rgba(110,34,51,.06); --block-hatch:rgba(110,34,51,.13);
+    --sans:-apple-system,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
+    --serif-cn:"Songti SC","STSong","Songti TC",serif;
+    --serif:"Songti SC","STSong","New York","Palatino","Baskerville",Georgia,serif;
+    --kai:"Kaiti SC","STKaiti","Songti SC",serif;
+    --mono:"SF Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+  }
+  [data-theme="dark"] {
+    --paper:#161311; --ink:#EDE7DB; --ink-soft:#C4BBAC; --ink-faint:#8C8474;
+    --rule:#3A342D; --rule-soft:#2A2620;
+    --oxblood:#B5566A; --oxblood-ink:#C46A7D; --gold:#C6A94E;
+    --field:#1E1A17; --stamp-bg:rgba(181,86,106,.10); --quote-tint:#1E1A17; --seal-shadow:rgba(0,0,0,.25);
+    --cat-view:#B5566A; --cat-theory:#C4BBAC; --cat-method:#C6A94E;
+    --nov-gold:#C6A94E; --nov-edge:#B5566A; --nov-main:#8C8474; --nov-cnki:#6FB59A;
+    --warn-tint:rgba(198,169,78,.14); --block-tint:rgba(181,86,106,.11); --block-hatch:rgba(181,86,106,.20);
+  }
+
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--serif); line-height:1.6; font-size:17px;
+    transition:background .35s ease, color .35s ease;
+    text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 clamp(18px,4vw,56px); }
+
+  /* ============ 报头 ============ */
+  .masthead { padding:32px 0 0; }
+  .masthead-top { display:flex; align-items:baseline; justify-content:space-between; gap:20px; flex-wrap:wrap; border-bottom:3px double var(--oxblood); padding-bottom:8px; }
+  .masthead-eyebrow { font-family:var(--mono); font-size:10.5px; letter-spacing:.32em; text-transform:uppercase; color:var(--oxblood); font-weight:600; }
+  .toggle { font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; background:transparent; color:var(--ink-soft); border:1px solid var(--rule); border-radius:999px; padding:6px 14px; cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:border-color .2s,color .2s; }
+  .toggle:hover { border-color:var(--oxblood); color:var(--oxblood); }
+  .toggle:focus-visible { outline:2px solid var(--oxblood); outline-offset:2px; }
+  .masthead-title { font-family:var(--serif-cn); font-weight:900; font-size:clamp(38px,6.4vw,74px); line-height:.98; letter-spacing:-.02em; margin:16px 0 6px; }
+  .masthead-title .sep { color:var(--oxblood); font-weight:400; padding:0 .12em; }
+  .masthead-title .issue { font-family:var(--serif); font-size:.34em; letter-spacing:.02em; font-weight:600; color:var(--ink-faint); }
+  .masthead-meta { display:flex; flex-wrap:wrap; gap:6px 24px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); padding:9px 0; margin-top:12px; font-variant-numeric:tabular-nums; }
+  .masthead-meta b { color:var(--ink-soft); font-weight:600; }
+
+  /* ============ 图例 legend ============ */
+  .legend { display:flex; flex-wrap:wrap; gap:8px 18px; padding:12px 0 2px; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); }
+  .legend .lg { display:inline-flex; align-items:center; gap:6px; }
+  .legend .dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .legend .lg.warn { color:var(--warn); }
+  .legend .lg.block { color:var(--refutes); font-weight:700; }
+
+  /* ============ 工作台：主从两栏 ============ */
+  .workbench { display:grid; grid-template-columns:minmax(258px,326px) minmax(0,1fr); align-items:start; border-top:2px solid var(--ink); margin-top:4px; }
+  .rail { min-width:0; border-right:1px solid var(--rule); }
+  .drawer { min-width:0; padding:6px 0 40px 30px; }
+  @media (min-width:861px) { .rail { position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; } }
+  @media (max-width:860px) {
+    .workbench { grid-template-columns:1fr; }
+    .rail { border-right:0; border-bottom:2px solid var(--ink); }
+    .drawer { padding:20px 0 40px; }
+  }
+
+  /* Tab 切换 */
+  .tabs { display:flex; gap:0; border-bottom:1px solid var(--rule); }
+  .tab { flex:1; font-family:var(--serif-cn); font-weight:700; font-size:15px; letter-spacing:.1em; padding:12px 8px 11px; cursor:pointer; background:transparent; border:0; color:var(--ink-faint); border-bottom:2px solid transparent; }
+  .tab[aria-selected="true"] { color:var(--oxblood); border-bottom-color:var(--oxblood); }
+  .tab:focus-visible { outline:2px solid var(--oxblood); outline-offset:-4px; }
+
+  /* 锚点列表项 */
+  .anchor { display:block; width:100%; text-align:left; background:transparent; border:0; border-bottom:1px solid var(--rule-soft); padding:13px 16px 14px 18px; cursor:pointer; position:relative; transition:background .16s; }
+  .anchor::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:transparent; }
+  .anchor:hover { background:var(--stamp-bg); }
+  .anchor.active { background:var(--stamp-bg); }
+  .anchor.active::before { background:var(--oxblood); }
+  .anchor:focus-visible { outline:2px solid var(--oxblood); outline-offset:-3px; }
+  .anchor-kick { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-family:var(--mono); font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:5px; }
+  .anchor-name { font-family:var(--serif-cn); font-weight:700; font-size:16px; line-height:1.28; color:var(--ink); margin-bottom:7px; overflow-wrap:anywhere; }
+  .anchor-tally { display:flex; flex-wrap:wrap; gap:5px 8px; font-family:var(--mono); font-size:9.5px; letter-spacing:.04em; }
+  .t { color:var(--ink-faint); font-variant-numeric:tabular-nums; }
+  .t.supports { color:var(--supports); } .t.refutes { color:var(--refutes); } .t.context { color:var(--context); }
+  .t.warn { color:var(--warn); } .t.block { color:var(--refutes); font-weight:700; }
+  .claim-tag { color:var(--oxblood); font-weight:700; }
+  .a-gold { color:var(--gold); font-weight:600; }
+
+  /* 共用：类别块 / 新颖性 / 印章（母版元件） */
+  .cat { display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; }
+  .swatch { width:9px; height:9px; display:inline-block; flex:none; border:.5px solid rgba(0,0,0,.15); }
+  [data-theme="dark"] .swatch { border-color:rgba(255,255,255,.18); }
+  .novelty { font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; font-weight:700; padding:3px 9px; border-radius:2px; display:inline-flex; align-items:center; gap:5px; }
+  .novelty::before { content:""; width:6px; height:6px; border-radius:50%; display:inline-block; }
+  .novelty.n-gap { color:var(--paper); background:var(--nov-gold); border:1px solid var(--nov-gold); box-shadow:0 0 0 3px var(--stamp-bg); }
+  .novelty.n-gap::before { background:var(--paper); }
+  .novelty.n-edge { color:var(--nov-edge); border:1px solid var(--nov-edge); } .novelty.n-edge::before { background:var(--nov-edge); }
+  .novelty.n-main { color:var(--nov-main); border:1px solid var(--rule); } .novelty.n-main::before { background:var(--nov-main); }
+  .seal { display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; font-weight:600; padding:3px 8px 3px 6px; border-radius:2px; line-height:1; white-space:nowrap; }
+  .seal .mark { font-family:var(--serif-cn); font-weight:800; font-size:11px; line-height:1; display:inline-grid; place-items:center; width:15px; height:15px; border-radius:50%; }
+  .seal.gold { color:var(--gold); border:1px solid var(--gold); background:var(--stamp-bg); }
+  .seal.gold .mark { background:var(--gold); color:var(--paper); }
+  .seal.live { color:var(--oxblood); border:1px solid var(--oxblood); background:var(--stamp-bg); }
+  .seal.live .mark { background:var(--oxblood); color:var(--paper); }
+
+  /* ============ 抽屉表头 ============ */
+  .drawer-head { border-bottom:2px solid var(--ink); padding-bottom:15px; margin-bottom:2px; }
+  .dh-kick { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:11px; }
+  .dh-title { font-family:var(--serif-cn); font-weight:800; font-size:clamp(21px,3vw,29px); line-height:1.12; margin:0; color:var(--ink); overflow-wrap:anywhere; }
+  .dh-sub { font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); margin-top:9px; font-variant-numeric:tabular-nums; }
+  .claim-badge { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--paper); background:var(--oxblood); padding:3px 10px; border-radius:2px; }
+  .dh-src { font-family:var(--kai); color:var(--oxblood); font-size:14px; }
+
+  /* ============ 关系分组 ============ */
+  .rel-group { border-top:1px solid var(--rule); padding:16px 0 4px; }
+  .rel-group:first-of-type { border-top:0; padding-top:18px; }
+  .rel-head { display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; margin-bottom:13px; }
+  .rel-dot { width:9px; height:9px; border-radius:50%; flex:none; }
+  .rel-group.supports .rel-dot { background:var(--supports); } .rel-group.supports .rel-name { color:var(--supports); }
+  .rel-group.refutes .rel-dot { background:var(--refutes); } .rel-group.refutes .rel-name { color:var(--refutes); }
+  .rel-group.context .rel-dot { background:var(--context); } .rel-group.context .rel-name { color:var(--ink-soft); }
+  .rel-group.failures .rel-dot { background:var(--refutes); } .rel-group.failures .rel-name { color:var(--refutes); }
+  .rel-name { font-weight:700; }
+  .rel-count { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--ink-faint); border:1px solid var(--rule); border-radius:999px; padding:0 8px; font-size:10px; }
+
+  /* 证据卡 */
+  .ev-card { border:1px solid var(--rule); border-left:3px solid var(--context); background:var(--field); padding:13px 15px; margin:0 0 12px; }
+  .ev-card.supports { border-left-color:var(--supports); }
+  .ev-card.refutes { border-left-color:var(--refutes); }
+  .ev-card.context { border-left-color:var(--context); }
+  .ev-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+  .rel-tag { font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; font-weight:700; padding:2px 8px; border-radius:2px; }
+  .rel-tag.supports { color:var(--paper); background:var(--supports); }
+  .rel-tag.refutes { color:var(--paper); background:var(--refutes); }
+  .rel-tag.context { color:var(--ink-soft); border:1px solid var(--context); }
+  .ev-ref { font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--ink-faint); border:1px solid var(--rule); border-radius:2px; padding:1px 7px; white-space:nowrap; }
+  .ev-title { font-family:var(--serif-cn); font-weight:700; font-size:16.5px; line-height:1.32; margin:0 0 8px; color:var(--ink); overflow-wrap:anywhere; }
+  .ev-meta { display:flex; flex-wrap:wrap; gap:6px 12px; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); }
+  .ev-meta .prov { color:var(--ink-soft); font-weight:600; }
+  .ev-meta .mode { border:1px solid var(--rule); border-radius:2px; padding:1px 6px; }
+  .ev-link-wrap { overflow-x:auto; margin-top:9px; border-top:1px dotted var(--rule); padding-top:8px; }
+  .ev-link { font-family:var(--mono); font-size:11px; color:var(--ink-faint); text-decoration:none; white-space:nowrap; border-bottom:1px solid var(--rule); }
+  .ev-link:hover { color:var(--oxblood); border-bottom-color:var(--oxblood); }
+
+  /* ⚠ 供给降级带 —— 一等公民信号① */
+  .degraded { margin-top:11px; display:flex; gap:9px; align-items:flex-start; background:var(--warn-tint); border:1px solid var(--warn); border-left-width:3px; padding:8px 11px; font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; color:var(--ink-soft); }
+  .degraded .d-glyph { font-size:14px; color:var(--warn); line-height:1.2; }
+  .degraded b { color:var(--ink); font-weight:700; }
+
+  /* 空态 */
+  .ev-empty { border:1px dashed var(--rule); color:var(--ink-faint); font-family:var(--kai); font-size:14px; padding:11px 14px; margin-bottom:12px; }
+
+  /* ============ 反驳卡（主张视图） ============ */
+  .fail-card { border:1px solid var(--rule); border-left:3px solid var(--ink-faint); background:var(--field); padding:14px 15px; margin-bottom:14px; }
+  .fail-card.blocked { border-left-color:var(--refutes); }
+  .fail-card.refuted { border-left-color:var(--refutes); }
+  .fail-card.passed { border-left-color:var(--supports); }
+  .fail-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:9px; }
+  .fno { font-family:var(--mono); font-weight:700; color:var(--oxblood); border:1px solid var(--oxblood); border-radius:2px; padding:1px 7px; font-size:11px; }
+  .chip { font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; border:1px solid var(--rule); border-radius:2px; padding:2px 7px; color:var(--ink-soft); }
+  .chip.sev-fatal { color:var(--refutes); border-color:var(--refutes); font-weight:700; }
+  .chip.sev-major { color:var(--gold); border-color:var(--gold); }
+  .chip.sev-mid { color:var(--ink-faint); }
+  .verdict { margin-left:auto; font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; font-weight:700; padding:2px 9px; border-radius:999px; }
+  .verdict.v-pending { color:var(--gold); border:1px solid var(--gold); }
+  .verdict.v-refuted { color:var(--paper); background:var(--refutes); }
+  .verdict.v-passed { color:var(--paper); background:var(--supports); }
+  .fail-title { font-family:var(--serif-cn); font-weight:800; font-size:17.5px; line-height:1.24; margin:0; color:var(--ink); overflow-wrap:anywhere; }
+
+  /* ⛔ 未检得证据·不放行 —— 一等公民信号②（刻意不同于绿色已验证） */
+  .block-banner { display:flex; align-items:center; gap:11px; flex-wrap:wrap; margin-top:11px; padding:12px 14px; border:1.5px dashed var(--refutes); background:repeating-linear-gradient(135deg, var(--block-hatch) 0 7px, transparent 7px 15px), var(--block-tint); }
+  .bb-glyph { font-size:19px; line-height:1; }
+  .bb-main { font-family:var(--serif-cn); font-weight:800; font-size:16px; color:var(--refutes); letter-spacing:.01em; }
+  .bb-mono { margin-left:auto; font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); }
+  /* 已放行（对照态） */
+  .passed-banner { display:flex; align-items:center; gap:9px; margin-top:11px; padding:9px 12px; border:1px solid var(--supports); border-left-width:3px; font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; color:var(--ink-soft); }
+  .passed-banner .pb-glyph { color:var(--supports); font-size:13px; }
+  .nested-head { font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--refutes); margin:11px 0 8px; display:flex; align-items:center; gap:8px; }
+  .fail-card .ev-card { margin-bottom:0; }
+
+  /* ============ 后续判断 timeline ============ */
+  .timeline { border-top:2px solid var(--ink); margin-top:22px; padding-top:16px; }
+  .tl-head { font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--oxblood); margin-bottom:15px; display:flex; align-items:center; gap:10px; }
+  .tl-list { list-style:none; margin:0; padding:0 0 0 5px; position:relative; }
+  .tl-item { display:flex; gap:14px; padding:0 0 17px; position:relative; }
+  .tl-item:not(:last-child)::before { content:""; position:absolute; left:5px; top:15px; bottom:0; width:1px; background:var(--rule); }
+  .tl-dot { width:11px; height:11px; border-radius:50%; margin-top:4px; flex:none; border:2px solid var(--oxblood); background:var(--paper); position:relative; z-index:1; }
+  .tl-item.current .tl-dot { background:var(--oxblood); }
+  .tl-body { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+  .tl-date { font-family:var(--mono); font-size:11px; color:var(--ink-faint); font-variant-numeric:tabular-nums; letter-spacing:.04em; }
+  .tl-verdict { font-family:var(--serif-cn); font-weight:700; font-size:16px; color:var(--ink); }
+  /* superseded —— 一等公民信号③：划除 + 调暗 + 「已被修正」戳 */
+  .tl-item.superseded { opacity:.5; }
+  .tl-item.superseded .tl-dot { border-style:dashed; }
+  .tl-item.superseded .tl-verdict s { text-decoration:line-through; text-decoration-color:var(--oxblood); text-decoration-thickness:1.5px; color:var(--ink-faint); }
+  .tl-flag { font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; border-radius:2px; padding:2px 7px; }
+  .tl-flag.superseded { color:var(--oxblood); border:1px dashed var(--oxblood); }
+
+  /* ============ 附注 annotations —— 一等公民信号④：锚点失附 unresolved ============ */
+  .annotations { border-top:1px solid var(--rule); margin-top:20px; padding-top:16px; }
+  .ann-card { border:1px solid var(--warn); border-left:3px solid var(--warn); background:var(--warn-tint); padding:12px 14px; }
+  .ann-top { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:7px; }
+  .ann-mark { position:relative; display:inline-grid; place-items:center; width:21px; height:21px; border:1px solid var(--warn); border-radius:50%; font-family:var(--serif-cn); font-weight:800; font-size:11px; color:var(--warn); flex:none; }
+  .ann-mark::after { content:""; position:absolute; left:-2px; right:-2px; top:50%; height:1.5px; background:var(--warn); transform:rotate(-24deg); }
+  .ann-title { font-family:var(--serif-cn); font-weight:700; font-size:15px; color:var(--ink); }
+  .status { margin-left:auto; font-family:var(--mono); font-size:9px; letter-spacing:.13em; text-transform:uppercase; font-weight:700; padding:2px 9px; border-radius:999px; }
+  .status.unresolved { color:var(--paper); background:var(--warn); }
+  .ann-body { font-family:var(--serif); font-size:14px; color:var(--ink-soft); line-height:1.5; }
+
+  /* 页脚 */
+  .colophon { border-top:3px double var(--oxblood); margin-top:24px; padding:16px 0 46px; font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+
+  ::selection { background:var(--oxblood); color:#FBFAF7; }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="masthead-top">
+      <span class="masthead-eyebrow">证据图谱 · 关系审阅 · #53</span>
+      <button class="toggle" id="themeToggle" type="button" aria-label="切换明暗主题"><span class="glyph" id="themeGlyph">☾</span><span id="themeText">暗版</span></button>
+    </div>
+    <h1 class="masthead-title">证据抽屉<span class="sep">·</span><span class="issue">Evidence Drawer</span></h1>
+    <div class="masthead-meta">
+      <span><b>输出</b>&nbsp;evidence_for_card / evidence_for_claim</span>
+      <span><b>锚点</b>&nbsp;卡片 3 · 主张 2</span>
+      <span><b>供给</b>&nbsp;OPENALEX · CNKI</span>
+      <span><b>警示</b>&nbsp;⚠ 降级 1 · ⛔ 不放行 1 · 失附 1</span>
+    </div>
+  </header>
+
+  <div class="legend" aria-hidden="true">
+    <span class="lg"><i class="dot" style="background:var(--supports)"></i>支持 supports</span>
+    <span class="lg"><i class="dot" style="background:var(--refutes)"></i>证伪 refutes</span>
+    <span class="lg"><i class="dot" style="background:var(--context)"></i>上下文 context</span>
+    <span class="lg warn">⚠ 供给降级</span>
+    <span class="lg block">⛔ 未检得·不放行</span>
+    <span class="lg">锚点失附 unresolved</span>
+  </div>
+
+  <div class="workbench">
+    <aside class="rail">
+      <nav class="tabs" role="tablist" aria-label="锚点类型">
+        <button class="tab" data-kind="card" role="tab" aria-selected="true" type="button">按卡片</button>
+        <button class="tab" data-kind="claim" role="tab" aria-selected="false" type="button">按主张</button>
+      </nav>
+      <div class="anchor-list" id="anchorList"></div>
+    </aside>
+    <section class="drawer" id="drawer" aria-live="polite"></section>
+  </div>
+
+  <footer class="colophon">
+    <span>构思者 · 证据抽屉（主从式）</span>
+    <span>静态视觉稿 · 数据写死 · 离线自包含</span>
+  </footer>
+
+</div>
+
+<script>
+  /* ====== 内联 demo 数据（evidence_graph.evidence_for_card / _for_claim 的输出形态） ====== */
+  const CARDS = [
+    {
+      key:"card-1", kind:"card", cat:"学科视角", nov:"交叉空白", gold:true,
+      name:"熵增视角与信息不对称的负熵逻辑",
+      supports:[
+        { ref:"evr_1a", title:"Entropy, Information, and the Economics of Scarcity", provider:"openalex", mode:"provider 检得", url:"https://doi.org/10.1103/entropy.2019.0471" }
+      ],
+      refutes:[],
+      context:[
+        { ref:"evr_1b", title:"负熵、信息与市场秩序：一个跨学科综述", provider:"cnki", mode:"provider 检得", url:"https://kns.cnki.net/kcms/sample-4471", degraded:"semantic_scholar: missing key" }
+      ],
+      feedback:[
+        { date:"2026·07·01", verdict:"新且值得深挖", superseded:"2026·07·08" },
+        { date:"2026·07·08", verdict:"已知", current:true }
+      ]
+    },
+    {
+      key:"card-2", kind:"card", cat:"理论框架", nov:"边缘有人做", gold:false,
+      name:"组织社会学的制度同构（DiMaggio & Powell）",
+      supports:[
+        { ref:"evr_3a", title:"The Iron Cage Revisited: Institutional Isomorphism", provider:"openalex", mode:"provider 检得", url:"https://doi.org/10.2307/2095101" }
+      ],
+      refutes:[],
+      context:[
+        { ref:"evr_3b", title:"平台治理规则的制度趋同现象研究", provider:"cnki", mode:"provider 检得", url:"https://kns.cnki.net/kcms/sample-2101" }
+      ],
+      feedback:[
+        { date:"2026·07·05", verdict:"新且值得深挖", current:true }
+      ]
+    },
+    {
+      key:"card-3", kind:"card", cat:"学科视角", nov:"交叉空白", gold:true,
+      name:"复杂适应系统与监管的涌现失灵",
+      supports:[],
+      refutes:[],
+      context:[
+        { ref:"evr_7a", title:"Governing Complex Adaptive Systems: Resilience over Prevention", provider:"openalex", mode:"provider 检得", url:"https://doi.org/10.1111/cas.2022.073" }
+      ],
+      feedback:[]
+    }
+  ];
+
+  const CLAIMS = [
+    {
+      key:"claim-1", kind:"claim", src:"源自构思幕卡片",
+      name:"熵是隐喻不是机制",
+      failures:[
+        { no:"f1", title:"缺乏可测量的熵定义", type:"概念", severity:"致命", verdict:"未决", blocked:true },
+        { no:"f2", title:"已有文献做过同构解释", type:"新颖性", severity:"重大", verdict:"已证伪",
+          refutes:[ { ref:"evr_2", title:"Prior isomorphism study", provider:"openalex", mode:"provider 检得", url:"https://doi.org/prior" } ] }
+      ],
+      annotations:[
+        { id:"claim-1", status:"unresolved", note:"定位 unresolved · 草稿改动后未能重附着 · re-attach failed" }
+      ]
+    },
+    {
+      key:"claim-2", kind:"claim", src:"源自对抗幕",
+      name:"制度同构可被规范上加以利用",
+      failures:[
+        { no:"f1", title:"缺乏规范转译路径", type:"规范", severity:"中等", verdict:"已通过", passed:true, note:"未检出反例 · 放行" }
+      ],
+      annotations:[]
+    }
+  ];
+
+  /* ====== 元件映射 ====== */
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const CAT = { "学科视角":{color:"var(--cat-view)"}, "理论框架":{color:"var(--cat-theory)"}, "研究方法":{color:"var(--cat-method)"} };
+  const NOV = { "交叉空白":{cls:"n-gap",label:"交叉空白 · 金矿",color:"var(--nov-gold)"}, "边缘有人做":{cls:"n-edge",label:"边缘有人做",color:"var(--nov-edge)"}, "主流":{cls:"n-main",label:"主流",color:"var(--nov-main)"} };
+  const REL = { supports:"支持", refutes:"证伪", context:"上下文" };
+  const sevClass = s => ({ "致命":"fatal", "重大":"major", "中等":"mid" }[s] || "mid");
+  const slug = k => k.replace("-", "#");
+
+  /* ====== 证据卡 / 分组 ====== */
+  function evCardHTML(ev, rel) {
+    return `<article class="ev-card ${rel}">
+      <div class="ev-top"><span class="rel-tag ${rel}">${REL[rel]}</span><span class="ev-ref" title="EvidenceRef">${esc(ev.ref)}</span></div>
+      <h3 class="ev-title">${esc(ev.title)}</h3>
+      <div class="ev-meta"><span class="prov">provider · ${esc(ev.provider)}</span><span class="mode">${esc(ev.mode)}</span></div>
+      <div class="ev-link-wrap"><a class="ev-link" href="${esc(ev.url)}" target="_blank" rel="noopener">${esc(ev.url)}</a></div>
+      ${ev.degraded ? `<div class="degraded"><span class="d-glyph">⚠</span><span>供给降级 · <b>${esc(ev.degraded)}</b></span></div>` : ""}
+    </article>`;
+  }
+  function groupHTML(rel, label, arr, empty) {
+    const body = arr.length ? arr.map(e => evCardHTML(e, rel)).join("") : `<div class="ev-empty">${esc(empty)}</div>`;
+    return `<section class="rel-group ${rel}">
+      <div class="rel-head"><span class="rel-dot"></span><span class="rel-name">${label}</span><span class="rel-count">${arr.length}</span></div>
+      ${body}</section>`;
+  }
+  function timelineHTML(fb) {
+    if (!fb.length) return `<section class="timeline"><div class="tl-head">后续判断 · feedback</div><div class="ev-empty">暂无后续判断 · no feedback yet</div></section>`;
+    const items = fb.map(f => f.superseded
+      ? `<li class="tl-item superseded"><div class="tl-dot"></div><div class="tl-body"><span class="tl-date">${esc(f.date)}</span><span class="tl-verdict"><s>${esc(f.verdict)}</s></span><span class="tl-flag superseded">已被 ${esc(f.superseded)} 修正 · SUPERSEDED</span></div></li>`
+      : `<li class="tl-item current"><div class="tl-dot"></div><div class="tl-body"><span class="tl-date">${esc(f.date)}</span><span class="tl-verdict">${esc(f.verdict)}</span>${f.current ? `<span class="seal live"><span class="mark">按</span>现行</span>` : ""}</div></li>`
+    ).join("");
+    return `<section class="timeline"><div class="tl-head">后续判断 · feedback timeline</div><ol class="tl-list">${items}</ol></section>`;
+  }
+
+  /* ====== 反驳卡 / 附注 ====== */
+  function failCardHTML(f) {
+    const vClass = f.blocked ? "pending" : (f.verdict === "已证伪" ? "refuted" : (f.passed ? "passed" : "pending"));
+    const cls = f.blocked ? "blocked" : (f.passed ? "passed" : "refuted");
+    let inner = "";
+    if (f.blocked) {
+      inner = `<div class="block-banner"><span class="bb-glyph">⛔</span><span class="bb-main">未检得证据 · 不放行</span><span class="bb-mono">NO EVIDENCE · verdict 未决 · BLOCKED</span></div>`;
+    } else if (f.refutes && f.refutes.length) {
+      inner = `<div class="nested-head">证伪证据 · refutes <span class="rel-count">${f.refutes.length}</span></div>` + f.refutes.map(e => evCardHTML(e, "refutes")).join("");
+    } else if (f.passed) {
+      inner = `<div class="passed-banner"><span class="pb-glyph">✔</span><span>已放行 · ${esc(f.note || "未检出反例")}</span></div>`;
+    }
+    return `<article class="fail-card ${cls}">
+      <div class="fail-top"><span class="fno">${esc(f.no)}</span><span class="chip">${esc(f.type)}</span><span class="chip sev-${sevClass(f.severity)}">${esc(f.severity)}</span><span class="verdict v-${vClass}">裁决 ${esc(f.verdict)}</span></div>
+      <h3 class="fail-title">${esc(f.title)}</h3>${inner}</article>`;
+  }
+  function annotationsHTML(anns) {
+    const body = anns.length ? anns.map(a => `<article class="ann-card ${esc(a.status)}">
+        <div class="ann-top"><span class="ann-mark">锚</span><span class="ann-title">锚点失附 · ${esc(a.id)}</span><span class="status ${esc(a.status)}">${a.status === "unresolved" ? "未解决 · UNRESOLVED" : "已解决"}</span></div>
+        <div class="ann-body">${esc(a.note)}</div></article>`).join("") : `<div class="ev-empty">无附注 · no annotations</div>`;
+    return `<section class="annotations"><div class="tl-head">附注 · annotations ${anns.length ? `<span class="rel-count">${anns.length}</span>` : ""}</div>${body}</section>`;
+  }
+
+  /* ====== 抽屉详情 ====== */
+  function detailHTML(it) {
+    if (it.kind === "card") {
+      const cat = CAT[it.cat], nov = NOV[it.nov];
+      return `<header class="drawer-head">
+        <div class="dh-kick"><span class="cat"><span class="swatch" style="background:${cat.color}"></span>${esc(it.cat)}</span><span class="novelty ${nov.cls}">${esc(nov.label)}</span>${it.gold ? `<span class="seal gold"><span class="mark">金</span>金标</span>` : ""}</div>
+        <h2 class="dh-title">${esc(it.name)}</h2>
+        <div class="dh-sub">evidence_for_card · ${slug(it.key)} · 支持 ${it.supports.length} / 证伪 ${it.refutes.length} / 上下文 ${it.context.length}</div>
+      </header>
+      ${groupHTML("supports", "支持 / supports", it.supports, "本卡暂无支持证据 · no supports")}
+      ${groupHTML("refutes", "证伪 / refutes", it.refutes, "本卡暂无证伪证据 · no refutes")}
+      ${groupHTML("context", "上下文 / context", it.context, "本卡暂无上下文 · no context")}
+      ${timelineHTML(it.feedback)}`;
+    }
+    const blocked = it.failures.filter(f => f.blocked).length;
+    return `<header class="drawer-head">
+      <div class="dh-kick"><span class="claim-badge">主张 · ${slug(it.key)}</span><span class="dh-src">${esc(it.src)}</span></div>
+      <h2 class="dh-title">${esc(it.name)}</h2>
+      <div class="dh-sub">evidence_for_claim · 反驳 ${it.failures.length}${blocked ? ` · ⛔ 不放行 ${blocked}` : ""} · 附注 ${it.annotations.length}</div>
+    </header>
+    <section class="rel-group failures">
+      <div class="rel-head"><span class="rel-dot"></span><span class="rel-name">反驳 / failures</span><span class="rel-count">${it.failures.length}</span></div>
+      ${it.failures.map(failCardHTML).join("")}
+    </section>
+    ${annotationsHTML(it.annotations)}`;
+  }
+
+  /* ====== 锚点列表 ====== */
+  function listHTML(kind) {
+    const arr = kind === "card" ? CARDS : CLAIMS;
+    return arr.map(it => {
+      if (kind === "card") {
+        const cat = CAT[it.cat], nov = NOV[it.nov];
+        const deg = it.supports.concat(it.refutes, it.context).some(e => e.degraded);
+        return `<button class="anchor" data-key="${it.key}" type="button">
+          <div class="anchor-kick"><span class="swatch" style="background:${cat.color}"></span>${esc(it.cat)} · <span style="color:${nov.color}">${esc(it.nov)}</span>${it.gold ? ` · <span class="a-gold">金标</span>` : ""}</div>
+          <div class="anchor-name">${esc(it.name)}</div>
+          <div class="anchor-tally"><span class="t supports">支持 ${it.supports.length}</span><span class="t refutes">证伪 ${it.refutes.length}</span><span class="t context">上下文 ${it.context.length}</span>${deg ? `<span class="t warn">⚠ 降级</span>` : ""}</div>
+        </button>`;
+      }
+      const blocked = it.failures.filter(f => f.blocked).length;
+      const unres = it.annotations.filter(a => a.status === "unresolved").length;
+      return `<button class="anchor" data-key="${it.key}" type="button">
+        <div class="anchor-kick"><span class="claim-tag">主张</span> · ${esc(it.src)}</div>
+        <div class="anchor-name">${esc(it.name)}</div>
+        <div class="anchor-tally"><span class="t refutes">反驳 ${it.failures.length}</span>${blocked ? `<span class="t block">⛔ 不放行 ${blocked}</span>` : ""}${unres ? `<span class="t warn">附注未解 ${unres}</span>` : ""}</div>
+      </button>`;
+    }).join("");
+  }
+
+  /* ====== 交互 ====== */
+  let curKind = "card";
+  function selectAnchor(key) {
+    document.querySelectorAll(".anchor").forEach(a => a.classList.toggle("active", a.dataset.key === key));
+    const it = (curKind === "card" ? CARDS : CLAIMS).find(x => x.key === key);
+    document.getElementById("drawer").innerHTML = detailHTML(it);
+  }
+  function showKind(kind) {
+    curKind = kind;
+    document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.kind === kind)));
+    const list = document.getElementById("anchorList");
+    list.innerHTML = listHTML(kind);
+    list.querySelectorAll(".anchor").forEach(a => a.addEventListener("click", () => selectAnchor(a.dataset.key)));
+    selectAnchor((kind === "card" ? CARDS : CLAIMS)[0].key);
+  }
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showKind(t.dataset.kind)));
+
+  /* ====== 明暗切换 ====== */
+  const root = document.documentElement;
+  function applyTheme(t) {
+    root.setAttribute("data-theme", t);
+    const dark = t === "dark";
+    document.getElementById("themeGlyph").textContent = dark ? "☀" : "☾";
+    document.getElementById("themeText").textContent = dark ? "明版" : "暗版";
+  }
+  applyTheme(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.getElementById("themeToggle").addEventListener("click", () => applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark"));
+
+  showKind("card");
+</script>
+</body>
+</html>

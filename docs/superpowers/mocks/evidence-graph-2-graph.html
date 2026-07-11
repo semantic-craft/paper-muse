@@ -1,0 +1,580 @@
+<!-- 证据图谱 · 方向：关系图谱（节点-连线可视化）· #53 evidence_for_card / evidence_for_claim 的 {nodes,edges} 投影，手绘定点 inline SVG，无物理引擎 -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>构思者 · 证据图谱</title>
+<style>
+  /* ============ 色 token（与 04-the-journal 逐字同源） ============ */
+  :root {
+    --paper:      #FBFAF7;
+    --ink:        #161412;
+    --ink-soft:   #4A443E;
+    --ink-faint:  #8A8177;
+    --rule:       #DCD6CB;
+    --rule-soft:  #ECE7DE;
+    --oxblood:    #6E2233;
+    --oxblood-ink:#5A1B29;
+    --gold:       #9A7B2E;
+    --field:      #FFFFFF;
+    --stamp-bg:   rgba(110,34,51,.06);
+    --quote-tint: #F6F1EC;
+    --seal-shadow: rgba(22,20,18,.04);
+    --nov-gold:   #9A7B2E;
+    --nov-edge:   #6E2233;
+    --nov-main:   #8A8177;
+    --nov-cnki:   #3C6E5A;   /* 支持/佐证 = 绿家族 */
+    --sans: -apple-system, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    --serif-cn: "Songti SC", "STSong", "Songti TC", serif;
+    --serif-en: "New York", "Iowan Old Style", "Palatino", "Baskerville", Georgia, serif;
+    --serif: "Songti SC", "STSong", "New York", "Palatino", "Baskerville", Georgia, serif;
+    --kai: "Kaiti SC", "STKaiti", "Songti SC", serif;
+    --mono: "SF Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    --paper:      #161311;
+    --ink:        #EDE7DB;
+    --ink-soft:   #C4BBAC;
+    --ink-faint:  #8C8474;
+    --rule:       #3A342D;
+    --rule-soft:  #2A2620;
+    --oxblood:    #B5566A;
+    --oxblood-ink:#C46A7D;
+    --gold:       #C6A94E;
+    --field:      #1E1A17;
+    --stamp-bg:   rgba(181,86,106,.10);
+    --quote-tint: #1E1A17;
+    --seal-shadow: rgba(0,0,0,.25);
+    --nov-gold:   #C6A94E;
+    --nov-edge:   #B5566A;
+    --nov-main:   #8C8474;
+    --nov-cnki:   #6FB59A;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); line-height: 1.6; font-size: 17px;
+    transition: background .35s ease, color .35s ease;
+    text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 clamp(18px, 4vw, 56px); }
+
+  /* ============ 报头 ============ */
+  .masthead { padding: 34px 0 0; }
+  .masthead-top {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 20px; flex-wrap: wrap;
+    border-bottom: 3px double var(--oxblood); padding-bottom: 8px;
+  }
+  .masthead-eyebrow {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .34em;
+    text-transform: uppercase; color: var(--oxblood); font-weight: 600;
+  }
+  .toggle {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+    text-transform: uppercase; background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--rule); border-radius: 999px; padding: 6px 14px;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    transition: border-color .2s, color .2s;
+  }
+  .toggle:hover { border-color: var(--oxblood); color: var(--oxblood); }
+  .toggle:focus-visible { outline: 2px solid var(--oxblood); outline-offset: 2px; }
+  .masthead-title {
+    font-family: var(--serif-cn); font-weight: 900;
+    font-size: clamp(38px, 6.4vw, 76px); line-height: .98; letter-spacing: -.02em;
+    margin: 16px 0 6px; color: var(--ink);
+  }
+  .masthead-title .sep { color: var(--oxblood); font-weight: 400; padding: 0 .12em; }
+  .masthead-title .issue { font-size: .40em; letter-spacing: -.01em; font-weight: 700; }
+  .masthead-meta {
+    display: flex; flex-wrap: wrap; gap: 6px 26px; font-family: var(--mono);
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-faint); border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule); padding: 9px 0; margin-top: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .masthead-meta b { color: var(--ink-soft); font-weight: 600; }
+
+  /* 视图切换 tabs */
+  .views { display: flex; align-items: flex-end; gap: 0; margin-top: 20px; }
+  .view-tab {
+    font-family: var(--serif-cn); font-weight: 700; font-size: 16px; letter-spacing: .08em;
+    padding: 8px 22px 10px; cursor: pointer; background: transparent; border: 0;
+    color: var(--ink-faint); border-bottom: 2px solid transparent;
+  }
+  .view-tab[aria-selected="true"] { color: var(--oxblood); border-bottom-color: var(--oxblood); }
+  .view-tab:focus-visible { outline: 2px solid var(--oxblood); outline-offset: -4px; }
+  .view-tab .en {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--ink-faint); display: block; margin-top: 2px; font-weight: 400;
+  }
+  .views-rule { border-bottom: 1px solid var(--rule); flex: 1; }
+
+  /* ============ 图谱台 ============ */
+  .stage { padding: 8px 0 4px; }
+  .stage-caption {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--ink-faint); display: flex; justify-content: space-between; flex-wrap: wrap;
+    gap: 6px; padding: 14px 0 6px; font-variant-numeric: tabular-nums;
+  }
+  .stage-caption .focus { color: var(--oxblood); font-weight: 600; }
+  .graph-scroll {
+    overflow-x: auto; border: 1px solid var(--rule); border-radius: 3px;
+    background:
+      linear-gradient(var(--rule-soft) 1px, transparent 1px) 0 0 / 100% 34px,
+      var(--field);
+  }
+  [data-theme="dark"] .graph-scroll { background: var(--field); }
+  .eg-svg { width: 100%; max-width: 840px; min-width: 680px; height: auto; display: block; margin: 0 auto; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* SVG 边 */
+  .edge { fill: none; stroke-width: 1.4; stroke-linecap: round; }
+  .edge.supports { stroke: var(--nov-cnki); }
+  .edge.refutes  { stroke: var(--oxblood); }
+  .edge.context  { stroke: var(--ink-faint); }
+  .edge.soft     { stroke: var(--ink-faint); stroke-dasharray: 3 5; opacity: .8; }
+  .mk.supports { fill: var(--nov-cnki); }
+  .mk.refutes  { fill: var(--oxblood); }
+  .mk.context  { fill: var(--ink-faint); }
+  .mk.soft     { fill: var(--ink-faint); }
+
+  /* SVG 节点座 */
+  .n-ring { fill: var(--field); stroke: var(--rule); stroke-width: 1.3; }
+  .node.center .ring-out { fill: var(--stamp-bg); stroke: var(--oxblood); stroke-width: 1.6; }
+  .node.center .ring-in  { fill: var(--field); stroke: var(--oxblood); stroke-width: 1; }
+  .node.evidence.supports .n-ring { stroke: var(--nov-cnki); stroke-width: 1.6; }
+  .node.evidence.context  .n-ring { stroke: var(--ink-faint); stroke-width: 1.4; }
+  .node.evidence.refutes  .n-ring { stroke: var(--oxblood); stroke-width: 1.6; }
+  .node.failure .n-ring { stroke: var(--oxblood); stroke-width: 1.6; }
+  .node.failure.unresolved .n-ring { stroke-dasharray: 5 4; }
+  .node.feedback .n-ring, .node.annotation .n-ring { stroke: var(--ink-faint); stroke-width: 1.2; }
+  .node.annotation.unresolved .n-ring { stroke: var(--oxblood); stroke-dasharray: 5 4; }
+  .node.superseded { opacity: .42; }
+
+  .n-mark {
+    font-family: var(--serif-cn); font-weight: 800; fill: var(--ink);
+    text-anchor: middle; dominant-baseline: central; font-size: 29px;
+  }
+  .node.center .n-mark { fill: var(--oxblood); font-size: 34px; }
+  .node.evidence.supports .n-mark { fill: var(--nov-cnki); }
+  .node.evidence.refutes  .n-mark { fill: var(--oxblood); }
+  .node.failure .n-mark { fill: var(--oxblood); }
+  .node.feedback .n-mark, .node.annotation .n-mark { font-size: 22px; fill: var(--ink-soft); }
+
+  .n-kind { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; fill: var(--ink-faint); text-anchor: middle; }
+  .n-ref  { font-family: var(--mono); font-size: 9px; letter-spacing: .04em; fill: var(--ink-faint); text-anchor: middle; }
+  .n-title{ font-family: var(--serif); font-size: 12px; fill: var(--ink-soft); text-anchor: middle; }
+  .c-kind { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; fill: var(--ink-faint); text-anchor: middle; }
+  .c-kind .gold { fill: var(--gold); font-weight: 700; }
+  .c-name { font-family: var(--serif-cn); font-weight: 800; font-size: 15px; fill: var(--ink); text-anchor: middle; }
+  .c-tag  { font-family: var(--mono); font-size: 9px; letter-spacing: .16em; fill: var(--oxblood); text-anchor: middle; }
+  .e-label{ font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-anchor: middle; }
+  .e-label.supports { fill: var(--nov-cnki); }
+  .e-label.refutes  { fill: var(--oxblood); }
+  .e-label.context  { fill: var(--ink-faint); }
+  .e-label.soft     { fill: var(--ink-faint); }
+
+  /* 三态信号 */
+  .badge-block { font-family: var(--mono); font-size: 10px; font-weight: 700; fill: var(--oxblood); text-anchor: middle; }
+  .badge-warn  { font-family: var(--mono); font-size: 9.5px; font-weight: 600; fill: var(--gold); text-anchor: middle; }
+  .tag-fixed   { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; fill: var(--ink-faint); text-anchor: middle; }
+  .strike      { stroke: var(--ink-faint); stroke-width: 1.2; }
+  .rim-badge   { fill: var(--field); }
+  .rim-badge.warn  { stroke: var(--gold); stroke-width: 1.3; }
+  .rim-badge.block { stroke: var(--oxblood); stroke-width: 1.3; }
+  .rim-glyph { text-anchor: middle; dominant-baseline: central; font-size: 12px; }
+
+  /* ============ 图例 ============ */
+  .legend {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px 28px; padding: 18px 2px 6px; border-top: 1px solid var(--rule); margin-top: 16px;
+  }
+  .lg-title {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--oxblood); font-weight: 600; display: block; margin-bottom: 8px;
+  }
+  .lg-item {
+    display: flex; align-items: center; gap: 8px; font-family: var(--serif);
+    font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; line-height: 1.35;
+  }
+  .lg-item .en { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); letter-spacing: .06em; }
+  .lg-seal {
+    flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center;
+    font-family: var(--serif-cn); font-weight: 800; font-size: 11px;
+    border: 1.3px solid var(--rule); background: var(--field); color: var(--ink-soft);
+  }
+  .lg-seal.center { border-color: var(--oxblood); color: var(--oxblood); box-shadow: 0 0 0 2px var(--stamp-bg); }
+  .lg-seal.ev { border-color: var(--nov-cnki); color: var(--nov-cnki); }
+  .lg-seal.fa { border-color: var(--oxblood); color: var(--oxblood); border-style: dashed; }
+  .lg-seal.sat { border-color: var(--ink-faint); color: var(--ink-faint); width: 20px; height: 20px; }
+  .lg-edge { flex: none; width: 30px; height: 0; border-top: 2px solid var(--rule); }
+  .lg-edge.supports { border-top-color: var(--nov-cnki); }
+  .lg-edge.refutes  { border-top-color: var(--oxblood); }
+  .lg-edge.context  { border-top-color: var(--ink-faint); }
+  .lg-edge.soft     { border-top: 2px dashed var(--ink-faint); }
+  .lg-item.block .k { color: var(--oxblood); font-weight: 700; }
+  .lg-item.warn  .k { color: var(--gold); font-weight: 700; }
+  .lg-item.sup   .k { color: var(--ink-faint); text-decoration: line-through; }
+
+  /* ============ 投影明细表 ============ */
+  .proj { margin: 22px 0 4px; }
+  .proj > summary {
+    list-style: none; cursor: pointer; padding: 10px 0;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--ink-faint); display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--rule);
+  }
+  .proj > summary::-webkit-details-marker { display: none; }
+  .proj > summary::before { content: "＋"; color: var(--oxblood); }
+  .proj[open] > summary::before { content: "－"; }
+  .edge-table-scroll { overflow-x: auto; }
+  table.edges { border-collapse: collapse; width: 100%; min-width: 560px; margin: 6px 0 14px; }
+  table.edges th, table.edges td {
+    text-align: left; padding: 7px 12px; font-family: var(--mono); font-size: 11.5px;
+    border-bottom: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums;
+  }
+  table.edges th { color: var(--oxblood); letter-spacing: .12em; text-transform: uppercase; font-size: 9.5px; }
+  table.edges td { color: var(--ink-soft); }
+  table.edges .rel { font-weight: 700; }
+  table.edges .rel.supports { color: var(--nov-cnki); }
+  table.edges .rel.refutes  { color: var(--oxblood); }
+  table.edges .rel.context  { color: var(--ink-faint); }
+  table.edges .rel.deepens, table.edges .rel.annotates { color: var(--ink-faint); }
+  table.edges .flag { color: var(--oxblood); font-weight: 700; }
+  table.edges .flag.warn { color: var(--gold); }
+
+  .colophon {
+    border-top: 3px double var(--oxblood); margin-top: 22px; padding: 18px 0 50px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink-faint); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  ::selection { background: var(--oxblood); color: #FBFAF7; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<!-- 共享箭头 defs（文档级 url() 解析） -->
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+  <defs>
+    <marker id="ar-sup" markerWidth="9" markerHeight="7" refX="6.4" refY="3.1" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3.1 L0,6.2 Z" class="mk supports"/></marker>
+    <marker id="ar-ref" markerWidth="9" markerHeight="7" refX="6.4" refY="3.1" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3.1 L0,6.2 Z" class="mk refutes"/></marker>
+    <marker id="ar-ctx" markerWidth="9" markerHeight="7" refX="6.4" refY="3.1" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3.1 L0,6.2 Z" class="mk context"/></marker>
+    <marker id="ar-soft" markerWidth="9" markerHeight="7" refX="6.4" refY="3.1" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3.1 L0,6.2 Z" class="mk soft"/></marker>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="masthead-top">
+      <span class="masthead-eyebrow">证据图谱 · #53 关系投影</span>
+      <button class="toggle" id="themeToggle" type="button" aria-label="切换明暗主题">
+        <span id="themeGlyph">☾</span><span id="themeText">暗版</span>
+      </button>
+    </div>
+
+    <h1 class="masthead-title">证据图谱<span class="sep">·</span><span class="issue">关系图谱</span></h1>
+
+    <div class="masthead-meta">
+      <span><b>投影</b>&nbsp;evidence_graph · {nodes, edges}</span>
+      <span><b>入口</b>&nbsp;evidence_for_card / evidence_for_claim</span>
+      <span><b>纪律</b>&nbsp;未决 · 降级 · 被修正 · 皆不当 verified</span>
+    </div>
+
+    <nav class="views" role="tablist" aria-label="图谱视图">
+      <button class="view-tab" role="tab" id="tabCard" aria-selected="true" aria-controls="viewCard" type="button">
+        卡片视图<span class="en">evidence_for_card</span>
+      </button>
+      <button class="view-tab" role="tab" id="tabClaim" aria-selected="false" aria-controls="viewClaim" type="button">
+        主张视图<span class="en">evidence_for_claim</span>
+      </button>
+      <span class="views-rule" aria-hidden="true"></span>
+    </nav>
+  </header>
+
+  <section class="stage">
+    <div class="stage-caption">
+      <span class="focus" id="stageFocus">焦点 · card：熵增视角与信息不对称的负熵逻辑</span>
+      <span id="stageCount">节点 5 · 边 4</span>
+    </div>
+
+    <div class="graph-scroll">
+      <!-- ======================= 卡片视图图谱 ======================= -->
+      <div class="view active" id="viewCard" role="tabpanel" aria-labelledby="tabCard">
+        <svg class="eg-svg" viewBox="0 0 960 680" role="img"
+             aria-label="卡片证据图谱：中心卡片节点，支持/上下文证据与两条后续判断反馈向外辐射">
+
+          <!-- 边（先画，节点覆盖端点） -->
+          <g>
+            <line class="edge supports" x1="270.1" y1="212.5" x2="429.4" y2="301.7" marker-end="url(#ar-sup)"/>
+            <line class="edge context"  x1="268.0" y1="474.1" x2="432.0" y2="362.6" marker-end="url(#ar-ctx)"/>
+            <line class="edge soft"      x1="706.5" y1="208.0" x2="531.1" y2="302.5" marker-end="url(#ar-soft)"/>
+            <line class="edge soft"      x1="708.2" y1="479.2" x2="528.5" y2="361.7" marker-end="url(#ar-soft)"/>
+            <text class="e-label supports" x="345" y="250">支持</text>
+            <text class="e-label context"  x="345" y="410">上下文</text>
+            <text class="e-label soft"      x="620" y="248">深挖</text>
+            <text class="e-label soft"      x="620" y="413">深挖</text>
+          </g>
+
+          <!-- 中心：卡片 -->
+          <g class="node center" transform="translate(480,330)">
+            <title>card：熵增视角与信息不对称的负熵逻辑 · 学科视角 · 交叉空白 · 金标</title>
+            <circle class="ring-out" r="58"/>
+            <circle class="ring-in" r="49"/>
+            <text class="c-kind" y="-72">学科视角 · 交叉空白 · <tspan class="gold">金标</tspan></text>
+            <text class="n-mark">卡</text>
+            <text class="c-name" y="90">熵增视角与信息不对称的负熵逻辑</text>
+            <text class="c-tag" y="110">◎ 当前焦点节点</text>
+          </g>
+
+          <!-- 证据 evr_1a · supports · 绿 -->
+          <g class="node evidence supports" transform="translate(230,190)">
+            <title>evidence evr_1a · supports · openalex · provider-retrieved</title>
+            <circle class="n-ring" r="46"/>
+            <text class="n-mark">证</text>
+            <text class="n-kind" y="66">openalex · 已取回</text>
+            <text class="n-ref"  y="82">EvidenceRef evr_1a</text>
+            <text class="n-title" y="102"><tspan x="0">Entropy, Information, and the</tspan><tspan x="0" dy="15">Economics of Scarcity</tspan></text>
+          </g>
+
+          <!-- 证据 evr_1b · context · 灰 · 降级 -->
+          <g class="node evidence context" transform="translate(230,500)">
+            <title>evidence evr_1b · context · cnki · provider-retrieved · DEGRADED：semantic_scholar missing key</title>
+            <circle class="n-ring" r="46"/>
+            <text class="n-mark">证</text>
+            <g transform="translate(33,-33)">
+              <circle class="rim-badge warn" r="12"/>
+              <text class="rim-glyph">⚠</text>
+            </g>
+            <text class="n-kind" y="66">cnki · 已取回</text>
+            <text class="n-ref"  y="82">EvidenceRef evr_1b</text>
+            <text class="n-title" y="102"><tspan x="0">负熵、信息与市场秩序：</tspan><tspan x="0" dy="15">一个跨学科综述</tspan></text>
+            <text class="badge-warn" y="140">⚠ provider 降级 · semantic_scholar: missing key</text>
+          </g>
+
+          <!-- 反馈 · 当前 -->
+          <g class="node feedback" transform="translate(740,190)">
+            <title>feedback 2026-07-08 · 已知 · current · deepens</title>
+            <circle class="n-ring" r="38"/>
+            <text class="n-mark">馈</text>
+            <text class="n-kind" y="58">2026·07·08 · 后续判断</text>
+            <text class="n-title" y="78">「已知」</text>
+            <text class="tag-fixed" y="95">当前 CURRENT</text>
+          </g>
+
+          <!-- 反馈 · 已被修正（暗淡 + 删除线） -->
+          <g class="node feedback superseded" transform="translate(740,500)">
+            <title>feedback 2026-07-01 · 新且值得深挖 · superseded（已被 07-08「已知」修正）</title>
+            <circle class="n-ring" r="38"/>
+            <text class="n-mark">馈</text>
+            <text class="n-kind" y="58">2026·07·01 · 后续判断</text>
+            <text class="n-title" y="78">「新且值得深挖」</text>
+            <line class="strike" x1="-58" y1="74" x2="58" y2="74"/>
+            <text class="tag-fixed" y="95">已被修正 SUPERSEDED</text>
+          </g>
+        </svg>
+      </div>
+
+      <!-- ======================= 主张视图图谱 ======================= -->
+      <div class="view" id="viewClaim" role="tabpanel" aria-labelledby="tabClaim">
+        <svg class="eg-svg" viewBox="0 0 960 680" role="img"
+             aria-label="主张证据图谱：中心主张节点，两处失败点向内证伪，其证据再挂到失败点，批注为外环卫星">
+
+          <g>
+            <line class="edge refutes" x1="290.4" y1="227.0" x2="429.0" y2="302.3" marker-end="url(#ar-ref)"/>
+            <line class="edge refutes" x1="669.6" y1="227.0" x2="531.0" y2="302.3" marker-end="url(#ar-ref)"/>
+            <line class="edge refutes" x1="782.2" y1="430.0" x2="724.0" y2="248.8" marker-end="url(#ar-ref)"/>
+            <line class="edge soft"    x1="363.9" y1="532.0" x2="451.1" y2="380.3" marker-end="url(#ar-soft)"/>
+            <text class="e-label refutes" x="350" y="256">证伪</text>
+            <text class="e-label refutes" x="602" y="256">证伪</text>
+            <text class="e-label refutes" x="772" y="342">证伪</text>
+            <text class="e-label soft"    x="398" y="456">批注</text>
+          </g>
+
+          <!-- 中心：主张 -->
+          <g class="node center" transform="translate(480,330)">
+            <title>claim #1：熵是隐喻不是机制 · 源自构思幕卡片</title>
+            <circle class="ring-out" r="58"/>
+            <circle class="ring-in" r="49"/>
+            <text class="c-kind" y="-72">主张 · 源自构思幕卡片</text>
+            <text class="n-mark">张</text>
+            <text class="c-name" y="90">熵是隐喻不是机制</text>
+            <text class="c-tag" y="110">◎ 当前焦点节点</text>
+          </g>
+
+          <!-- 失败点 f1 · 未决 · 未检得证据不放行 -->
+          <g class="node failure unresolved" transform="translate(250,205)">
+            <title>failure f1 · 概念 · 致命 · 裁决 未决 · 未检得证据 · 不放行（无证据）</title>
+            <circle class="n-ring" r="46"/>
+            <text class="n-mark">失</text>
+            <g transform="translate(34,-32)">
+              <circle class="rim-badge block" r="12"/>
+              <text class="rim-glyph">⛔</text>
+            </g>
+            <text class="n-kind" y="-92">f1 · 概念 · 致命</text>
+            <text class="n-ref"  y="-76">裁决 未决 · 0 证据</text>
+            <text class="badge-block" y="-58">⛔ 未检得证据 · 不放行</text>
+          </g>
+
+          <!-- 失败点 f2 · 已证伪 -->
+          <g class="node failure" transform="translate(710,205)">
+            <title>failure f2 · 新颖性 · 重大 · 裁决 已证伪 · refutes(1)</title>
+            <circle class="n-ring" r="46"/>
+            <text class="n-mark">失</text>
+            <text class="n-kind" y="-78">f2 · 新颖性 · 重大</text>
+            <text class="n-ref"  y="-62">裁决 已证伪 · refutes 1</text>
+          </g>
+
+          <!-- 证据 evr_2 · refutes f2 · 红 -->
+          <g class="node evidence refutes" transform="translate(795,470)">
+            <title>evidence evr_2 · refutes → failure f2 · openalex</title>
+            <circle class="n-ring" r="42"/>
+            <text class="n-mark">证</text>
+            <text class="n-kind" y="62">openalex · 已取回</text>
+            <text class="n-ref"  y="78">EvidenceRef evr_2</text>
+            <text class="n-title" y="96">Prior isomorphism study</text>
+          </g>
+
+          <!-- 批注 · 未重挂 unresolved -->
+          <g class="node annotation unresolved" transform="translate(345,565)">
+            <title>annotation claim-1 · 定位 · attachment unresolved（重挂失败）</title>
+            <circle class="n-ring" r="38"/>
+            <text class="n-mark">批</text>
+            <g transform="translate(30,-27)">
+              <circle class="rim-badge block" r="11"/>
+              <text class="rim-glyph" style="font-size:11px">⛔</text>
+            </g>
+            <text class="n-kind" y="58">claim-1 · 定位</text>
+            <text class="badge-block" y="76">⛔ 未重挂 · unresolved</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 图例 -->
+    <div class="legend" aria-label="图例">
+      <div>
+        <span class="lg-title">节点 · node kind</span>
+        <span class="lg-item"><span class="lg-seal center">卡</span>卡片 / 主张 · <span class="en">center</span></span>
+        <span class="lg-item"><span class="lg-seal ev">证</span>证据 · <span class="en">evidence</span></span>
+        <span class="lg-item"><span class="lg-seal fa">失</span>失败点 · <span class="en">failure</span></span>
+        <span class="lg-item"><span class="lg-seal sat">馈</span>反馈 · 外环卫星 · <span class="en">feedback</span></span>
+        <span class="lg-item"><span class="lg-seal sat">批</span>批注 · 外环卫星 · <span class="en">annotation</span></span>
+      </div>
+      <div>
+        <span class="lg-title">关系 · edge relation</span>
+        <span class="lg-item"><span class="lg-edge supports"></span>支持 · <span class="en">supports</span></span>
+        <span class="lg-item"><span class="lg-edge refutes"></span>证伪 · <span class="en">refutes</span></span>
+        <span class="lg-item"><span class="lg-edge context"></span>上下文 · <span class="en">context</span></span>
+        <span class="lg-item"><span class="lg-edge soft"></span>深挖 / 批注 · <span class="en">deepens / annotates</span></span>
+      </div>
+      <div>
+        <span class="lg-title">状态信号 · 绝不当 verified</span>
+        <span class="lg-item block"><span class="k">⛔</span>失败点未检得证据 · 不放行</span>
+        <span class="lg-item warn"><span class="k">⚠</span>provider 降级 · 附原因</span>
+        <span class="lg-item sup"><span class="k">已被修正</span>反馈 superseded · 暗淡删除</span>
+        <span class="lg-item block"><span class="k">⛔</span>批注未重挂 · unresolved</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 投影明细：{nodes, edges} 的字面表 -->
+  <details class="proj">
+    <summary>投影明细 · edges 表（图谱即此表的可视化）</summary>
+    <div class="edge-table-scroll">
+      <table class="edges" id="edgeTable">
+        <thead><tr><th>source</th><th>relation</th><th>target</th><th>状态</th></tr></thead>
+        <tbody id="edgeBody"></tbody>
+      </table>
+    </div>
+  </details>
+
+  <footer class="colophon">
+    <span>构思者 · 证据图谱 · 关系图谱（节点-连线）</span>
+    <span>静态视觉稿 · 定点手绘 SVG · 离线自包含</span>
+  </footer>
+
+</div>
+
+<script>
+  /* ====== 两视图的 edges 投影（与 SVG 逐边对应；图谱即此表的可视化） ====== */
+  const EDGES = {
+    card: {
+      focus: "焦点 · card：熵增视角与信息不对称的负熵逻辑",
+      count: "节点 5（card · evidence×2 · feedback×2） · 边 4",
+      rows: [
+        ["evidence:evr_1a", "supports",  "card:熵增视角与信息不对称的负熵逻辑", "", "provider-retrieved"],
+        ["evidence:evr_1b", "context",   "card:熵增视角与信息不对称的负熵逻辑", "warn", "⚠ degraded · semantic_scholar: missing key"],
+        ["feedback:2026-07-08", "deepens", "card:熵增视角与信息不对称的负熵逻辑", "", "current · 已知"],
+        ["feedback:2026-07-01", "deepens", "card:熵增视角与信息不对称的负熵逻辑", "flag", "⊘ superseded · 新且值得深挖"],
+      ],
+    },
+    claim: {
+      focus: "焦点 · claim #1：熵是隐喻不是机制（源自构思幕卡片）",
+      count: "节点 5（claim · failure×2 · evidence · annotation） · 边 4",
+      rows: [
+        ["failure:f1", "refutes", "claim:1", "flag", "⛔ unresolved · 未检得证据不放行"],
+        ["failure:f2", "refutes", "claim:1", "", "已证伪 · refutes 1"],
+        ["evidence:evr_2", "refutes", "failure:f2", "", "openalex"],
+        ["annotation:claim-1", "annotates", "claim:1", "flag", "⛔ unresolved · 未重挂"],
+      ],
+    },
+  };
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function renderEdges(which) {
+    const v = EDGES[which];
+    document.getElementById("stageFocus").textContent = v.focus;
+    document.getElementById("stageCount").textContent = v.count;
+    document.getElementById("edgeBody").innerHTML = v.rows.map(r => {
+      const flagCls = r[3] === "warn" ? "flag warn" : (r[3] === "flag" ? "flag" : "");
+      return `<tr>
+        <td>${esc(r[0])}</td>
+        <td><span class="rel ${esc(r[1])}">${esc(r[1])}</span></td>
+        <td>${esc(r[2])}</td>
+        <td class="${flagCls}">${esc(r[4])}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  /* ====== 视图切换 ====== */
+  const tabCard = document.getElementById("tabCard");
+  const tabClaim = document.getElementById("tabClaim");
+  function selectView(which) {
+    const isCard = which === "card";
+    tabCard.setAttribute("aria-selected", String(isCard));
+    tabClaim.setAttribute("aria-selected", String(!isCard));
+    document.getElementById("viewCard").classList.toggle("active", isCard);
+    document.getElementById("viewClaim").classList.toggle("active", !isCard);
+    renderEdges(which);
+  }
+  tabCard.addEventListener("click", () => selectView("card"));
+  tabClaim.addEventListener("click", () => selectView("claim"));
+
+  /* ====== 明暗切换 ====== */
+  const root = document.documentElement;
+  function applyTheme(t) {
+    root.setAttribute("data-theme", t);
+    const dark = t === "dark";
+    document.getElementById("themeGlyph").textContent = dark ? "☀" : "☾";
+    document.getElementById("themeText").textContent  = dark ? "明版" : "暗版";
+  }
+  (function initTheme() {
+    const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    applyTheme(prefersDark ? "dark" : "light");
+  })();
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+  });
+
+  selectView("card");
+</script>
+</body>
+</html>
