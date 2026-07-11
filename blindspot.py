@@ -149,9 +149,10 @@ def _merge_card_into(base: dict, incoming: dict, similarity=None) -> dict:
         if incoming["name"] not in aliases:
             aliases.append(incoming["name"])
     base["questions"] = _merge_unique(base.get("questions") or [], incoming.get("questions") or [])
-    base["evidence"] = _merge_unique(
-        base.get("evidence") or [], incoming.get("evidence") or []
-    )
+    # 仅当 incoming 真带证据才改写 base["evidence"]：枚举卡本无证据（证据在 enrich 里补），
+    # 无谓改写会与不持锁的 enrich 线程对同一 card["evidence"] 竞态、覆盖丢更新。
+    if incoming.get("evidence"):
+        base["evidence"] = _merge_unique(base.get("evidence") or [], incoming["evidence"])
     if not base.get("feasibility") and incoming.get("feasibility"):
         base["feasibility"] = incoming["feasibility"]
     base["cluster_size"] = int(base.get("cluster_size") or 1) + int(incoming.get("cluster_size") or 1)
@@ -773,12 +774,15 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
                     touched.append(prev)
                 else:
                     c = dict(c)
-                    # 徽标字段占位：上墙后原地更新只换值不加键（快照序列化安全）
+                    # 徽标字段占位：上墙后原地更新只换值不加键（快照序列化安全）。
+                    # merged_angles/feasibility 必须在此预置：_merge_card_into 会写这两键，
+                    # 若缺则第二家合并时给已上墙的活卡片新增键 → 与 /scan/status 并发
+                    # 序列化撞 RuntimeError: dictionary changed size during iteration。
                     c.update(id=len(order) + 1, outlier=None, novelty=None, gold=None,
                              en_hits=None, en_source=None, en_degraded=None,
                              zh_hits=None, zh_status=None, own_hits=None, own_status=None,
                              own_identity_status=None, novelty_reason=None,
-                             evidence=[],
+                             evidence=[], merged_angles=[], feasibility=c.get("feasibility"),
                              quality_score=None, elo_score=None, outlier_reason=None,
                              proximity_basis=None,
                              cluster_id=None, cluster_size=1, cluster_similarity=None)

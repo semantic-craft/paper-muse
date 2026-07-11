@@ -230,6 +230,30 @@ def test_paperqa_payload_maps_used_passage_to_evidence_ref(tmp_path):
     assert ref["locator"]["suffix"] == " across all model variants"
 
 
+def test_paperqa_bundle_does_not_crossattach_url_after_skipped_reference(tmp_path):
+    """回归：_extract_references 跳过无题无址项并按 (title,url) 去重，references 与 context
+    下标错位。旧代码按下标回填 url，会把后一篇文献的 url 挂到无址的孤儿 chunk 上（张冠李戴，
+    契约保真破坏）。修复后孤儿 chunk 保持无 url，不冒领 C 的地址。"""
+    payload = {
+        "ok": True, "answer": "a", "formatted_answer": "a",
+        "context": [
+            {"title": "Doc A", "url": "https://a", "text": "chunk A"},
+            {"text": "orphan chunk without title or url"},   # 被 _extract_references 跳过
+            {"title": "Doc C", "url": "https://c", "text": "chunk C"},
+        ],
+        # references = _extract_references(context)：孤儿 chunk 被跳过 → 与 context 下标错位
+        "references": [
+            {"title": "Doc A", "url": "https://a"},
+            {"title": "Doc C", "url": "https://c"},
+        ],
+    }
+    bundle = paperqa_bridge.paperqa_payload_to_bundle(
+        payload, question="q", status={"paperqa_version": "2026.3.18", "state": "ready"})
+    orphan = next(e for e in bundle["evidence"]
+                  if e["locator"].get("exact", "").startswith("orphan chunk"))
+    assert orphan["source"].get("url", "") == ""   # 修复前按下标回填冒领 https://c
+
+
 def test_repeated_question_persists_one_markdown_section_and_readable_evidence(
     monkeypatch, tmp_path
 ):

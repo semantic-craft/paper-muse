@@ -297,8 +297,11 @@ def classify_evidence(claim_text: str, failure_statement: str, hits: list, llm_c
     )
     try:
         raw = extract_json(llm_call(prompt)).get("evidence", [])
-    except (ValueError, KeyError):
-        return []  # 分类坏输出不该让整条失败点崩：无证据即后续判未决
+    except Exception:
+        # 坏 JSON（ValueError/KeyError）或 LLM 瞬时故障（限流 429/超时/连接重置，抛
+        # ConnectionError/RuntimeError 等）都不该掀翻整场审查：无证据即后续判未决。
+        # 与 author_rebuttal / meta_review 的 except Exception 优雅降级保持一致。
+        return []
     out, seen = [], set()
     for e in raw:
         if not isinstance(e, dict):
@@ -649,6 +652,12 @@ def run_review(source_text, has_draft, output_dir, review_llm, falsify_search,
                      evidence=[], verdict=None, sidecar_degradation=None,
                      author_rebuttal=None, meta_review=None)
         claim["failures"] = failures
+        # 主张级占位：_apply_falsify_pool 会写这三键，须在 on_claim 前预置——否则补挂时
+        # 给已上墙的活主张新增键，与 /adversary/status 的浅拷贝快照并发序列化撞
+        # RuntimeError: dictionary changed size during iteration（同 blindspot 快照不变量）。
+        claim.setdefault("sidecar_degradation", None)
+        claim.setdefault("memo", "")
+        claim.setdefault("library_degradation", None)
         on_claim(claim)
 
         if not hasattr(falsify_search, "search_many"):
