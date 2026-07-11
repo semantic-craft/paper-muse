@@ -137,6 +137,8 @@ def main() -> int:
     result["release_health"] = {"error": release_health_err} if release_health_err else release_health
     before = _perf(args.base_url)
     result["perf_before"] = before
+    # #49：smoke 读数在顶层携带被测代码版本——旧读数（不同 code_version）不能冒充验证了新代码
+    result["code_version"] = before.get("code_version", "") if isinstance(before, dict) else ""
     if health_err:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 2
