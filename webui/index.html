@@ -1085,6 +1085,72 @@
     #advView .margins { padding: 0 22px 40px; }
     #advView .solo-inner { padding: 30px 22px 60px; }
   }
+
+  /* ══════════════ 证据图 · 关系审阅（#53，evidence_graph 投影；主从抽屉；scoped 于 #graphView） ══════════════ */
+  #graphView { min-height: 100vh; }
+  #graphView[hidden] { display: none; }
+  #graphView .gv-mast { display: flex; align-items: baseline; gap: 18px; padding: 20px 30px 0; flex-wrap: wrap; }
+  #graphView .gv-tally { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--ink-2); margin-left: auto; font-variant-numeric: tabular-nums; }
+  #graphView .gv-tally b { color: var(--vermilion); font-weight: 600; }
+  #graphView .gv-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 12px 30px; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); border-bottom: 1px solid var(--hair); }
+  #graphView .gv-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+  #graphView .gv-legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  #graphView .gv-workbench { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); align-items: start; max-width: 1340px; margin: 0 auto; border-top: 2px solid var(--ink); }
+  #graphView .gv-rail { border-right: 1px solid var(--hair); min-width: 0; }
+  @media (min-width: 861px) { #graphView .gv-rail { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; } }
+  #graphView .gv-detail { min-width: 0; padding: 8px 0 60px 30px; }
+  @media (max-width: 860px) {
+    #graphView .gv-workbench { grid-template-columns: 1fr; }
+    #graphView .gv-rail { border-right: 0; border-bottom: 2px solid var(--ink); }
+    #graphView .gv-detail { padding: 20px 0 60px; }
+  }
+  #graphView .gv-tabs { display: flex; border-bottom: 1px solid var(--hair); }
+  #graphView .gv-tab { flex: 1; font-family: var(--serif-zh); font-weight: 700; font-size: 15px; letter-spacing: .08em; padding: 12px 8px; cursor: pointer; background: none; border: 0; color: var(--ink-2); border-bottom: 2px solid transparent; }
+  #graphView .gv-tab.active { color: var(--vermilion); border-bottom-color: var(--vermilion); }
+  #graphView .gv-tab:focus-visible { outline: 2px solid var(--vermilion); outline-offset: -4px; }
+  #graphView .gv-anchor { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--hair); padding: 13px 16px 14px 18px; cursor: pointer; position: relative; }
+  #graphView .gv-anchor::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: transparent; }
+  #graphView .gv-anchor:hover, #graphView .gv-anchor.active { background: var(--sel-wash); }
+  #graphView .gv-anchor.active::before { background: var(--vermilion); }
+  #graphView .gv-anchor:focus-visible { outline: 2px solid var(--vermilion); outline-offset: -3px; }
+  #graphView .gv-a-kick { font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 5px; }
+  #graphView .gv-a-name { font-family: var(--serif-zh); font-weight: 700; font-size: 15.5px; line-height: 1.3; color: var(--ink); margin-bottom: 6px; overflow-wrap: anywhere; }
+  #graphView .gv-a-tally { font-family: var(--mono); font-size: 9.5px; display: flex; flex-wrap: wrap; gap: 4px 8px; font-variant-numeric: tabular-nums; }
+  #graphView .gv-a-tally .s { color: var(--own); } #graphView .gv-a-tally .r { color: var(--vermilion); } #graphView .gv-a-tally .c { color: var(--ink-2); }
+  #graphView .gv-a-tally .w { color: var(--gold); } #graphView .gv-a-tally .b { color: var(--vermilion); font-weight: 700; }
+  #graphView .gv-dh { border-bottom: 2px solid var(--ink); padding-bottom: 14px; margin-bottom: 2px; }
+  #graphView .gv-dh h2 { font-family: var(--serif-zh); font-weight: 800; font-size: clamp(20px, 3vw, 27px); line-height: 1.14; margin: 6px 0 0; color: var(--ink); overflow-wrap: anywhere; }
+  #graphView .gv-dh-kick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+  #graphView .gv-dh-sub { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); margin-top: 8px; font-variant-numeric: tabular-nums; }
+  #graphView .gv-dh-badge { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--paper); background: var(--vermilion); padding: 2px 9px; border-radius: 2px; }
+  #graphView .gv-group { border-top: 1px solid var(--hair); padding: 16px 0 4px; }
+  #graphView .gv-group:first-of-type { border-top: 0; padding-top: 18px; }
+  #graphView .gv-group-head { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 12px; }
+  #graphView .gv-gd { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  #graphView .gv-group.supports .gv-gd { background: var(--own); } #graphView .gv-group.supports .gv-gn { color: var(--own); }
+  #graphView .gv-group.refutes .gv-gd { background: var(--vermilion); } #graphView .gv-group.refutes .gv-gn { color: var(--vermilion); }
+  #graphView .gv-group.context .gv-gd { background: var(--ink-2); } #graphView .gv-group.context .gv-gn { color: var(--ink-2); }
+  #graphView .gv-gn { font-weight: 700; }
+  #graphView .gv-gc { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--ink-2); border: 1px solid var(--hair-strong); border-radius: 999px; padding: 0 8px; }
+  #graphView .gv-ev { border-left: 2px solid var(--hair-strong); padding: 2px 0 8px 14px; margin-bottom: 10px; }
+  #graphView .gv-ev.s { border-left-color: var(--own); } #graphView .gv-ev.r { border-left-color: var(--vermilion); } #graphView .gv-ev.c { border-left-color: var(--ink-2); }
+  #graphView .gv-ev a { font-family: var(--serif-en); font-size: 16px; color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--hair-strong); }
+  #graphView .gv-ev a:hover { border-bottom-color: var(--vermilion); color: var(--vermilion); }
+  #graphView .gv-ev-meta { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; color: var(--ink-2); margin-top: 5px; }
+  #graphView .gv-empty { font-family: var(--kai); font-size: 14px; color: var(--ink-2); padding: 2px 0 8px; }
+  /* 头等信号：降级 / 不放行 / 被修正 / 失附 —— 一律区别于「已验证证据」 */
+  #graphView .gv-flag { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; padding: 2px 7px; border-radius: 2px; margin-left: 6px; white-space: nowrap; }
+  #graphView .gv-flag.degraded { color: var(--gold); border: 1px solid var(--gold); background: rgba(154,123,46,.10); }
+  #graphView .gv-flag.blocked { color: var(--vermilion); border: 1px solid var(--vermilion); background: var(--sel-wash); font-weight: 700; }
+  #graphView .gv-fb { display: flex; align-items: baseline; gap: 10px; padding: 9px 0; border-top: 1px dashed var(--hair-strong); font-family: var(--sans); font-size: 13px; }
+  #graphView .gv-fb-ts { font-family: var(--mono); font-size: 10px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  #graphView .gv-fb.superseded { opacity: .5; }
+  #graphView .gv-fb.superseded .gv-fb-v { text-decoration: line-through; }
+  #graphView .gv-fb-mark { font-family: var(--mono); font-size: 9px; color: var(--ink-2); margin-left: auto; }
+  #graphView .gv-failure { border-top: 1px solid var(--hair); padding: 15px 0 6px; }
+  #graphView .gv-failure-head { font-family: var(--serif-zh); font-weight: 700; font-size: 16px; color: var(--ink); margin-bottom: 6px; overflow-wrap: anywhere; }
+  #graphView .gv-failure-meta { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; color: var(--ink-2); margin-bottom: 10px; }
+  #graphView .gv-sub { padding-left: 14px; }
 </style>
 </head>
 <body>
@@ -1103,6 +1169,8 @@
     <button class="act-tab active" type="button" aria-current="page">构思幕</button>
     <span class="act-sep">·</span>
     <button class="act-tab" id="toAdv" type="button">对抗幕</button>
+    <span class="act-sep">·</span>
+    <button class="act-tab" id="toGraph" type="button">证据图</button>
   </nav>
   <button id="productsTab" class="products-tab" type="button"
           aria-haspopup="dialog" aria-controls="drawer" aria-expanded="false"
@@ -1307,6 +1375,37 @@
       <button class="rt-btn" id="rtReport" type="button">结束出报告</button>
     </div>
   </footer>
+</section>
+
+<!-- 证据图 · 关系审阅（#53，evidence_graph 投影）：左锚点栏（按卡片/按主张）→ 右抽屉分层证据 -->
+<section id="graphView" hidden aria-label="证据图 · 关系审阅">
+  <header class="gv-mast">
+    <span class="wordmark"><b>论文构思者</b> · 证据图</span>
+    <nav class="acts" aria-label="幕次切换">
+      <button class="act-tab" id="gvToIdeate" type="button">构思幕</button>
+      <span class="act-sep">·</span>
+      <button class="act-tab active" type="button" aria-current="page">证据图</button>
+    </nav>
+    <span class="gv-tally" id="gvTally"></span>
+  </header>
+  <div class="gv-legend" aria-hidden="true">
+    <span class="lg"><span class="dot" style="background:var(--own)"></span>支持 supports</span>
+    <span class="lg"><span class="dot" style="background:var(--vermilion)"></span>证伪 refutes</span>
+    <span class="lg"><span class="dot" style="background:var(--ink-2)"></span>上下文 context</span>
+    <span class="lg" style="color:var(--gold)">⚠ 供给降级</span>
+    <span class="lg" style="color:var(--vermilion);font-weight:700">⛔ 未检得·不放行</span>
+    <span class="lg">— 已被修正 / 失附</span>
+  </div>
+  <div class="gv-workbench">
+    <aside class="gv-rail">
+      <div class="gv-tabs" role="tablist" aria-label="查询锚点">
+        <button class="gv-tab active" id="gvTabCard" type="button" role="tab" aria-selected="true" data-mode="card">按卡片</button>
+        <button class="gv-tab" id="gvTabClaim" type="button" role="tab" aria-selected="false" data-mode="claim">按主张</button>
+      </div>
+      <div class="gv-anchors" id="gvAnchors"></div>
+    </aside>
+    <div class="gv-detail" id="gvDetail" aria-live="polite"></div>
+  </div>
 </section>
 
 <!-- 产物抽屉（方向 A）：右侧滑出的附录·版记，卡片墙与圆桌共用 -->
@@ -2306,7 +2405,164 @@ function showView(which){
   $("#wallView").hidden = which !== "wall";
   $("#rtView").hidden = which !== "rt";
   const av = $("#advView"); if (av) av.hidden = which !== "adv";
+  const gv = $("#graphView"); if (gv) gv.hidden = which !== "graph";
 }
+
+/* ══ 证据图 · 关系审阅（#53）：拉 /evidence/graph 投影，主从渲染（左锚点→右分层证据） ══ */
+const GV = { data: null, mode: "card", sel: null };
+const GV_DEMO = {
+  cards: [{ id: "card:熵增视角", kind: "card", name: "熵增视角与信息不对称的负熵逻辑", type: "学科视角", novelty: "交叉空白" }],
+  claims: [{ id: "claim:1", kind: "claim", text: "熵是隐喻不是机制", origin: "card" }],
+  views: {
+    "card:熵增视角": {
+      card: { id: "card:熵增视角", name: "熵增视角与信息不对称的负熵逻辑", type: "学科视角", novelty: "交叉空白" },
+      supports: [{ ref_id: "evr_1a", title: "Entropy, Information, and the Economics of Scarcity", url: "https://doi.org/10.1103/entropy.2019.0471", provider: "openalex", status: "provider-retrieved", unresolved: false, degraded: false }],
+      refutes: [],
+      context: [{ ref_id: "evr_1b", title: "负熵、信息与市场秩序：一个跨学科综述", url: "https://kns.cnki.net/kcms/sample-4471", provider: "cnki", status: "provider-retrieved", unresolved: false, degraded: true, degraded_reasons: ["semantic_scholar: missing key"] }],
+      feedback: [{ ts: "2026-07-01", verdict: "新且值得深挖", superseded: true }, { ts: "2026-07-08", verdict: "已知", superseded: false }]
+    },
+    "claim:1": {
+      claim: { id: "claim:1", text: "熵是隐喻不是机制", origin: "card" },
+      failures: [
+        { failure: { id: "failure:f1", statement: "缺乏可测量的熵定义", ftype: "概念", severity: "致命", verdict: "未决", unresolved: true }, supports: [], refutes: [], context: [] },
+        { failure: { id: "failure:f2", statement: "已有文献做过同构解释", ftype: "新颖性", severity: "重大", verdict: "已证伪", unresolved: false }, supports: [], refutes: [{ ref_id: "evr_2", title: "Prior isomorphism study", url: "https://doi.org/prior", provider: "openalex", status: "provider-retrieved", unresolved: false, degraded: false }], context: [] }
+      ],
+      annotations: [{ id: "annotation:claim-1", claim_text: "熵是隐喻不是机制", attachment_status: "unresolved" }]
+    }
+  },
+  meta: { topic_id: "topic:平台数据权力", degraded_providers: ["semantic_scholar: missing key"] }
+};
+
+async function gvLoad(){
+  if (DEMO){ GV.data = GV_DEMO; gvRender(); return; }
+  $("#gvAnchors").innerHTML = "";
+  $("#gvDetail").innerHTML = `<p class="gv-empty">载入证据投影…</p>`;
+  try {
+    const r = await fetch("/evidence/graph");
+    if (!r.ok) throw new Error(r.status);
+    GV.data = await r.json();
+  } catch(e){
+    $("#gvDetail").innerHTML = `<p class="gv-empty">证据投影暂不可用——先扫描或对抗产出七件产物再来。</p>`;
+    return;
+  }
+  gvRender();
+}
+
+function gvRender(){
+  const d = GV.data || { cards: [], claims: [], views: {}, meta: {} };
+  const deg = (d.meta && d.meta.degraded_providers) || [];
+  $("#gvTally").innerHTML = `卡片 <b>${(d.cards||[]).length}</b> · 主张 <b>${(d.claims||[]).length}</b>` +
+    (deg.length ? ` · 降级 <b>${deg.length}</b>` : "");
+  gvRenderAnchors();
+}
+
+function gvRenderAnchors(){
+  const d = GV.data, box = $("#gvAnchors");
+  const list = GV.mode === "card" ? (d.cards||[]) : (d.claims||[]);
+  if (!list.length){
+    box.innerHTML = `<p class="gv-empty" style="padding:16px 18px">暂无${GV.mode === "card" ? "卡片" : "主张"}。</p>`;
+    $("#gvDetail").innerHTML = "";
+    return;
+  }
+  box.innerHTML = list.map(gvAnchorHTML).join("");
+  box.querySelectorAll(".gv-anchor").forEach(btn => btn.addEventListener("click", () => gvSelect(btn.dataset.id)));
+  if (!GV.sel || !d.views[GV.sel]) GV.sel = list[0].id;
+  gvSelect(GV.sel);
+}
+
+function gvAnchorHTML(n){
+  const v = (GV.data.views || {})[n.id] || {};
+  let kick, name, tally;
+  if (n.kind === "card"){
+    kick = `${esc(n.type||"")} · ${esc(n.novelty||"")}`;
+    name = esc(n.name||"");
+    const all = [...(v.supports||[]), ...(v.refutes||[]), ...(v.context||[])];
+    const deg = all.filter(e => e.degraded).length;
+    const sup = (v.feedback||[]).filter(f => f.superseded).length;
+    tally = `<span class="s">支持 ${(v.supports||[]).length}</span><span class="r">证伪 ${(v.refutes||[]).length}</span>` +
+      `<span class="c">上下文 ${(v.context||[]).length}</span>` +
+      (deg ? `<span class="w">降级 ${deg}</span>` : "") + (sup ? `<span class="c">修正 ${sup}</span>` : "");
+  } else {
+    kick = `主张 · ${esc(String(n.origin||""))}`;
+    name = esc(n.text||"");
+    const nf = (v.failures||[]).length;
+    const blocked = (v.failures||[]).filter(f => f.failure && f.failure.unresolved).length;
+    tally = `<span class="r">失败点 ${nf}</span>` + (blocked ? `<span class="b">不放行 ${blocked}</span>` : "") +
+      `<span class="c">批注 ${(v.annotations||[]).length}</span>`;
+  }
+  const on = n.id === GV.sel ? " active" : "";
+  return `<button class="gv-anchor${on}" type="button" data-id="${esc(n.id)}"><div class="gv-a-kick">${kick}</div><div class="gv-a-name">${name}</div><div class="gv-a-tally">${tally}</div></button>`;
+}
+
+function gvSelect(id){
+  GV.sel = id;
+  $("#gvAnchors").querySelectorAll(".gv-anchor").forEach(b => b.classList.toggle("active", b.dataset.id === id));
+  const v = (GV.data.views || {})[id];
+  $("#gvDetail").innerHTML = v ? (v.card ? gvCardDetail(v) : gvClaimDetail(v)) : `<p class="gv-empty">选一个锚点查看证据关系。</p>`;
+}
+
+function gvEvHTML(e, cls){
+  const meta = [e.provider, e.status, e.ref_id].filter(Boolean).map(esc).join(" · ");
+  const flags = (e.unresolved ? `<span class="gv-flag blocked">⛔ 未解析</span>` : "") +
+    (e.degraded ? `<span class="gv-flag degraded">⚠ 降级${e.degraded_reasons && e.degraded_reasons.length ? "：" + esc(e.degraded_reasons[0]) : ""}</span>` : "");
+  const title = esc(e.title || e.ref_id || "");
+  const a = e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${title}</a>` : `<span>${title}</span>`;
+  return `<div class="gv-ev ${cls}">${a}${flags}<div class="gv-ev-meta">${meta}</div></div>`;
+}
+
+function gvGroupHTML(kind, label, items, cls){
+  const body = items.length ? items.map(e => gvEvHTML(e, cls)).join("") : `<p class="gv-empty">无${label}证据。</p>`;
+  return `<div class="gv-group ${kind}"><div class="gv-group-head"><span class="gv-gd"></span><span class="gv-gn">${label}</span><span class="gv-gc">${items.length}</span></div>${body}</div>`;
+}
+
+function gvCardDetail(v){
+  const c = v.card;
+  const head = `<div class="gv-dh"><div class="gv-dh-kick">${esc(c.type||"")} · ${esc(c.novelty||"")}</div><h2>${esc(c.name||"")}</h2><div class="gv-dh-sub">evidence_for_card · ${esc(c.id||"")}</div></div>`;
+  const groups = gvGroupHTML("supports", "支持", v.supports||[], "s") +
+    gvGroupHTML("refutes", "证伪", v.refutes||[], "r") +
+    gvGroupHTML("context", "上下文", v.context||[], "c");
+  const fb = (v.feedback||[]).length ? `<div class="gv-group"><div class="gv-group-head"><span class="gv-gn">后续判断</span><span class="gv-gc">${v.feedback.length}</span></div>` +
+    v.feedback.map(f => `<div class="gv-fb${f.superseded ? " superseded" : ""}"><span class="gv-fb-ts">${esc(f.ts||"")}</span><span class="gv-fb-v">「${esc(f.verdict||"")}」</span><span class="gv-fb-mark">${f.superseded ? "已被修正" : "current"}</span></div>`).join("") + `</div>` : "";
+  return head + groups + fb;
+}
+
+function gvClaimDetail(v){
+  const c = v.claim;
+  const head = `<div class="gv-dh"><div class="gv-dh-kick"><span class="gv-dh-badge">主张</span> ${esc(String(c.origin||""))}</div><h2>${esc(c.text||"")}</h2><div class="gv-dh-sub">evidence_for_claim · ${esc(c.id||"")}</div></div>`;
+  const fails = (v.failures||[]).length ? v.failures.map(b => {
+    const f = b.failure || {};
+    const blocked = f.unresolved ? `<span class="gv-flag blocked">⛔ 未检得证据·不放行</span>` : "";
+    const meta = [f.ftype, f.severity, "裁决 " + (f.verdict||"")].filter(Boolean).map(esc).join(" · ");
+    const evs = gvGroupHTML("supports", "支持", b.supports||[], "s") +
+      gvGroupHTML("refutes", "证伪", b.refutes||[], "r") +
+      gvGroupHTML("context", "上下文", b.context||[], "c");
+    return `<div class="gv-failure"><div class="gv-failure-head">${esc(f.statement||"")}${blocked}</div><div class="gv-failure-meta">${meta}</div><div class="gv-sub">${evs}</div></div>`;
+  }).join("") : `<p class="gv-empty">暂无失败点。</p>`;
+  const anns = (v.annotations||[]).length ? `<div class="gv-group"><div class="gv-group-head"><span class="gv-gn">批注</span><span class="gv-gc">${v.annotations.length}</span></div>` +
+    v.annotations.map(a => {
+      const un = a.attachment_status && a.attachment_status !== "verified" ? `<span class="gv-flag blocked">失附 ${esc(a.attachment_status)}</span>` : "";
+      return `<div class="gv-ev c"><span>${esc(a.claim_text || a.id)}</span>${un}<div class="gv-ev-meta">${esc(a.id)}</div></div>`;
+    }).join("") + `</div>` : "";
+  return head + fails + anns;
+}
+
+(function gvWire(){
+  const toGraph = $("#toGraph");
+  if (toGraph) toGraph.addEventListener("click", () => { showView("graph"); gvLoad(); });
+  const gvToId = $("#gvToIdeate");
+  if (gvToId) gvToId.addEventListener("click", () => showView("wall"));
+  [["gvTabCard", "card"], ["gvTabClaim", "claim"]].forEach(([id, mode]) => {
+    const b = $("#" + id); if (!b) return;
+    b.addEventListener("click", () => {
+      GV.mode = mode; GV.sel = null;
+      $("#gvTabCard").classList.toggle("active", mode === "card");
+      $("#gvTabClaim").classList.toggle("active", mode === "claim");
+      $("#gvTabCard").setAttribute("aria-selected", mode === "card");
+      $("#gvTabClaim").setAttribute("aria-selected", mode === "claim");
+      gvRenderAnchors();
+    });
+  });
+})();
 function rtSetPhase(txt, live){
   const el = $("#rtPhase"); el.textContent = txt; el.classList.toggle("live", !!live);
 }
