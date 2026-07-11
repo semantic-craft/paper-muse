@@ -30,6 +30,8 @@ secrets.toml
 app/build/
 app/PaperMuse.xcodeproj/
 /.claude/
+# 技能白名单软链目录（机器本地绝对路径，永不提交；兜底下方 dev-link 逐条清单的漏项）
+/.agents/
 
 # Playwright MCP 浏览器验证的临时产物（设计 agent 自验时生成，勿提交）
 .playwright-mcp/
