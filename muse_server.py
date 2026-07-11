@@ -1129,7 +1129,7 @@ def scan_status(since: int | None = None):
 
 
 # 产物抽屉：docs/agents/muse/ 下 7 件的存在状态 + 绝对路径（打开/在访达用）。
-# mindmap/failure-points 引擎暂不写 → exists 恒 false，UI 显示「待生成」。
+# mindmap 由圆桌 /report 并写（#16）、failure-points 由对抗幕写；对应工序未跑时 exists=false → UI 显示「待生成」。
 MUSE_PRODUCTS = [
     ("perspectives.md", "全部切入点卡（含反馈状态）", "paper-annotator / 任何 agent"),
     ("questions.md", "每卡 1–2 拷问句（不开圆桌也有种子）", "grill-with-docs"),
