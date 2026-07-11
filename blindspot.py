@@ -232,7 +232,9 @@ def _card_quality_points(card: dict) -> float:
     return points
 
 
-def _elo_scores(cards: list, k: int = 32) -> list:
+def _quality_ratings(cards: list, k: int = 32) -> list:
+    """确定性质量分（**不是** Elo：无真实 pairwise debate，只是质量点数的公式换算）。
+    首屏便宜、快、不阻塞出卡；真 Elo 见 run_quality_tournament（卡片上墙后异步跑）。"""
     ratings = [1500.0 for _ in cards]
     quality = [_card_quality_points(c) for c in cards]
     for i in range(len(cards)):
@@ -247,29 +249,84 @@ def _elo_scores(cards: list, k: int = 32) -> list:
 
 
 def mark_outliers(cards: list) -> list:
-    scores = _elo_scores(cards)
+    """确定性 quality_score + 离群判定（首屏便宜路径）。降级证据不参与错误判定：
+    离群只看「簇内孤立 + 本轮质量高位」，不因 degraded 命中虚高。elo_score 保持 None——
+    只有真跑过 pairwise tournament 的卡才有 elo_score（#51）。"""
+    scores = _quality_ratings(cards)
     floor = min(1500, sorted(scores)[len(scores) // 2]) if scores else 1500
     for i, c in enumerate(cards):
         score = scores[i] if i < len(scores) else 1500
         isolated = len(c.get("source_models") or []) == 1 and int(c.get("cluster_size") or 1) == 1
-        high_elo = score >= floor
-        c["elo_score"] = score
+        high_quality = score >= floor
+        c["quality_score"] = score
+        c.setdefault("elo_score", None)   # 无 matches → 不存在真 Elo（仅占位 None）
         c["outlier_reason"] = (
-            f"Elo {score}；"
+            f"质量分 {score}；"
             f"{'簇内孤立' if isolated else '已有近邻/多模型共识'}；"
-            f"{'高于本轮基准' if high_elo else '低于本轮基准'}"
+            f"{'高于本轮基准' if high_quality else '低于本轮基准'}"
         )
-        c["outlier"] = isolated and high_elo
+        c["outlier"] = isolated and high_quality
     return cards
 
 
+def run_quality_tournament(cards: list, judge, *, max_candidates: int = 8,
+                           max_matches: int | None = None, on_match=None) -> list:
+    """卡片上墙后的**真** pairwise judge tournament（异步跑，不阻塞首卡）。
+    judge(card_a, card_b) -> {"winner": "a"|"b"|"tie", "reason": str}。只有实际参赛的卡获得
+    elo_score；每场 match/judge/理由/分数变化经 on_match 回调进 manifest。候选集有界
+    (max_candidates，取确定性质量分高位)、预算有界 (max_matches 墙钟/费用代理)。
+
+    返回参赛卡子集（带 elo_score + tournament_matches 计数）。judge 抛错的对局跳过、不崩。"""
+    ranked = sorted(cards, key=lambda c: c.get("quality_score") or 0, reverse=True)
+    field = ranked[:max(0, max_candidates)]
+    ratings = {id(c): 1500.0 for c in field}
+    played = {id(c): 0 for c in field}
+    matches = 0
+    for a_i in range(len(field)):
+        for b_i in range(a_i + 1, len(field)):
+            if max_matches is not None and matches >= max_matches:
+                break
+            a, b = field[a_i], field[b_i]
+            try:
+                verdict = judge(a, b) or {}
+            except Exception as e:
+                logging.warning(f"tournament judge 异常，跳过该对局：{e}")
+                continue
+            winner = verdict.get("winner")
+            score_a = 1.0 if winner == "a" else (0.0 if winner == "b" else 0.5)
+            exp_a = 1 / (1 + 10 ** ((ratings[id(b)] - ratings[id(a)]) / 400))
+            delta = 32 * (score_a - exp_a)
+            ratings[id(a)] += delta
+            ratings[id(b)] -= delta
+            played[id(a)] += 1
+            played[id(b)] += 1
+            matches += 1
+            if on_match:
+                on_match({"a": a.get("name"), "b": b.get("name"), "winner": winner or "tie",
+                          "reason": str(verdict.get("reason") or ""),
+                          "rating_delta": round(delta, 2)})
+        else:
+            continue
+        break
+    competitors = []
+    for c in field:
+        if played[id(c)] > 0:
+            c["elo_score"] = int(round(ratings[id(c)]))
+            c["tournament_matches"] = played[id(c)]
+            competitors.append(c)
+    return competitors
+
+
 def _card_embedding_text(card: dict) -> str:
+    # Proximity 比较完整卡片语义（机制/非显而易见理由/steelman/可行性），不只名称（#51）。
+    feasibility = card.get("feasibility")
     parts = [
         card.get("name", ""),
         card.get("type", ""),
         card.get("mechanism", ""),
         card.get("why_nonobvious", ""),
         card.get("steelman", ""),
+        feasibility if isinstance(feasibility, str) else "",
     ]
     return "\n".join(str(p) for p in parts if p)
 
@@ -305,6 +362,9 @@ def _cosine(left, right) -> float:
 
 
 def _card_vectors(cards: list, embedding_fn=None):
+    # Proximity 完整语义（机制/why/steelman/可行性）走真 embedding；无真 embedding 时退回
+    # 本地 hash 仅按名称——crude n-gram 对整段语义会把共享套话的卡误并，故名称基更稳，
+    # 并由 finalize 记 proximity_basis="lexical-fallback" 明示这是降级路径（#51）。
     texts = [_card_embedding_text(c) for c in cards] if embedding_fn else [c.get("name", "") for c in cards]
     try:
         vectors = (embedding_fn or _local_embedding)(texts)
@@ -318,9 +378,14 @@ def _card_vectors(cards: list, embedding_fn=None):
 
 
 def finalize_card_quality(cards: list, embedding_fn=None, embedding_threshold: float = 0.88) -> list:
-    """Final async #6 pass: embedding-neighbor merge, then Elo outlier basis."""
+    """Final async #6 pass: embedding-neighbor merge, then deterministic quality outlier basis.
+    Proximity 用完整卡片语义（#51）；记录 proximity_basis：真 embedding vs 本地 hash 退化 vs 无。"""
     merged = dedupe_cards(cards)
     vectors = _card_vectors(merged, embedding_fn)
+    basis = ("embedding" if (embedding_fn and vectors) else
+             ("lexical-fallback" if vectors else "none"))
+    for card in merged:
+        card["proximity_basis"] = basis
     if vectors:
         kept, kept_vecs = [], []
         for card, vec in zip(merged, vectors):
@@ -735,7 +800,8 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
                              zh_hits=None, zh_status=None, own_hits=None, own_status=None,
                              own_identity_status=None, novelty_reason=None, anchors=[],
                              evidence=[],
-                             elo_score=None, outlier_reason=None,
+                             quality_score=None, elo_score=None, outlier_reason=None,
+                             proximity_basis=None,
                              cluster_id=None, cluster_size=1, cluster_similarity=None)
                     wall[key] = c
                     order.append(key)

@@ -8,6 +8,7 @@ from blindspot import (
     dedupe_cards,
     finalize_card_quality,
     mark_outliers,
+    run_quality_tournament,
     apply_suppression,
     classify_novelty,
     extract_json,
@@ -85,19 +86,21 @@ def test_mark_outliers_only_single_proposer():
     cards = mark_outliers(cards)
     by = {c["name"]: c["outlier"] for c in cards}
     assert by["B"] is True and by["A"] is False
-    assert "Elo" in cards[1]["outlier_reason"]
+    assert "质量分" in cards[1]["outlier_reason"]
 
 
-def test_mark_outliers_requires_high_elo_and_isolation():
+def test_mark_outliers_requires_high_quality_and_isolation():
     cards = [
         _card("英热中冷强卡", "deepseek", novelty="交叉空白", gold=True, en_hits=12, zh_hits=0),
         _card("主流弱卡", "gemini", novelty="主流", gold=False, en_hits=1, zh_hits=9),
     ]
     mark_outliers(cards)
 
-    assert cards[0]["elo_score"] > cards[1]["elo_score"]
+    assert cards[0]["quality_score"] > cards[1]["quality_score"]
     assert cards[0]["outlier"] is True
     assert cards[1]["outlier"] is False
+    # 确定性路径不产生真 Elo：没跑 tournament → elo_score 为 None（#51）
+    assert cards[0]["elo_score"] is None and cards[1]["elo_score"] is None
 
 
 def test_apply_suppression_filters_known():
@@ -614,12 +617,12 @@ def test_run_scan_end_to_end_offline(tmp_path):
         own_search=lambda q: [1, 2] if "交易成本" in q else [],
         on_card=emitted.append,
     )
-    # 去重后 5 张；交易成本双模型共识，离群需同时满足孤立 + Elo 本轮高位
+    # 去重后 5 张；交易成本双模型共识，离群需同时满足孤立 + 质量分本轮高位
     assert len(cards) == 5 and len(emitted) == 5
     byname = {c["name"]: c for c in cards}
     assert byname["交易成本"]["outlier"] is False
     assert byname["文书量化"]["outlier"] is True and byname["STS"]["outlier"] is False
-    assert "Elo" in byname["文书量化"]["outlier_reason"]
+    assert "质量分" in byname["文书量化"]["outlier_reason"]
     # 自有语料面独立于新颖性判据：own_hits 记数，学界空白×自有有藏 → 已藏未用
     assert byname["交易成本"]["own_hits"] == 2 and byname["STS"]["own_hits"] == 0
     # 新颖性：en=4, zh=0 → 交叉空白 + 金标
@@ -1019,3 +1022,70 @@ def test_run_scan_puzzle_feeds_prompts_but_not_profile_md(tmp_path):
     profile_md = (tmp_path / "docs" / "agents" / "muse" / "profile.md").read_text(encoding="utf-8")
     assert profile_md == "领域：中文法学"          # 快照 = 画像，困惑不在其中
     assert "怕落进" not in profile_md
+
+
+# ---- #51 校准 quality / Proximity / 真 Elo ----
+
+def test_finalize_records_proximity_basis_full_semantics():
+    """Proximity 用完整卡片语义并记录 basis：无 embedding_fn → lexical-fallback（不再仅名称）。"""
+    cards = [_card("控制论视角", "m1", mechanism="反馈调节"),
+             _card("博弈论方法", "m2", mechanism="策略均衡")]
+    out = finalize_card_quality([dict(c) for c in cards])
+    assert all(c["proximity_basis"] == "lexical-fallback" for c in out)
+    # 真 embedding_fn → basis=embedding
+    out2 = finalize_card_quality([dict(c) for c in cards],
+                                 embedding_fn=lambda texts: [[float(len(t)), 1.0] for t in texts])
+    assert all(c["proximity_basis"] == "embedding" for c in out2)
+
+
+def test_quality_tournament_only_competitors_get_elo_and_matches_recorded():
+    """真 pairwise tournament：只有实际参赛的卡获得 elo_score；每场 match 有理由记录。"""
+    cards = [_card(n, "m1") for n in ("A", "B", "C")]
+    mark_outliers(cards)                       # 先有确定性 quality_score
+    for c in cards:
+        assert c["elo_score"] is None          # 赛前无真 Elo
+    matches = []
+    # judge：名字靠前者胜（确定性）
+    judge = lambda a, b: {"winner": "a" if a["name"] < b["name"] else "b",
+                          "reason": f"{a['name']} vs {b['name']}"}
+    competitors = run_quality_tournament(cards, judge, max_candidates=3, on_match=matches.append)
+    assert len(competitors) == 3
+    assert all(isinstance(c["elo_score"], int) and c["tournament_matches"] > 0 for c in competitors)
+    assert cards[0]["elo_score"] > cards[2]["elo_score"]      # A 全胜 > C 全败
+    assert len(matches) == 3 and all(m["reason"] for m in matches)
+
+
+def test_quality_tournament_respects_candidate_and_match_budget():
+    cards = [_card(str(i), "m1") for i in range(10)]
+    mark_outliers(cards)
+    n_matches = []
+    run_quality_tournament(cards, lambda a, b: {"winner": "tie"},
+                           max_candidates=4, max_matches=2, on_match=n_matches.append)
+    assert len(n_matches) == 2                                # 预算封顶（墙钟/费用代理）
+    scored = [c for c in cards if isinstance(c.get("elo_score"), int)]
+    assert len(scored) <= 4                                   # 候选集有界
+
+
+def test_quality_tournament_judge_error_skips_match_not_crash():
+    cards = [_card("A", "m1"), _card("B", "m1")]
+    mark_outliers(cards)
+
+    def boom(a, b):
+        raise RuntimeError("judge down")
+
+    competitors = run_quality_tournament(cards, boom, max_candidates=2)
+    assert competitors == [] and all(c["elo_score"] is None for c in cards)   # 无有效对局→无 Elo
+
+
+def test_gold_outlier_selectivity_not_all_labels_full():
+    """固定样例：应为/不应为 gold-outlier 各有——防「标签全满而测试仍绿」回归。"""
+    cards = [
+        _card("英热中冷孤例", "m1", novelty="交叉空白", gold=True, en_hits=12, zh_hits=0),   # 应 outlier
+        _card("主流共识", "m2", novelty="主流", gold=False, en_hits=1),
+        _card("主流共识", "m3", novelty="主流", gold=False, en_hits=1),                       # 双模型共识 → 不 outlier
+    ]
+    merged = finalize_card_quality(cards)
+    golds = [c for c in merged if c.get("gold")]
+    outliers = [c for c in merged if c.get("outlier")]
+    assert 0 < len(golds) < len(merged)        # 不是全 gold
+    assert 0 < len(outliers) < len(merged)     # 不是全 outlier
