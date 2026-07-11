@@ -70,6 +70,7 @@ import adversary
 import paperqa_bridge
 import run_manifest  # #49：版本化无秘密 run manifest（scan/evidence/roundtable/adversary 各落一次）
 import feedback_events  # #50：不可变反馈事件流 + 投影（angle-feedback 抑制面由它重建）
+import evidence_graph  # #53：证据图投影器（七件产物 → {nodes,edges} 关系投影，read-only）
 
 
 def _now_iso():
@@ -861,6 +862,25 @@ def evidence_ask(req: EvidenceAskReq):
         degradation=([str(payload.get("message"))] if payload.get("degraded") else []),
         artifacts=["sources.md", "evidence.json"])
     return payload
+
+
+@app.get("/evidence/graph")
+def evidence_graph_view(output_dir: str | None = None):
+    """#53 证据图投影：按卡片/按主张分组的证据关系（read-only，纯投影七件产物、不改源）。
+    须声明在 /evidence/{evidence_id} 之前，否则 "graph" 会被当作 evidence_id 匹配。
+    返回 {cards, claims, views, meta}：views 按节点 id 预分组（evidence_for_card/claim）。"""
+    base = _current_evidence_output_dir(output_dir)
+    if not base:
+        return {"cards": [], "claims": [], "views": {}, "meta": {}}
+    graph = evidence_graph.build_graph(base)
+    cards = [n for n in graph["nodes"] if n["kind"] == "card"]
+    claims = [n for n in graph["nodes"] if n["kind"] == "claim"]
+    views = {}
+    for node in cards:
+        views[node["id"]] = evidence_graph.evidence_for_card(graph, node["id"])
+    for node in claims:
+        views[node["id"]] = evidence_graph.evidence_for_claim(graph, node["id"])
+    return {"cards": cards, "claims": claims, "views": views, "meta": graph.get("meta", {})}
 
 
 @app.get("/evidence/{evidence_id}")
