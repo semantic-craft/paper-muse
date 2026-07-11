@@ -69,6 +69,7 @@ import blindspot
 import adversary
 import paperqa_bridge
 import run_manifest  # #49：版本化无秘密 run manifest（scan/evidence/roundtable/adversary 各落一次）
+import feedback_events  # #50：不可变反馈事件流 + 投影（angle-feedback 抑制面由它重建）
 
 
 def _now_iso():
@@ -1140,7 +1141,19 @@ def scan_feedback(req: FeedbackReq):
         raise HTTPException(409, "尚无扫描会话")
     if req.verdict not in ("已知", "新但不适用", "新且值得深挖"):
         raise HTTPException(400, "verdict 必须是 已知/新但不适用/新且值得深挖")
-    blindspot.record_feedback(SCAN["output_dir"], req.name, req.verdict)
+    out_dir = SCAN["output_dir"]
+    # #50：反馈记为不可变事件（保留 run/card/evidence 关联），angle-feedback 抑制面由事件投影重建。
+    with SCAN_LOCK:
+        card = next((c for c in SCAN["cards"]
+                     if blindspot.normalize_name(c.get("name", "")) == blindspot.normalize_name(req.name)), None)
+    run_id = next((r["run_id"] for r in reversed(run_manifest.read(out_dir))
+                   if r.get("kind") == "scan"), "")
+    feedback_events.record_event(
+        out_dir, name=req.name, verdict=req.verdict, ts=_now_iso(), run_id=run_id,
+        card_id=(card or {}).get("id", ""),
+        evidence_ids=[e.get("id") for e in ((card or {}).get("evidence") or [])
+                      if isinstance(e, dict) and e.get("id")])
+    feedback_events.rebuild_angle_feedback(out_dir)
     return {"ok": True}
 
 
