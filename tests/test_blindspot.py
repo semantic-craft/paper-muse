@@ -247,7 +247,6 @@ def test_novelty_uses_academic_total_not_anchor_count():
     assert card["en_hits"] == 47
     assert card["en_source"] == "openalex"
     assert card["en_degraded"] == "semantic_scholar: missing key"
-    assert card["anchors"] == [{"title": "A", "url": "u1"}, {"title": "B", "url": "u2"}]
     assert card["evidence"][0]["id"] == "evr_a"
     assert card["gold"] is True
 
@@ -376,9 +375,25 @@ def test_run_scan_streaming_merge_and_enrich(tmp_path, monkeypatch):
         "主题", "", str(tmp_path),
         providers={"fast": lambda p: "", "slow": lambda p: ""},
         decompose_llm=lambda p: "",
-        en_search=lambda q: [{"title": "t", "url": "u"}] * 4,
+        en_search=lambda q: {
+            "hits": 4,
+            "results": [{"title": "t", "url": "u"}],
+            "evidence": [{
+                "id": "evr_en",
+                "source": {"title": "t", "url": "u"},
+                "retrieval": {"provider": "openalex", "query": q},
+                "verification": {"status": "provider-retrieved", "degraded": False},
+            }],
+            "source": "openalex",
+            "degraded": None,
+        },
         zh_search=lambda q: _confirmed_cnki_empty(),
-        own_search=lambda q: [{"title": "t", "url": "u"}],
+        own_search=lambda q: {
+            "hits": 1,
+            "results": [],
+            "evidence": [],
+            "status": {"provider": "zsearch", "state": "ok", "hits": 1},
+        },
         on_card=on_card)
 
     assert emitted == ["A", "B", "C"]
@@ -388,7 +403,7 @@ def test_run_scan_streaming_merge_and_enrich(tmp_path, monkeypatch):
     assert a["outlier"] is False and b["outlier"] is True
     assert a["en_hits"] == 4 and a["zh_hits"] == 0 and a["own_hits"] == 1
     assert a["novelty"] == "交叉空白" and a["gold"] is True  # en 热 × zh 真零 = 金标
-    assert len(a["anchors"]) == 3
+    assert len(a["evidence"]) == 1  # en 面 EvidenceRef 贯穿到卡
 
 
 def test_run_scan_merges_angle_variants_in_live_wall(tmp_path, monkeypatch):
@@ -614,7 +629,13 @@ def test_run_scan_end_to_end_offline(tmp_path):
             "degraded": None,
         },
         zh_search=lambda q: _confirmed_cnki_empty(),
-        own_search=lambda q: [1, 2] if "交易成本" in q else [],
+        own_search=lambda q: (
+            {"hits": 2, "results": [], "evidence": [],
+             "status": {"provider": "zsearch", "state": "ok", "hits": 2}}
+            if "交易成本" in q else
+            {"hits": 0, "results": [], "evidence": [],
+             "status": {"provider": "zsearch", "state": "empty", "hits": 0}}
+        ),
         on_card=emitted.append,
     )
     # 去重后 5 张；交易成本双模型共识，离群需同时满足孤立 + 质量分本轮高位
@@ -627,7 +648,6 @@ def test_run_scan_end_to_end_offline(tmp_path):
     assert byname["交易成本"]["own_hits"] == 2 and byname["STS"]["own_hits"] == 0
     # 新颖性：en=4, zh=0 → 交叉空白 + 金标
     assert byname["交易成本"]["novelty"] == "交叉空白" and byname["交易成本"]["gold"] is True
-    assert byname["交易成本"]["anchors"][0]["url"] == "https://e.com/1"
     assert byname["交易成本"]["evidence"][0]["id"] == "evr_e2e"
     # 三类齐备
     assert {c["type"] for c in cards} == set(CARD_TYPES)
