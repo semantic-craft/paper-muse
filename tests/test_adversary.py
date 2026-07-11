@@ -295,6 +295,24 @@ def test_run_review_draft_end_to_end_offline(tmp_path):
     assert "证伪备忘录" in fp
 
 
+def test_claim_carries_pool_keys_at_emit_before_falsify(tmp_path):
+    """回归：/adversary/status 浅拷贝快照要求「只换预置键的值、不加键」。_apply_falsify_pool
+    会写主张级 sidecar_degradation / memo / library_degradation，须在 on_claim（主张刚上墙、
+    异步证伪补挂之前）就存在，否则补挂线程给活主张新增键 → 并发序列化撞 dict changed size。
+    在 on_claim 捕获键集断言，确定性、不依赖补挂时序。"""
+    draft, quote, extract, redteam = _draft_with_claim()
+    keys_at_emit = {}
+    run_review(
+        source_text=draft, has_draft=True, output_dir=str(tmp_path),
+        review_llm=FakeLLM([extract]), redteam_llm=FakeLLM([redteam]),
+        classify_llm=lambda p: json.dumps({"evidence": []}),
+        falsify_search=_pool([], en_hits=None, zh_hits=None),
+        on_claim=lambda c: keys_at_emit.__setitem__(c["id"], set(c.keys())),
+    )
+    for keys in keys_at_emit.values():
+        assert {"sidecar_degradation", "memo", "library_degradation"} <= keys
+
+
 def test_run_review_draft_writes_reattachable_annotation_handoff(tmp_path):
     """#48：草稿模式落 annotation-handoff.json——主张按草稿 span 产可重附着 selector，
     meta 挂裁决 + evidence id，且 selector 能在草稿里重附着（verified）。"""
