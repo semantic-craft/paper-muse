@@ -589,6 +589,58 @@ def test_roundtable_step_filters_empty_returned_turn(tmp_path):
     assert body == {"turns": []}
 
 
+def test_warm_start_seeds_card_evidence_into_knowledge_base(monkeypatch):
+    """#47：/session 携带 card evidence → 热身后 seed 进 runner.knowledge_base，
+    证据身份（evidence_id）随 knowledge_base.to_dict 落 instance_dump。"""
+    from knowledge_storm.dataclass import KnowledgeBase
+    from evidence import ProviderRecord, evidence_ref_from_record
+
+    ref = evidence_ref_from_record(
+        ProviderRecord(source_id="S", title="卡片文献", url="https://doi.org/x", version="",
+                       source_kind="scholarly-work", relation="supports", identity="",
+                       locator_kind="url", locator_value="https://doi.org/x", exact="论据"),
+        "openalex", "问式")
+    kb = KnowledgeBase(topic="t", knowledge_base_lm=None,
+                       node_expansion_trigger_count=10, encoder=object())
+
+    class _Runner:
+        def __init__(self):
+            self.knowledge_base = kb
+            self.conversation_history = []
+
+        def warm_start(self):
+            self.conversation_history = [_Turn("Background discussion moderator", "热身完成")]
+
+    monkeypatch.setattr(muse_server, "build_runner", lambda req: _Runner())
+    muse_server.warm_start_bg(muse_server.SessionReq(topic="主题", card_id=1, evidence=[ref]))
+
+    assert muse_server.SESSION["phase"] == "ready"
+    ids = {v["meta"]["evidence_id"] for v in kb.to_dict()["info_uuid_to_info_dict"].values()}
+    assert ref["id"] in ids
+
+
+def test_warm_start_without_evidence_does_not_seed(monkeypatch):
+    """#47：不带 evidence 的圆桌照常启动，不 seed（缺证据不拖垮热身）。"""
+    from knowledge_storm.dataclass import KnowledgeBase
+
+    kb = KnowledgeBase(topic="t", knowledge_base_lm=None,
+                       node_expansion_trigger_count=10, encoder=object())
+
+    class _Runner:
+        def __init__(self):
+            self.knowledge_base = kb
+            self.conversation_history = []
+
+        def warm_start(self):
+            self.conversation_history = [_Turn("Background discussion moderator", "热身完成")]
+
+    monkeypatch.setattr(muse_server, "build_runner", lambda req: _Runner())
+    muse_server.warm_start_bg(muse_server.SessionReq(topic="主题"))
+
+    assert muse_server.SESSION["phase"] == "ready"
+    assert kb.info_uuid_to_info_dict == {}
+
+
 def test_roundtable_report_filters_empty_turns_in_conversation_md(tmp_path):
     class _KnowledgeBase:
         def reorganize(self):
