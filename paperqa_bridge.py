@@ -139,7 +139,14 @@ def paperqa_status(
     return {**base, "state": "ready", "ready": True, "message": "PaperQA ready"}
 
 
-def _degraded(question: str, status: dict, message: str | None = None) -> dict:
+def _degraded(question: str, status: dict, message: str | None = None,
+              *, state: str | None = None) -> dict:
+    # state/message 覆盖内部并入 status，免每个失败分支手工拼 {**status, "state":…, "message":…}
+    # （#21：ask_self_library 六处失败分支曾各拼一遍，易漏、易漂移）。
+    if state is not None:
+        status = {**status, "state": state}
+    if message is not None:
+        status = {**status, "message": message}
     state_map = {
         "missing": "unavailable",
         "pdf_dir_missing": "unavailable",
@@ -639,28 +646,22 @@ def ask_self_library(
         )
     except subprocess.TimeoutExpired as e:
         message = f"PaperQA query timed out after {e.timeout}s"
-        payload = _degraded(
-            q, {**status, "state": "timeout", "message": message}, message
-        )
+        payload = _degraded(q, status, message, state="timeout")
         return _finalize_answer(payload, target, output_dir)
     except Exception as e:
-        payload = _degraded(q, {**status, "state": "error", "message": str(e)}, str(e))
+        payload = _degraded(q, status, str(e), state="error")
         return _finalize_answer(payload, target, output_dir)
     raw_payload = _parse_marker(result.stdout)
     if result.returncode != 0:
         message = (raw_payload or {}).get("error") or (
             result.stderr or result.stdout or "PaperQA query failed"
         )[-1000:]
-        payload = _degraded(
-            q, {**status, "state": "error", "message": message}, message
-        )
+        payload = _degraded(q, status, message, state="error")
     elif not raw_payload or raw_payload.get("ok") is not True:
         message = (raw_payload or {}).get(
             "error"
         ) or "PaperQA returned malformed output"
-        payload = _degraded(
-            q, {**status, "state": "bad-payload", "message": message}, message
-        )
+        payload = _degraded(q, status, message, state="bad-payload")
     else:
         bundle = paperqa_payload_to_bundle(raw_payload, question=q, status=status)
         agent_status = str(raw_payload.get("agent_status") or "success").lower()
@@ -682,14 +683,10 @@ def ask_self_library(
                     },
                 }
             else:
-                payload = _degraded(
-                    q, {**status, "state": state, "message": message}, message
-                )
+                payload = _degraded(q, status, message, state=state)
         elif bundle["status"]["state"] != "ok":
             message = "PaperQA returned no cited answer"
-            payload = _degraded(
-                q, {**status, "state": "bad-payload", "message": message}, message
-            )
+            payload = _degraded(q, status, message, state="bad-payload")
         else:
             payload = {
                 **bundle,
