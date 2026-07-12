@@ -703,7 +703,10 @@ def build_rm(req: "SessionReq", k: int):
         return TavilySearchRM(
             tavily_search_api_key=os.getenv("TAVILY_API_KEY"),
             k=k,
-            include_raw_content=True,
+            # 默认走有界摘要，不拉原始全文：性能 PRD P0「Raw/full content retrieval remains
+            # opt-in；default roundtable search should use bounded snippets」。全文是显式增强
+            # 路径——req.fulltext 时下方 JinaFullTextRM 叠加，而非默认每轮都付全文体积/延迟/成本。
+            include_raw_content=False,
         )
 
     if req.retriever == "tavily":
