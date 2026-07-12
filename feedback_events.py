@@ -43,6 +43,17 @@ def read_events(output_dir) -> list:
     return out
 
 
+def _event_count(output_dir) -> int:
+    """现有事件行数（version 派生用）。只数非空行、不做 JSON 解析：避免为求计数把全部历史
+    事件反序列化一遍（逐条追加累计 O(n²)，#15）；且计入坏行 → version 不因某行损坏而回退、
+    与既有 version 冲突（单调性更稳）。"""
+    path = _events_path(output_dir)
+    if not path.exists():
+        return 0
+    with path.open(encoding="utf-8") as f:
+        return sum(1 for line in f if line.strip())
+
+
 def record_event(output_dir, *, name: str, verdict: str, ts: str, run_id: str = "",
                  card_id="", evidence_ids=None, applicability: str = "", note: str = "",
                  supersedes: str = "") -> dict:
@@ -50,8 +61,7 @@ def record_event(output_dir, *, name: str, verdict: str, ts: str, run_id: str = 
     if verdict not in VERDICTS:
         raise ValueError(f"verdict 必须是 {VERDICTS} 之一，得到 {verdict!r}")
     with _LOCK:
-        existing = read_events(output_dir)
-        version = len(existing) + 1
+        version = _event_count(output_dir) + 1
         name_norm = blindspot.normalize_name(name)
         ev = {
             "event_id": _event_id(name_norm, version, ts),
