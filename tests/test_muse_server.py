@@ -462,6 +462,25 @@ def test_session_blocked_and_unclobbered_while_runner_locked(monkeypatch, tmp_pa
     muse_server.SESSION.update(phase="idle", runner=None, topic="")   # 清理，勿污染后续测试
 
 
+def test_build_rm_defaults_to_bounded_snippets_fulltext_opt_in(monkeypatch):
+    """回归：性能 PRD P0「默认有界摘要、全文仅按需」。build_rm 的基础 Tavily 默认
+    include_raw_content=False（不拉原始全文）；全文是显式增强路径——req.fulltext=True
+    才叠加 JinaFullTextRM。修复前基础 Tavily 无条件写死 True，每轮圆桌都付全文成本。"""
+    from knowledge_storm.rm import JinaFullTextRM
+
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
+    monkeypatch.setenv("JINA_API_KEY", "jina-test")
+
+    base = muse_server.build_rm(muse_server.SessionReq(topic="平台责任"), k=5)
+    assert base.include_raw_content is False          # 默认有界摘要
+    assert base.include_raw_content is not True
+
+    wrapped = muse_server.build_rm(
+        muse_server.SessionReq(topic="平台责任", fulltext=True), k=5)
+    assert isinstance(wrapped, JinaFullTextRM)         # 全文=显式 opt-in
+    assert wrapped.base_rm.include_raw_content is False  # 底层仍有界，Jina 才是全文那层
+
+
 def test_scan_bg_sets_has_profile_true_and_feeds_profile(monkeypatch, tmp_path):
     monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
