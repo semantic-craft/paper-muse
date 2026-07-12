@@ -78,6 +78,12 @@ def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _evidence_ids(items):
+    """从一层证据列表抽稳定 EvidenceRef id（过滤非 dict / 无 id）。manifest 与反馈事件的
+    证据关联四处共用，避免过滤规则散在各处漂移（#26）；嵌套结构先展平再调。"""
+    return [e.get("id") for e in (items or []) if isinstance(e, dict) and e.get("id")]
+
+
 def _emit_manifest(kind, output_dir, *, seed, started_at, **fields):
     """#49 best-effort：落 run-manifest.jsonl（含 git 代码版本）。失败绝不拖垮研究运行。"""
     if not output_dir:
@@ -857,8 +863,7 @@ def evidence_ask(req: EvidenceAskReq):
     # #49：卡片证据问答落 manifest（seed=问题；关联返回的 evidence ids + 降级）
     _emit_manifest(
         "evidence", evidence_dir, seed=req.question, started_at=started,
-        evidence_ids=[e.get("id") for e in (payload.get("evidence") or [])
-                      if isinstance(e, dict) and e.get("id")],
+        evidence_ids=_evidence_ids(payload.get("evidence")),
         degradation=([str(payload.get("message"))] if payload.get("degraded") else []),
         artifacts=["sources.md", "evidence.json"])
     return payload
@@ -1073,8 +1078,7 @@ def scan_bg(req: ScanReq):
             "scan", SCAN["output_dir"], seed=req.topic, started_at=started,
             provider_capability={k: "ready" for k in provs},
             has_profile=bool(profile.strip()),
-            evidence_ids=[e.get("id") for c in cards for e in (c.get("evidence") or [])
-                          if isinstance(e, dict) and e.get("id")],
+            evidence_ids=[eid for c in cards for eid in _evidence_ids(c.get("evidence"))],
             artifacts=["perspectives.md", "questions.md", "sources.md", "angle-feedback.md"])
         _scan_update(phase="done")
     except Exception:
@@ -1181,8 +1185,7 @@ def scan_feedback(req: FeedbackReq):
     feedback_events.record_event(
         out_dir, name=req.name, verdict=req.verdict, ts=_now_iso(), run_id=run_id,
         card_id=(card or {}).get("id", ""),
-        evidence_ids=[e.get("id") for e in ((card or {}).get("evidence") or [])
-                      if isinstance(e, dict) and e.get("id")])
+        evidence_ids=_evidence_ids((card or {}).get("evidence")))
     feedback_events.rebuild_angle_feedback(out_dir)
     return {"ok": True}
 
@@ -1248,8 +1251,8 @@ def adversary_bg(req: AdversaryReq):
             on_update=_adv_touch)
         _emit_manifest(
             "adversary", base, seed=(source or "")[:80], started_at=started, model=req.model or "",
-            evidence_ids=[e.get("id") for c in claims for f in c.get("failures", [])
-                          for e in f.get("evidence", []) if isinstance(e, dict) and e.get("id")],
+            evidence_ids=[eid for c in claims for f in c.get("failures", [])
+                          for eid in _evidence_ids(f.get("evidence"))],
             degradation=sorted({d for c in claims
                                 for d in (c.get("sidecar_degradation"), c.get("library_degradation")) if d}),
             artifacts=["failure-points.md"] + (["annotation-handoff.json"] if has_draft else []))
