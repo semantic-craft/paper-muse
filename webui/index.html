@@ -2990,6 +2990,11 @@ document.addEventListener("toggle", positionMargins, true);
   }
   function wireLeaderHover(){
     $("#advMarginStack").querySelectorAll(".fp-card").forEach(card => {
+      // resize / ev-fold 开合 / 切主题都会重调本函数，而 .fp-card 节点在这些操作里不重建；
+      // 无标志会对同一持久节点每次再叠一整套四个监听 → 长会话监听单调泄漏（#27）。
+      // 打标志跳过已接线节点；scheduleStream 重建 stack 时新节点无标志、照常接线一次。
+      if (card.dataset.hoverWired) return;
+      card.dataset.hoverWired = "1";
       const set = on => { const p = $("#advLeaders").querySelector(`.leader[data-fp="${card.dataset.fp}"]`); if (p) p.classList.toggle("hot", on); };
       card.addEventListener("mouseenter", () => set(true));
       card.addEventListener("mouseleave", () => set(false));
