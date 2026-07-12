@@ -1,56 +1,103 @@
-# 学术「有趣性」与目标实现：两套有证据的机制
+# 学术「有趣性」与目标实现：两套有证据的机制（核验版）
 
-日期：2026-07-12　状态：**调研备忘（供设计决策参考）**
-缘起：起点是「要不要把吸引力法则纳入论文构思」。**结论是把它剔除**——流行意义的吸引力法则/显化不能进提示词，更不能声称它提高论文质量。真正值得吸收的是两套**独立于显化、有证据基础**的机制。本文锁定证据，落点见[设计备忘](../superpowers/specs/2026-07-12-mechanisms-into-muse.md)。
+日期：2026-07-12　状态：**调研备忘（核验版，供设计决策参考）**
+缘起：起点是「要不要把吸引力法则纳入论文构思」。**结论是把它剔除**——流行意义的吸引力法则/显化不进提示词、不得声称提高论文质量。真正值得吸收的是两套**独立于显化、有证据基础**的机制。落点见[设计备忘](../superpowers/specs/2026-07-12-mechanisms-into-muse.md) 与 spec [#88](https://github.com/semantic-craft/paper-muse/issues/88)。
+
+> **核验说明（2026-07-12）**：本版经一次 104-agent 深度研究、每条主张 3 票对抗核验（2/3 反驳才杀，25/25 通过）升级。证据分级严格分层，因果表述与研究设计匹配（相关≠因果），编委调查不外推为跨学科普遍规律。
+
+**证据分级图例**：【奠基理论】= 概念/规范论证，无实证检验；【守门人调查】= 编辑/编委意见，相关/意见级、常单学科非随机；【观察性】= 档案回归，相关非因果；【缺口】= 本轮未通过核验或无直接证据。
 
 ## 0. 结论先行
 
 **吸引力法则 ≠ 方法来源。它的全部价值是一条反面边界：**
-- **Dixon, Hornsey & Hartley 2023**（*PSPB*，3 研究 N≈1,023）：显化信念与**客观成功（收入、学历）零相关**，只与过度自信、风险投资、破产经历**相关**——相关关系，不宜作因果。[SAGE](https://journals.sagepub.com/doi/10.1177/01461672231181162) ／ [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC11616226/)
-- **Kappes & Oettingen 2011**（*JESP*）：只沉浸于理想未来的积极幻想，会**降低实际投入的能量**（生理+行为指标），反而损害达成。[PDF](https://www.psy.uni-hamburg.de/en/arbeitsbereiche/paedagogische-psychologie-und-motivation/personen/oettingen-gabriele/dokumente/kappes-oettingen-2011.pdf)
+- **Dixon, Hornsey & Hartley 2023**（*PSPB*，3 研究 N≈1,023）：显化信念与**客观成功（收入、学历）零相关**，只与过度自信、风险投资、破产经历**相关**——相关，不宜作因果。DOI [10.1177/01461672231181162](https://journals.sagepub.com/doi/10.1177/01461672231181162)
+- **Kappes & Oettingen 2011**（*JESP*）：只沉浸理想未来的积极幻想**降低实际投入能量**（生理+行为指标），反而损害达成。[PDF](https://www.psy.uni-hamburg.de/en/arbeitsbereiche/paedagogische-psychologie-und-motivation/personen/oettingen-gabriele/dokumente/kappes-oettingen-2011.pdf)
 
-这两条恰好实证了「为什么需要」下面两套机制：**有趣性**替代空洞的「新颖」，**MCII** 替代空洞的「理想成稿幻想」。二者与显化**没有承继关系**——不因显化成立，显化也不因它们获救。
+显化的失败恰好实证「为什么需要」下面两套机制：**有趣性**替代空洞「新颖」，**MCII** 替代空洞「理想成稿幻想」。二者与显化**无承继关系**。
 
 ---
 
-## A · 学术「有趣性」（问题侧）
+## A · 学术「有趣性」（问题侧）——证据矩阵
 
-让研究值得读的，不是填了个空白，而是**修正了读者视为理所当然的前提**。
+**最有证据支持的机制 = Davis 假设否认**：命题否认某受众**部分（而非全部）**想当然的假设、且具实践意涵时，被感知为有趣。但须诚实：**确认集中没有任何实验因果证据**，全部落在「奠基理论 + 守门人意见调查」层。
 
-| 研究 | 核心主张 | 可迁移的操作 |
-|---|---|---|
-| **Davis 1971**「That's Interesting!」（*Phil. Soc. Sci.* 1(2)） | 有趣 = **否定读者习以为常的假设** | 先列出目标读者的默认认识，再选一个**可证成**的前提去反转 |
-| **Alvesson & Sandberg 2011**（*AMR* 36(2):247–271；另 *Organization* 同年「gap-spotting or problematization」） | **问题化 > 空白搜寻**：质疑既有解释所依赖的假设，而非让文献假设原封不动 | 不问「X 研究还缺什么」，而问「常规 X 观遗漏了 X 的哪种功能」 [SAGE](https://journals.sagepub.com/doi/10.1177/1350508410372151) |
-| **Goyanes 2018**「Against dullness」（*Info, Comm & Society* 23(2)） | 16 家传播学期刊编委调查 → 五类有趣：**反直觉 / 奠基性 / 新路径 / 质量与示范性 / 洞见与实践性** | 作跨学科启发（不直接代表中国社科/法学）：贡献至少命中一类 [tandfonline](https://www.tandfonline.com/doi/full/10.1080/1369118X.2018.1495248) |
-| **Corley & Gioia 2011**（*AMR* 36(1):12–32） | 理论贡献 = **原创性 × 效用**（缺一不可） | 新概念必须**改变理解**、且能**组织现实制度** |
-| **Oppenheimer 2006**（*Appl. Cogn. Psychol.* 20(2)） | 处理流畅性：**故作复杂降低读者评价** | 概念可以深，句子必须清；不用大词掩盖论证 |
+| 机制/文献 | 设计·样本 | 因变量 | 主要发现 | 强度 | 局限 |
+|---|---|---|---|---|---|
+| **Davis 1971**（*Phil. Soc. Sci.* 1(2):309–344） | 现象学论证＋例证（Marx/Durkheim/Freud） | 有趣性 | 有趣=否定受众部分假设「看似 X 实为非 X」，12 类反转索引；边界：确认→显而易见、不触及→无关、全否→荒谬、无实践意涵→「那又怎样」；声誉由有趣而非真实驱动 | 【奠基理论】 | 无实证检验；**严格受众相对** |
+| **Alvesson & Sandberg 2011**（*AMR* 36(2):247–271） | 概念/方法论 | 有趣性（理论影响） | problematization：挑战部分（非全部）底层假设；五层假设连续体 in-house→根隐喻→范式→意识形态→领域；规范主张终极指标是「有趣」而非严谨 | 【奠基理论/规范】 | 「有趣优先于严谨」被后续文献质疑（见 §7） |
+| **Sandberg & Alvesson 2011**（*Organization* 18(1):23–44） | 实证回顾 52 篇/4 刊/2003–05 | 研究问题构建方式 | gap-spotting 绝对主导，**52 篇无一刻意挑战假设**；三模式 confusion/neglect/application | 【实证（限组织研究）】 | 「有趣性缺口」为实证事实，不外推 |
+| **Bartunek, Rynes & Ireland 2006**（*AMJ* 49(1):9–15） | 编委意见调查 67 人/160 篇 | 感知有趣性 | 反直觉 57%（与质量并列）＞写得好 48%＞新理论 46%＞实践意涵 31%＞影响力 28%；规范分层：**「interesting cannot substitute for validity or importance」** | 【守门人调查】 | 单学科单刊、非随机、意见 |
+| **Goyanes 2018/2020**（*Info, Comm & Society* 23(2):198–215） | 16 刊编委调查 | 感知有趣性 | 五类：反直觉/奠基性/新路径/质量与示范/洞见与实践 | 【守门人调查】 | 单学科；核验止摘要级；自述为 essay |
+| **Corley & Gioia 2011**（*AMR* 36(1):12–32） | 编辑声明综合 | 理论贡献 | 原创（增量 vs 揭示）×效用（科学 vs 实践）；**揭示性洞见必要不充分** | 【奠基/编辑意见】 | 限精英管理期刊；2×2 为描述性提炼 |
+
+**跨学科收敛**：「反直觉」在管理学（Bartunek）与传播学（Goyanes）两个独立编委调查中均居前——假设挑战机制在守门人感知层的收敛证据；但两学科**类目结构不同**，佐证判据的共同体依赖性。
+
+---
+
+## A′ · 因变量分离（spec 铁律：七因变量不得混同）
+
+有趣性与「原创性/重要性/可读性/可信度/被引/录用」是**不同**的因变量，混用会得出错误设计：
+
+- **有趣性 ≠ 重要性/效度**：Bartunek 明文分层——有趣不能替代效度与重要性（规范主张）。
+- **有趣性 ≠ 理论贡献**：Corley–Gioia——揭示性洞见必要不充分，还需科学或实践效用。
+- **有趣性 ≠ 录用**：**Teplitskiy et al. 2022**（*PNAS*，~27,323 投稿/49 刊，观察性）——新颖性更高**更易**录用（+6.5pp），与「评审惩罚新颖」论题相反；但**仅细胞生物学＋物理**、单一操作化，不可外推法学。强度【观察性·medium】。
+- **有趣性 ≠ 被引**：**Judge et al. 2007**（*AMJ*，614 篇/21 刊，档案回归）——被引最强预测因子是**期刊位置**（unique R²=.11）＞全部内容属性合计（.04）；内容属性真实但幅度有限。强度【观察性·相关】。→ **工具永不以录用/被引作有趣性代理或效标。**
+
+---
+
+## A″ · 证据缺口（明确标注，不用未核验来源填充）
+
+- **无实验因果证据**支持「假设否认→感知有趣」——这是量表效度声称的**最大缺口**（开放问题 1）。
+- **处理流畅性（Oppenheimer 2006）**：本轮未进确认集；且它测的是**处理流畅性→读者对作者智力/可信度的判断**，是**另一个因变量**（可信度），**不进有趣性维度集**。清晰度若要用，另立可信度关注。
+- **叙事结构**：对专业读者有趣性的独立贡献，本轮无核验通过的证据。
+- **法学/中文/CSSCI**：确认集**零**直接证据（见 §5）。
 
 ---
 
 ## B · 目标实现机制（执行侧）：心理对照 × 执行意图（MCII）
 
-把**理想成稿**、**现实障碍**、**if–then 执行动作**连起来——而不是停在对理想成稿的想象。
+把**理想成稿**、**现实障碍**、**if–then 执行动作**连起来——而非停在对理想成稿的想象。
 
-- **机制**：心理对照（对比「理想」与挡路的「现实障碍」）+ 执行意图（「若遇到障碍 X，则执行动作 Y」）。属 Oettingen 谱系，与上面 Kappes–Oettingen 的警示同源、互为正反。
-- **元分析证据**：**Wang, Wang & Gai 2021**（*Frontiers in Psychology*）——**21 项研究 / 24 个独立效应量 / N=15,907**；MCII 对目标达成 **g=0.336（小到中）**；人际互动式干预（g=0.465）强于文档式（g=0.277）；**存在发表偏倚，真实效应可能更小**。[PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC8149892/) ／ [PubMed](https://pubmed.ncbi.nlm.nih.gov/34054628/)
-- **定位**：比「相信成功即吸引成功」可靠得多，但也别夸大——**小到中效应、有偏倚**。它是**指令来源**，不是营销话术。
+- **机制**：心理对照（「理想」⟷ 挡路「现实障碍」）＋ 执行意图（「若障碍 X，则动作 Y」）。属 Oettingen 谱系，与 §0 的 Kappes–Oettingen 警示互为正反。
+- **元分析**：**Wang, Wang & Gai 2021**（*Frontiers in Psychology*）——**21 研究/24 效应量/N=15,907**；MCII 对目标达成 **g=0.336（小到中）**；人际式（g=0.465）＞文档式（g=0.277）；**有发表偏倚，真实效应或更小**。[PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC8149892/)
+- **定位**：比「相信成功即吸引成功」可靠得多，但别夸大——小到中效应、有偏倚。是**指令来源**，非营销话术。
 
 ---
 
-## 与显化的关系（明确写死）
+## 5. 迁移到中国法学的限制（有据推断，非直接证据）
 
-**没有承继关系。** 把它们放在一起讨论的唯一理由，是显化的失败（Dixon 零相关、Kappes–Oettingen 泄劲）恰好证明了这两套机制**为何必要**。任何「因为吸引力法则，所以……」的表述都是错的，不得进任何提示词或对外说明。
+- **受众相对性 = 核心限制（理论＋经验双重证据）**：Davis 原文（有趣性只相对某受众的假设地基）＋ Bartunek 实证——巴西 *RAE* 20 名编委判据（**影响力 39%／质量 32%**）与 AMJ（**反直觉 57%**）**分歧**，直接证明**判据不可跨共同体外推**。
+- **中国法学是两个受众**：**教义学**（体系融贯优先）与 **社科法学**。各自的「假设地基」不同，须**分别重建**，不可预设「反直觉居首」。
+- **本土守门人证据（编辑观点级，未进确认集，方向性可用）**：中国法学杂志社匿名评审指标（[clsjp.chinalaw.org.cn](https://clsjp.chinalaw.org.cn/portal/list/index/id/1319.html)）；《中国法学》副编审任彦《漫谈法学论文写作》——选题=「有无**问题意识**」＋「有无创新」，拒「无问题意识的空泛议论」（[thepaper.cn](https://m.thepaper.cn/baijiahao_20278641)，博客级）；法学研究刊评价口径（[faxueyanjiu.ajcass.com](https://faxueyanjiu.ajcass.com)）。**「问题意识」≈ problematization**——本土收敛信号，#83 以此为基座而非移植 Goyanes。
 
-## 对 paper-muse 的落点（详见设计备忘）
+## 6. 落点（详见设计备忘 / spec #88）
 
-- **A → 主战场是构思阶段**：把「张力/有趣性」做成盲区扫描每张卡的**一等属性**——识别领域默认前提、再生成反转它的切入点（问题化取代单纯空白搜寻），卡片携带 `tension` 字段。这与 researcher-relative 发现力**对齐、不是后手**。对抗幕(R4)可加一道张力复审作双保险，但非主。
-- **B → 产物契约结构**：深挖/待办产物写成「**目标—障碍—if–then 验收门槛**」，别写成理想成稿愿景。
-- **红线不变**：不写正稿；发现力优先；机制是**指令来源**，禁止声称「提高论文质量/被引」。
+- **A → 构思阶段一等属性**：卡片带 `tension`（反转领域默认前提），问题化取代空白搜寻；与 researcher-relative 发现力对齐。质量闸维度按 §5 **分教义学/社科法学两套**（#83）；**张力须与可辩护性（steelman 存活）配对，不替代严谨**（Bartunek 证据）。
+- **B → 产物契约结构**：深挖产物写成「目标—障碍—if–then 验收门槛」。
+- **红线**：不写正稿；发现力优先；机制是指令来源，**禁止声称提高质量/被引**。
 
-## 来源清单
-- Dixon et al. 2023, *PSPB*：[SAGE](https://journals.sagepub.com/doi/10.1177/01461672231181162) ／ [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC11616226/)
-- Kappes & Oettingen 2011, *JESP*：[PDF](https://www.psy.uni-hamburg.de/en/arbeitsbereiche/paedagogische-psychologie-und-motivation/personen/oettingen-gabriele/dokumente/kappes-oettingen-2011.pdf)
-- Alvesson & Sandberg 2011, *AMR/Organization*：[SAGE](https://journals.sagepub.com/doi/10.1177/1350508410372151) ／ [AMR](https://journals.aom.org/doi/10.5465/amr.2009.0188)
-- Goyanes 2018, *Info, Comm & Society*：[tandfonline](https://www.tandfonline.com/doi/full/10.1080/1369118X.2018.1495248)
-- Wang, Wang & Gai 2021, *Frontiers in Psychology*：[PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC8149892/) ／ [PubMed](https://pubmed.ncbi.nlm.nih.gov/34054628/)
-- Davis 1971 ／ Corley & Gioia 2011 ／ Oppenheimer 2006：经典文献，见正文出处（未附外链，避免指向不稳定镜像）。
+## 7. 争议与开放问题
+
+1. 是否有实验因果操纵「假设否认/反直觉程度」并控制严谨性测感知有趣性？——确认集零实验证据。
+2. **教义学是否根本不以「反转默认前提」为德性**（体系融贯优先）？若否，张力机制对教义学论文需改形态。无直接证据，或需本土编委调查复制 Bartunek 设计。→ **spec #88 未决岔路 / #83 先解**。
+3. 处理流畅性/叙事结构对专业读者有趣性的独立贡献——未核验。
+4. Teplitskiy 2022（新颖性受奖励，细胞生物学/物理）与 Wang/Veugelers/Stephan 2017 等反新颖偏见文献的张力未解——是学科、操作化还是评审阶段差异？影响量表是否提示「反直觉有评审风险」。
+5. Alvesson–Sandberg「有趣优先于严谨」的规范可欲性被 Pillutla & Thau 2013、2021 AMJ 编辑文章质疑（该批评本身未进确认集）。
+
+## 8. 参考文献（带 DOI/稳定 URL）
+
+1. Davis, M. S. (1971). *Phil. Soc. Sci.* 1(2):309–344. DOI [10.1177/004839317100100211](https://journals.sagepub.com/doi/10.1177/004839317100100211)
+2. Alvesson, M. & Sandberg, J. (2011). *AMR* 36(2):247–271. DOI [10.5465/amr.2009.0188](https://journals.aom.org/doi/10.5465/amr.2009.0188)
+3. Sandberg, J. & Alvesson, M. (2011). *Organization* 18(1):23–44. DOI [10.1177/1350508410372151](https://journals.sagepub.com/doi/10.1177/1350508410372151)
+4. Bartunek, Rynes & Ireland (2006). *AMJ* 49(1):9–15. DOI [10.5465/amj.2006.20785494](https://journals.aom.org/doi/10.5465/amj.2006.20785494)
+5. Goyanes, M. (2018/2020). *Info, Comm & Society* 23(2):198–215. DOI [10.1080/1369118X.2018.1495248](https://www.tandfonline.com/doi/full/10.1080/1369118X.2018.1495248)（核验止摘要级）
+6. Corley, K. G. & Gioia, D. A. (2011). *AMR* 36(1):12–32. DOI [10.5465/amr.2009.0486](https://journals.aom.org/doi/abs/10.5465/amr.2009.0486)
+7. Barney, J. B. (2020). *AMS Review*. DOI [10.1007/s13162-020-00163-y](https://link.springer.com/article/10.1007/s13162-020-00163-y)（措辞「typically… at least three」，非「必须」）
+8. Teplitskiy, Peng, Blasco & Lakhani (2022). *PNAS* 119(47). DOI [10.1073/pnas.2118046119](https://www.pnas.org/doi/10.1073/pnas.2118046119)
+9. Judge, Cable, Colbert & Rynes (2007). *AMJ* 50(3):491–506. DOI [10.5465/amj.2007.25525577](https://journals.aom.org/doi/10.5465/amj.2007.25525577)
+10. Kappes, H. B. & Oettingen, G. (2011). *JESP*. [PDF](https://www.psy.uni-hamburg.de/en/arbeitsbereiche/paedagogische-psychologie-und-motivation/personen/oettingen-gabriele/dokumente/kappes-oettingen-2011.pdf)
+11. Wang, Wang & Gai (2021). *Frontiers in Psychology*. [PMC8149892](https://pmc.ncbi.nlm.nih.gov/articles/PMC8149892/)
+12. Dixon, Hornsey & Hartley (2023). *PSPB*. DOI [10.1177/01461672231181162](https://journals.sagepub.com/doi/10.1177/01461672231181162)
+13. 本土（编辑观点级，非确认集）：中国法学匿名评审指标 clsjp.chinalaw.org.cn/portal/list/index/id/1319.html；任彦《漫谈法学论文写作》thepaper.cn/baijiahao_20278641（博客级）；法学研究 faxueyanjiu.ajcass.com
+
+**细节陷阱（引用勿复制错）**：Bartunek 原文误写 RAE 出版方为 ANPAD（实为 FGV-EAESP）；Corley–Gioia 最终框架另加 scope＋prescience，2×2 是描述性提炼。
