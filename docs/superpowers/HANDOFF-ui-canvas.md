@@ -1,79 +1,89 @@
-# 交接：muse UI 画布（两幕剧子计划）——状态与待办
+# paper-muse 开发清账与跨机交接
 
-本文件是新会话的完整上下文。上一轮把**构思幕**做完了（盲区扫描卡片墙 + 点卡深挖 web 圆桌，全在 web 画布），已推 GitHub。本文件列**已做 / 没做 / 怎么接着做**。
-（旧版本「先做 4 个 mock」的交接见 git 历史 99ad781。）
+> 状态快照：2026-07-13；核对基线：`origin/main` = `2c69b05`。
+> 读者：在 helios、metis 或其他机器继续开发的人与代理。
+> GitHub `main` 是共享事实源；本文件只记录可由提交、Issue、PR 或测试证明的状态。
+
+## 先同步，不要从旧 handoff 继续猜
+
+```bash
+git status --short --branch
+git log --oneline --decorate -8
+git fetch --prune origin
+git switch main
+git pull --ff-only origin main
+git status --short --branch
+```
+
+- 2026-07-13 核对时，GitHub 远端只保留 `main`，没有待处理 PR。
+- PR [#95](https://github.com/semantic-craft/paper-muse/pull/95) 已 rebase-merge；原分支
+  `docs/interestingness-verified` 已删除。远端对应提交是 `1a6f168`、`2c69b05`。
+- helios 记录的 `710f5e9` **不是分叉**：它是当前 `main` 的祖先，落后 111 个提交。
+  不要为它建恢复分支或做合并；在 helios 上按上面的命令快进即可。
+- 多机器/多会话同时工作时，每次提交、删分支或合并前都重新执行前两行；功能改动走独立分支和 PR，禁止 force-push `main`。
 
 ## 一句话现状
 
-构思幕端到端接线完成，视觉方向选定 **① 文稿台**（单栏手稿 + 朱批旁注）；**但至今没跑过一次真扫描 / 真圆桌**——付费边界内全绿，真实验收是本轮欠的核心。对抗幕（slice 3/4）还没动。
+PaperMuse 1.0 已发布；构思幕、圆桌、对抗幕、画像、证据契约和本地运行/发布链路均已有实现。当前主要欠账不是“把两幕从零做出来”，而是**用当前 HEAD 做带版本记录的付费真机复验与校准**，以及实现新规格 [#88](https://github.com/semantic-craft/paper-muse/issues/88) 的 `tension` / MCII 切片。
 
-## 已做（已 commit + push，main）
+## 已完成并进入 main
 
-- 4 方向设计 mock（`docs/superpowers/mocks/`）→ 用户选 **① 文稿台**。
-- **卡片墙**：`webui/index.html` 接 `/scan`（POST /scan → @1.5s 轮询 `/scan/status` 增量出卡 → 三键 `/scan/feedback`）；防御式渲染（own_hits/zh_hits 可 null、gold/outlier/feasibility 可缺）。
-- **圆桌**：同画布 web 视图 `#rtView`，点卡「深挖圆桌」→ `enterRoundtable` → `/session`→轮询热身→`/step`→`/report`；「在访达打开」经 museBridge 回原生 Finder。文稿台手稿语言（对谈条目=席位色点，你=朱批楷体缩进，主持=金）。
-- **app 壳**：SwiftUI + WKWebView（`PaperMuseApp`→`MuseCanvasView`→`CanvasWebView`；`MuseServer` 管 python 进程）。内容区整块就是一个 WebView。**已退役 v0.1 原生圆桌**（删 `RoundtableView.swift` / `MuseClient.swift`）。
-- 提交：`12428a8` mocks、`09b6670` 卡片墙接线、`f21df3e` 圆桌重建。
+| 范围 | 可核对证据 | 状态边界 |
+|---|---|---|
+| 构思幕 web 画布与圆桌 | `09b6670`、`f21df3e` | UI/接口已接线；不是当前付费真机验收证据 |
+| 真实扫描修复与速度 | `19d9c8e`、`2784ca0`、`240aa29` | 历史实测首批从 84s 降至 2s、稳定拆解链 11s；代码变化后仍须按当前 HEAD 复验 |
+| 画像与参照系 | `5ddad17`、`d51121e` | 机器级画像、困惑剥离、结构化 `vs_profile` 已实现 |
+| 对抗幕 | `12d9fa8`、`2d63e86`、`401c168` | 回合机、证伪检索、UI/API 已实现；两模式/多 provider 的当前真机复验仍欠 |
+| 统一证据契约 | PR #54–#70；父票 [#40](https://github.com/semantic-craft/paper-muse/issues/40) | #41–#53 共 13/13 子票已合并关闭；父票保留，等待付费/真机验收与 Elo 校准 |
+| 稳定性与性能清扫 | PR #72、#76、#81 | 已合并；未把开放的真机与质量校准债自动视为完成 |
+| 有趣性证据基础与 D9 | PR [#95](https://github.com/semantic-craft/paper-muse/pull/95) | 核验版研究与“按共同体改变张力形态”已定稿；仅文档/规格完成，功能未实现 |
+| 发布 | release `papermuse-v1.0.0` | GitHub 已有 PaperMuse 1.0 与 main Python runtime 预发布件 |
 
-## 关键架构 / 文件
+## 当前不能报完成的门
 
-- `blindspot.py` — 扫描引擎（三家合议 + 新颖性三面判据 + 落盘）。
-- `muse_server.py`（FastAPI :8765，单会话 + 一把锁）— `/scan` 系 + `/session /status /step /report`（圆桌）+ `/ui` 静态托管 `webui/`。
-- `webui/index.html` — 单页画布：`#wallView`（卡片墙）+ `#rtView`（圆桌），JS 切视图；内联 `DEMO_CARDS/DEMO_TURNS`，`?demo=1`（墙）/ `?demo=1&view=rt`（圆桌）不接后端预览；真接线全走 fetch 同源。
-- `app/Sources/` — 4 个 swift：`PaperMuseApp`（入口）、`MuseCanvasView`（loading/ready/failed + WebView）、`CanvasWebView`（WKWebView + `museBridge{action:reveal}`）、`MuseServer`（拉起/复用/退出清理 python）。
-- spec：`docs/superpowers/specs/2026-07-05-muse-two-act-design.md`（§4 卡片墙 §5 圆桌 §6 对抗幕 §12 验收）。
+以下项目需要用户在场、真实 provider/预算或活 Chrome，会继续保留为未核验：
 
-## 卡片字段（webui 渲染契约，照 blindspot 真输出）
+1. 用**当前代码版本**跑扫描、圆桌、对抗幕完整付费冒烟，并把 run manifest、provider、耗时和产物路径一起留档。
+2. CNKI 中文面 live 验证：活 Chrome 会话下确认 `zh_hits` 不是降级 `None`。
+3. 三个 provider 横跨两幕的当前复验；对抗幕有稿/无稿两模式都产出 `failure-points.md`。
+4. #51 真 Elo tournament 的付费校准数据，以及 #73/#77–#80 的质量与规格债。
+5. App 自起 server 路径（`MuseServer.launch()`，不是复用已运行 server）的当前实机确认。
 
-`type`(学科视角|理论框架|研究方法) / `name` / `mechanism` / `why_nonobvious` / `steelman` / `feasibility`(方法卡) / `questions[]` / `novelty`(主流|边缘有人做|交叉空白|中文面未检) / `gold`(🥇英热中冷) / `outlier`(🔸离群) / `own_hits`(📚>0且交叉/边缘) / `en_hits` / `zh_hits`(可 null) / `anchors[{title,url}]` / `source_models[]`。**服务端卡无 id**，webui ingest 时补 i+1。
+不要用 2026-07-07 的历史速度记录替代当前 HEAD 的验收，也不要在没有付费实测时关闭 [#40](https://github.com/semantic-craft/paper-muse/issues/40)。
 
-## 没做 / 待办
+## `tension` / MCII 工作线清账
 
-### ★ 门槛：真实端到端冒烟 + 按 §12 验收（先做，几乎必炸 bug）
+- 地图：[#82](https://github.com/semantic-craft/paper-muse/issues/82)
+- 总规格：[#88](https://github.com/semantic-craft/paper-muse/issues/88)
+- PR #95 只完成证据基础与 D9；没有完成 #83、#84 或 #89–#94。
+- [#83](https://github.com/semantic-craft/paper-muse/issues/83) 仍欠 prompt-ready 的教义学/社科法学两套完整判据、证据层级与中文示例。
+- [#84](https://github.com/semantic-craft/paper-muse/issues/84) 仍欠“现行 vs 问题化”真机样张、出卡率与耗时数据。
+- 真机门通过后，可并行前沿是：
+  - [#89](https://github.com/semantic-craft/paper-muse/issues/89)：预置键契约单点声明；
+  - [#90](https://github.com/semantic-craft/paper-muse/issues/90)：MCII 三元产物。
+- 后续依赖：`#89 → #91 → #92/#93`；其中 #92 还依赖 #84，#93/#94 还依赖 #83。
 
-全程只验到「付费边界」（demo 渲染、模拟流式、xcodebuild、真机起 app 空态）。**没跑过一次真的。** 起 server + app，真跑一个中文法学主题：
+## 其他开放债
 
-- **扫描**：首批卡 ≤20s？三类卡齐？≥1 离群标亮？每卡最强反驳 + **真实**文献锚点？中英密度非空（或明示中文面未检）？标「已知」→再扫该角度真不出（抑制表）？
-- **深挖**：真圆桌热身（1–3min）→出转录→插话/让继续/出报告→7 件产物齐？「在访达打开」真定位产物目录？
-- `provider` 三选一（deepseek/openai/gemini）都能跑通两处？
-- 真跑大概率炸：字段错位、轮询时序、热身失败处理、报告路径、增量 stagger 真流式没看过。triage + 修。
+2026-07-13 远端共有 19 个 open issue：
 
-### 功能 slice（验收过了再上）
+- [#40](https://github.com/semantic-craft/paper-muse/issues/40)：证据 PRD 代码完成后的真机/付费收尾；
+- #73–#80：质量、性能与既有 spec 缺口；
+- [#82](https://github.com/semantic-craft/paper-muse/issues/82)–[#94](https://github.com/semantic-craft/paper-muse/issues/94)：张力/MCII 地图、输入资产、总规格与实现票。
 
-- **对抗幕引擎 + UI（slice 3/4，完全没做）**：§6 有稿模式（扫 `$PAPER_MUSE_OUTPUT_DIR` 下 *.md 选草稿→抽中心主张→每条 3–5 最可能崩的失败点→检索证伪/佐证→无证据标「未决」→`failure-points.md`）+ 无稿模式（攻击一句主线，卡片一键送入）。轻量引擎，不套 Co-STORM。web 里对抗幕现在只是占位 tab。persona 取「对抗式审查」原文。
-- **圆桌钉死席位（§5，引擎侧没接）**：真 `CoStormRunner` 没强制 ① 第一性原理专家 ② 跨学科猎人（web demo 演了这俩角色，真引擎只是拿种子起普通 session）。要在引擎接。
+`ready-for-agent` 只表示票面规格足够清楚，不覆盖票内的 `Blocked by` 和真机门。领票前必须同时检查依赖、assignee、最新评论与 `origin/main`。
 
-### 待用户 / 待接
+## 下一步建议
 
-- **persona 原文**：「第一性原理」「对抗式审查」工作方法论原文已落位于 `prompt_assets.py`。
-- **CNKI 走通**：中文学界面（`opencli cnki search`）需活的 Chrome 会话才出真 zh_hits，当前降级「中文面未检」。用户 Chrome + opencli 在时验一次，确认 zh_hits 非 None。
-- **研究者画像输入 UI**（本轮 defer）：现画像栏是占位提示、扫描发 `profile:""`。§4 要 5 行输入（领域/立场/熟悉/困惑）→落 `profile.md`→复用；离群/新颖性以画像为参照系，**缺它发现力打折**。
-- **主题预填**（本轮 defer）：§2 有 `PAPER_MUSE_OUTPUT_DIR` 时读该目录近期 md 标题预填主题框。
+1. metis/helios 先快进到 GitHub `main`，确认工作树干净。
+2. 用户确认预算并准备活 Chrome 后，按 spec §12 对当前 HEAD 跑一次完整真机验收；炸出的每个问题单独建 GitHub issue。
+3. 验收通过后，两个会话可分别认领 #89、#90；不要提前并入被 #83/#84 阻塞的 #92–#94。
+4. 每个实现票坚持独立分支、TDD、全量离线回归、PR；合并后更新对应 Issue，不再另造会话私有 handoff。
 
-### 小债
+## 关键入口
 
-- app 自起 server 路径没验（只验了「复用已有 server」；关掉手动 server 再起 app 走 `MuseServer.launch()`）。
-- `app/build/`（旧会话 17:38 产物）会误导 `open` 启动老二进制——加 `.gitignore` 或删；正常从 Xcode ⌘R / 默认 DerivedData 跑。
-- 圆桌错误态（`/session` 忙 409、热身失败）只是 toast，可能要更稳。
-
-## UI 设计决策（扩展面，已定方向；mock 见 `docs/superpowers/mocks/ext-*.html` + `_shared/tokens.css`）
-
-- **产物面板 = 右侧抽屉（A）**：顶栏「产物·N」扣 → 右滑「附录·版记」，列 7 件产物（每件 打开 / 在访达 + 一句「喂给谁」）。读面干净、按需取用。
-- **研究者画像 = A+B 合并**：首次「开笔卡」采集（浮于空墙、扫描按钮先置灰）+ 左栏就地改 + **每张卡「因你」回指画像字段**（"因你立场是权利本位…"）。采集 + 兑现两层都要。
-
-集成触点 / 坑（接线前先解决）：
-- 产物抽屉列 7 件，但**服务端现只写** perspectives/questions/sources/angle-feedback（scan）+ profile（若填）+ report/conversation/instance_dump/log（`/report`）。`mindmap.md`、`failure-points.md` **尚无写入**（圆桌思维导图、对抗幕失败点未接）→ UI 只列真实存在的、灰"待生成"明示工序未跑，或补引擎写这两件。打开/在访达走已有 `museBridge{action:reveal}`。
-- 画像：first-run 存 → `POST /scan {profile}`（`ScanReq` 已有 `profile` 字段，webui 现发 `profile:""`，接上即可）；确认引擎把画像落 `profile.md`。
-- **「因你」回指是最大的坑**：卡的 `why_nonobvious` 是自由文本，**不结构化链到画像字段**。真「因你·立场」需引擎侧标注（每卡带"被哪条画像维度顶成非显而易见"），或 UI 侧启发式匹配（弱）；mock 里是写死的 → 要么引擎加这个 tag，要么本期降级为 presentational（why 已含相对你的措辞，不做硬链接）。
-
-**集成状态（已接进 webui + server + app；demo/live/真机都验过，0 JS 报错；真扫描冒烟待用户）**：
-- ✅ 画像 A+B：首次「开笔卡」+ 左栏就地改（`contenteditable`）+ 可选 + `startScan` 发真 `profileText()`；顶栏「产物·N」抽屉 `GET /scan/products` + 打开(`{action:open}`)/在访达(`{action:reveal}`)走 museBridge（`CanvasWebView` 已加 open）。
-- ⚠️ 残留：「因你」是**透明启发式**（画像词面真出现在 why/steelman 才挂 tag，无命中不挂；待引擎给结构化 tag 升级）；`mindmap.md`/`failure-points.md` 仍未写入（抽屉恒显「待生成」）；**画像跨会话加载**（起界面时读已存的 `profile.md` 预填）未做，现每次 live 起为空。
-
-## 环境 / 怎么跑
-
-- venv：`.venv/bin/python`（uv 建，无 pip）。key 在 `secrets.toml`（gitignore，DEEPSEEK/OPENAI/GOOGLE/PERPLEXITY/JINA/TAVILY 全有）。
-- 起 server：`.venv/bin/python muse_server.py --port 8765`；UI = `http://127.0.0.1:8765/ui/`。
-- app：`cd app && xcodegen generate` 后 Xcode ⌘R；或 `xcodebuild -project app/PaperMuse.xcodeproj -scheme PaperMuse -configuration Debug -destination 'platform=macOS' build`（产物在**默认 DerivedData**，别用 `app/build/` 旧的）。app 会自起/复用 :8765。
-- 不接后端看 UI：`/ui/?demo=1`（墙）、`/ui/?demo=1&view=rt`（圆桌）。
-- 纪律：**真跑验证不靠猜、带证据**；提交/删改前 `git status` + 看近期 log（多会话并行同 repo）；子 agent 逐任务 + 双阶段评审。视觉稿走「4 方向反应法」，用户对审美有要求、要自己挑。
+- 产品与里程碑：[`docs/prd/2026-07-07-paper-muse-prd.md`](../prd/2026-07-07-paper-muse-prd.md)
+- 两幕规格与 §12：[`docs/superpowers/specs/2026-07-05-muse-two-act-design.md`](specs/2026-07-05-muse-two-act-design.md)
+- 领域模型：[`CONTEXT.md`](../../CONTEXT.md)
+- Issue 规则：[`docs/agents/issue-tracker.md`](../agents/issue-tracker.md)
+- 张力/MCII 规格：[`docs/superpowers/specs/2026-07-12-mechanisms-into-muse.md`](specs/2026-07-12-mechanisms-into-muse.md)
