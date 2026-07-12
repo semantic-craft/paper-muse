@@ -462,20 +462,19 @@ def summarize_provider_statuses(sources, endpoint, web_retriever="tavily"):
     }
 
 
+def _error_result(error: str) -> dict:
+    """空/降级 result 的单点定义（契约见文件头）。_run_one 空 claim、run 批量异常、
+    __main__ 顶层异常三处共用，避免同一 7 键字面量散弹式重复、schema 变更漏改（#18）。"""
+    return {"ok": False, "sources": [], "memo": "", "en_hits": 0,
+            "zh_hits": None, "by_retriever": {}, "error": error}
+
+
 async def _run_one(payload, endpoint):
     endpoint.begin_claim()
     claim = (payload.get("claim") or "").strip()
     failures = payload.get("failures") or []
     if not claim:
-        return {
-            "ok": False,
-            "sources": [],
-            "memo": "",
-            "en_hits": 0,
-            "zh_hits": None,
-            "by_retriever": {},
-            "error": "empty claim",
-        }
+        return _error_result("empty claim")
     _env_setup(endpoint.url)
     from gpt_researcher import GPTResearcher
 
@@ -526,15 +525,7 @@ async def run(payload):
                 except Exception as e:
                     import traceback
 
-                    res = {
-                        "ok": False,
-                        "sources": [],
-                        "memo": "",
-                        "en_hits": 0,
-                        "zh_hits": None,
-                        "by_retriever": {},
-                        "error": f"{e}\n{traceback.format_exc()[-800:]}",
-                    }
+                    res = _error_result(f"{e}\n{traceback.format_exc()[-800:]}")
                 res["id"] = item.get("id")
                 out.append(res)
             return {"ok": True, "claims": out}
@@ -570,15 +561,7 @@ if __name__ == "__main__":
     except Exception as e:
         import traceback
 
-        result = {
-            "ok": False,
-            "sources": [],
-            "memo": "",
-            "en_hits": 0,
-            "zh_hits": None,
-            "by_retriever": {},
-            "error": f"{e}\n{traceback.format_exc()[-800:]}",
-        }
+        result = _error_result(f"{e}\n{traceback.format_exc()[-800:]}")
     # 末行 = 结果 JSON（gpt-researcher 的日志走 stdout 时，主引擎只取最后一行 JSON）
     sys.stdout.write(
         "\n__GPTR_RESULT__" + json.dumps(result, ensure_ascii=False) + "\n"
