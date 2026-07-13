@@ -99,8 +99,50 @@ def test_mark_outliers_requires_high_quality_and_isolation():
     assert cards[0]["quality_score"] > cards[1]["quality_score"]
     assert cards[0]["outlier"] is True
     assert cards[1]["outlier"] is False
+    assert "孤立卡兜底" not in cards[0]["outlier_reason"]
     # 确定性路径不产生真 Elo：没跑 tournament → elo_score 为 None（#51）
     assert cards[0]["elo_score"] is None and cards[1]["elo_score"] is None
+
+
+def test_mark_outliers_falls_back_to_highest_quality_isolated_card():
+    cards = [
+        _card(
+            "高质量共识一",
+            "deepseek",
+            source_models=["deepseek", "gemini"],
+            novelty="交叉空白",
+            gold=True,
+            en_hits=12,
+            zh_hits=0,
+        ),
+        _card(
+            "高质量共识二",
+            "openai",
+            source_models=["openai", "gemini"],
+            novelty="边缘有人做",
+            en_hits=8,
+        ),
+        _card("较高分孤立卡", "deepseek", novelty="主流", en_hits=6),
+        _card("最低分孤立卡", "openai", novelty="主流"),
+    ]
+
+    mark_outliers(cards)
+
+    assert cards[2]["quality_score"] > cards[3]["quality_score"]
+    assert cards[2]["outlier"] is True
+    assert cards[3]["outlier"] is False
+    assert "孤立卡兜底" in cards[2]["outlier_reason"]
+
+
+def test_mark_outliers_does_not_create_outlier_without_isolated_card():
+    cards = [
+        _card("多模型共识", source_models=["deepseek", "gemini"]),
+        _card("簇内近邻", cluster_size=2),
+    ]
+
+    mark_outliers(cards)
+
+    assert [card["outlier"] for card in cards] == [False, False]
 
 
 def test_apply_suppression_filters_known():
