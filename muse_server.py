@@ -176,7 +176,8 @@ RUNNER_LOCK = threading.Lock()
 
 SCAN = {"phase": "idle", "topic": None, "cards": [], "output_dir": None, "error": None,
         "version": 0,
-        "has_profile": False}  # 本次扫描是否有画像参照系；无 → webui 出「发现力打折」警示（#4）
+        "has_profile": False,  # 本次扫描是否有画像参照系；无 → webui 出「发现力打折」警示（#4）
+        "degradation": []}
 SCAN_LOCK = threading.Lock()
 
 # 对抗幕单会话（同 SCAN：个人工具一次一场审查，全局 dict + 一把锁）。mode = draft|line。
@@ -1142,6 +1143,26 @@ def report():
         RUNNER_LOCK.release()
 
 
+def _scan_embedding():
+    encoder_type = (os.getenv("ENCODER_API_TYPE") or "").strip().lower()
+    fallback = "，使用 lexical-fallback"
+    if not encoder_type:
+        return None, [f"Proximity 语义去重降级：未配置 encoder{fallback}"]
+    if encoder_type == "openai":
+        has_key = _configured_key("ENCODER_API_KEY") or _configured_key("OPENAI_API_KEY")
+    elif encoder_type == "azure":
+        has_key = _configured_key("AZURE_API_KEY")
+    else:
+        has_key = False
+    if not has_key:
+        return None, [f"Proximity 语义去重降级：缺少 encoder key{fallback}"]
+    try:
+        from knowledge_storm.encoder import Encoder
+        return Encoder().encode, []
+    except Exception:
+        return None, [f"Proximity 语义去重降级：encoder 初始化失败{fallback}"]
+
+
 def scan_bg(req: ScanReq):
     started = _now_iso()
     try:
@@ -1157,17 +1178,21 @@ def scan_bg(req: ScanReq):
         profile = blindspot.profile_text_from_dict(blindspot.load_researcher_profile())
         # 记本次是否有画像参照系——供 /scan/status 透出、webui 无画像时明示「发现力打折」（#4）
         _scan_update(has_profile=bool(profile.strip()))
+        embedding_fn, degradation = _scan_embedding()
         cards = blindspot.run_scan(
             topic=req.topic, profile=profile, puzzle=req.puzzle, output_dir=SCAN["output_dir"],
             providers=provs, decompose_llm=blindspot.pick_decompose_llm(provs),
             en_search=blindspot.real_en_search(), zh_search=blindspot.real_cnki_search(),
-            own_search=blindspot.real_own_search(), on_card=on_card, on_update=_scan_touch)
+            own_search=blindspot.real_own_search(), on_card=on_card, on_update=_scan_touch,
+            embedding_fn=embedding_fn)
         _scan_replace_cards(cards)
+        _scan_update(degradation=degradation)
         _emit_manifest(
             "scan", SCAN["output_dir"], seed=req.topic, started_at=started,
             provider_capability={k: "ready" for k in provs},
             has_profile=bool(profile.strip()),
             evidence_ids=[eid for c in cards for eid in _evidence_ids(c.get("evidence"))],
+            degradation=degradation,
             artifacts=["perspectives.md", "questions.md", "sources.md", "angle-feedback.md"])
         _scan_update(phase="done")
     except Exception:
@@ -1209,7 +1234,7 @@ def start_scan(req: ScanReq):
         if SCAN["phase"] == "scanning":
             raise HTTPException(409, "扫描进行中")
         SCAN.update(phase="scanning", topic=topic, cards=[], error=None, output_dir=base,
-                    has_profile=False)  # scan_bg 载入画像后据实置位
+                    has_profile=False, degradation=[])  # scan_bg 收尾后据实置位
         _scan_bump_locked()
     threading.Thread(target=scan_bg, args=(req,), daemon=True).start()
     return {"ok": True, "output_dir": base}
@@ -1219,8 +1244,9 @@ def start_scan(req: ScanReq):
 def scan_status(since: int | None = None):
     with SCAN_LOCK:
         version = SCAN["version"]
-        phase, topic, output_dir, error = (
-            SCAN["phase"], SCAN["topic"], SCAN["output_dir"], SCAN["error"])
+        phase, topic, output_dir, error, degradation = (
+            SCAN["phase"], SCAN["topic"], SCAN["output_dir"], SCAN["error"],
+            list(SCAN["degradation"]))
         if since is not None and since == version:
             return {"version": version, "unchanged": True, "phase": phase,
                     "topic": topic, "output_dir": output_dir, "error": error}
@@ -1228,7 +1254,8 @@ def scan_status(since: int | None = None):
         has_profile = SCAN["has_profile"]
     return {"phase": phase, "topic": topic, "cards": cards,
             "output_dir": output_dir, "error": error,
-            "has_profile": has_profile, "version": version, "unchanged": False}
+            "has_profile": has_profile, "degradation": degradation,
+            "version": version, "unchanged": False}
 
 
 # 产物抽屉：docs/agents/muse/ 下 7 件的存在状态 + 绝对路径（打开/在访达用）。
