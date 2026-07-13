@@ -35,6 +35,18 @@ CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 # 卡缺失（或空白）张力时产物/卡面统一的占位串——明示「弱张力」而非丢卡（#88 US5）。
 TENSION_WEAK_LABEL = "弱张力/未给出"
 
+
+def card_type_quota_status(cards: list) -> dict:
+    present = {card.get("type") for card in cards}
+    missing = [card_type for card_type in CARD_TYPES if card_type not in present]
+    if not missing:
+        return {"state": "ready", "missing_card_types": [], "message": ""}
+    return {
+        "state": "degraded",
+        "missing_card_types": missing,
+        "message": f"卡型配额降级：缺少{'、'.join(missing)}",
+    }
+
 # 卡片一旦交给 on_card，就成为 /scan/status 可并发读取的活快照。后续阶段只可更新
 # 这里已注册的键值，不能再扩张键集；新增阶段字段只需在此登记一行。
 CARD_SNAPSHOT_DEFAULTS = {

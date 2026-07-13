@@ -546,6 +546,10 @@ def test_scan_bg_activates_knowledge_storm_embedding_proximity(monkeypatch, tmp_
     monkeypatch.setenv("ENCODER_API_TYPE", "openai")
     monkeypatch.setenv("ENCODER_API_KEY", "encoder-test-key")
     _stub_scan_externals(monkeypatch, {})
+    # 本测隔离 Proximity 语义去重，卡型配额视为齐备（#80 由独立测覆盖）。
+    monkeypatch.setattr(
+        blindspot, "card_type_quota_status",
+        lambda cards: {"state": "ready", "missing_card_types": [], "message": ""})
 
     class FakeEncoder:
         def encode(self, texts):
@@ -584,6 +588,10 @@ def test_scan_bg_degrades_to_lexical_proximity_without_encoder_key(monkeypatch, 
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("ENCODER_API_TYPE", "openai")
     _stub_scan_externals(monkeypatch, {})
+    # 本测隔离 Proximity 语义去重，卡型配额视为齐备（#80 由独立测覆盖）。
+    monkeypatch.setattr(
+        blindspot, "card_type_quota_status",
+        lambda cards: {"state": "ready", "missing_card_types": [], "message": ""})
 
     def fake_run_scan(**kwargs):
         cards = [
@@ -608,6 +616,65 @@ def test_scan_bg_degrades_to_lexical_proximity_without_encoder_key(monkeypatch, 
     assert muse_server.SCAN["degradation"] == [marker]
     assert TestClient(muse_server.app).get("/scan/status").json()["degradation"] == [marker]
     assert run_manifest.read(output_dir)[-1]["degradation"] == [marker]
+
+
+def test_scan_bg_exposes_card_type_degradation_and_records_manifest(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import run_manifest
+
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    captured = {}
+    _stub_scan_externals(monkeypatch, captured)
+    # 本测隔离三类卡配额，Proximity 语义去重视为正常（#78 由独立测覆盖）。
+    monkeypatch.setattr(muse_server, "_scan_embedding", lambda: (None, []))
+    cards = [
+        {"type": "学科视角", "name": "学科卡", "evidence": []},
+        {"type": "理论框架", "name": "理论卡", "evidence": []},
+    ]
+    monkeypatch.setattr(blindspot, "run_scan", lambda **kwargs: cards)
+    output_dir = tmp_path / "out"
+    muse_server.SCAN.update(
+        output_dir=str(output_dir), cards=[], phase="idle", version=0,
+        card_type_status=None,
+    )
+
+    muse_server.scan_bg(ScanReq(topic="平台数据权力", puzzle=""))
+
+    expected = {
+        "state": "degraded",
+        "missing_card_types": ["研究方法"],
+        "message": "卡型配额降级：缺少研究方法",
+    }
+    assert muse_server.SCAN["card_type_status"] == expected
+    body = TestClient(muse_server.app).get("/scan/status").json()
+    assert body["card_type_status"] == expected
+    assert run_manifest.read(output_dir)[-1]["degradation"] == [expected["message"]]
+
+
+def test_scan_bg_records_no_card_type_degradation_when_quota_is_complete(monkeypatch, tmp_path):
+    import run_manifest
+
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    _stub_scan_externals(monkeypatch, {})
+    # 本测隔离三类卡配额，Proximity 语义去重视为正常（#78 由独立测覆盖）。
+    monkeypatch.setattr(muse_server, "_scan_embedding", lambda: (None, []))
+    cards = [
+        {"type": card_type, "name": card_type, "evidence": []}
+        for card_type in blindspot.CARD_TYPES
+    ]
+    monkeypatch.setattr(blindspot, "run_scan", lambda **kwargs: cards)
+    output_dir = tmp_path / "out"
+    muse_server.SCAN.update(
+        output_dir=str(output_dir), cards=[], phase="idle", version=0,
+        card_type_status=None,
+    )
+
+    muse_server.scan_bg(ScanReq(topic="平台数据权力", puzzle=""))
+
+    assert muse_server.SCAN["card_type_status"]["state"] == "ready"
+    assert run_manifest.read(output_dir)[-1]["degradation"] == []
 
 
 def test_scan_status_exposes_has_profile_field(monkeypatch, tmp_path):
