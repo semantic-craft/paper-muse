@@ -380,11 +380,18 @@ def test_custom_endpoint_resets_cache_counts_and_provenance_between_claims(monke
     assert calls[-2:] == [("cnki", "claim-two"), ("zsearch", "claim-two")]
 
 
-def test_batch_uses_one_custom_endpoint_process_for_all_claims(monkeypatch):
+def test_batch_uses_independent_endpoints_concurrently(monkeypatch):
     endpoints = []
+    active = 0
+    max_active = 0
 
     async def fake_run_one(payload, endpoint):
+        nonlocal active, max_active
         endpoints.append(id(endpoint))
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.02)
+        active -= 1
         return {"ok": True, "sources": [], "memo": payload["claim"]}
 
     monkeypatch.setattr(G, "_run_one", fake_run_one)
@@ -400,9 +407,83 @@ def test_batch_uses_one_custom_endpoint_process_for_all_claims(monkeypatch):
         )
     )
 
-    assert len(set(endpoints)) == 1
+    assert len(set(endpoints)) == 2
+    assert max_active == 2
     assert [item["id"] for item in result["claims"]] == [1, 2]
     assert [item["memo"] for item in result["claims"]] == ["claim-one", "claim-two"]
+
+
+def test_batch_isolates_tally_cache_and_provenance_per_claim(monkeypatch):
+    calls = []
+
+    def cnki(self, max_results=5):
+        calls.append(("cnki", self.query))
+        if self.query == "claim-one":
+            return [{"title": "c1", "href": "https://cnki.test/claim-one", "body": "c1"}]
+        return []
+
+    def zsearch(self, max_results=5):
+        calls.append(("zsearch", self.query))
+        if self.query == "claim-two":
+            return [
+                {"title": "z1", "href": "https://zotero.test/claim-two/1", "body": "z1"},
+                {"title": "z2", "href": "https://zotero.test/claim-two/2", "body": "z2"},
+            ]
+        return []
+
+    monkeypatch.setattr(G.CNKIRetriever, "search", cnki)
+    monkeypatch.setattr(G.ZsearchRetriever, "search", zsearch)
+    searches_done = asyncio.Event()
+    finished = 0
+    endpoints = {}
+
+    async def fake_run_one(payload, endpoint):
+        nonlocal finished
+        claim = payload["claim"]
+        endpoint.begin_claim()
+        first = endpoint.search(claim)
+        assert endpoint.search(claim) == first
+        endpoints[claim] = endpoint
+        finished += 1
+        if finished == 2:
+            searches_done.set()
+        await searches_done.wait()
+        web_hits = 1 if claim == "claim-one" else 2
+        provider_status = G.summarize_provider_statuses(
+            [{"provider": "tavily"} for _ in range(web_hits)], endpoint
+        )
+        return {
+            "ok": True,
+            "sources": first,
+            "memo": claim,
+            "en_hits": provider_status["en_hits"],
+            "zh_hits": provider_status["zh_hits"],
+            "by_retriever": provider_status["by_retriever"],
+        }
+
+    monkeypatch.setattr(G, "_run_one", fake_run_one)
+    result = asyncio.run(
+        G.run(
+            {
+                "claims": [
+                    {"id": 1, "claim": "claim-one", "failures": []},
+                    {"id": 2, "claim": "claim-two", "failures": []},
+                ]
+            }
+        )
+    )
+
+    one, two = result["claims"]
+    assert (one["en_hits"], one["zh_hits"]) == (1, 1)
+    assert one["by_retriever"]["cnki"] == {"hits": 1, "ok": True}
+    assert one["by_retriever"]["zsearch"] == {"hits": 0, "ok": True}
+    assert (two["en_hits"], two["zh_hits"]) == (2, 2)
+    assert two["by_retriever"]["cnki"] == {"hits": 0, "ok": True}
+    assert two["by_retriever"]["zsearch"] == {"hits": 2, "ok": True}
+    assert calls.count(("cnki", "claim-one")) == calls.count(("zsearch", "claim-one")) == 1
+    assert calls.count(("cnki", "claim-two")) == calls.count(("zsearch", "claim-two")) == 1
+    assert endpoints["claim-one"].provenance_for("https://zotero.test/claim-two/1") is None
+    assert endpoints["claim-two"].provenance_for("https://cnki.test/claim-one") is None
 
 
 def test_web_and_custom_sources_keep_independent_provenance_contracts():

@@ -32,17 +32,6 @@ from urllib.parse import parse_qs, urlparse
 from evidence import ProviderRecord
 from zotero_local import ZoteroLocalAdapter
 
-# ── 命中计账（双面密度）：每个检索器 search() 的原始返回数累加进来 ──
-TALLY = {}  # name -> {"hits": int, "ok": bool}
-TALLY_LOCK = threading.Lock()
-
-
-def _bump(name, n, ok):
-    with TALLY_LOCK:
-        t = TALLY.setdefault(name, {"hits": 0, "ok": False})
-        t["hits"] += n
-        t["ok"] = t["ok"] or ok
-
 
 def _fallback_title(url, content):
     """gpt-researcher 的 research source 常无 title → 用正文首行（截断）兜底，再退到域名。"""
@@ -230,7 +219,9 @@ class CustomEvidenceEndpoint:
         self._thread = None
         self._cache = {}
         self._provenance = {}
+        self._tally = {}
         self._lock = threading.Lock()
+        self._tally_lock = threading.Lock()
 
     @property
     def url(self):
@@ -239,18 +230,24 @@ class CustomEvidenceEndpoint:
         return f"http://127.0.0.1:{self._server.server_port}/search"
 
     def begin_claim(self):
-        with self._lock, TALLY_LOCK:
+        with self._lock, self._tally_lock:
             self._cache.clear()
             self._provenance.clear()
-            TALLY.clear()
+            self._tally.clear()
+
+    def _bump(self, name, n, ok):
+        with self._tally_lock:
+            tally = self._tally.setdefault(name, {"hits": 0, "ok": False})
+            tally["hits"] += n
+            tally["ok"] = tally["ok"] or ok
 
     def _adapter_rows(self, name, retriever, query, max_results):
         try:
             rows = retriever(query).search(max_results=max_results) or []
         except Exception:
-            _bump(name, 0, False)
+            self._bump(name, 0, False)
             return []
-        _bump(name, len(rows), True)
+        self._bump(name, len(rows), True)
         normalized = []
         for row in rows:
             if not isinstance(row, dict) or not (row.get("href") or row.get("url")):
@@ -305,8 +302,8 @@ class CustomEvidenceEndpoint:
             return dict(value) if value else None
 
     def snapshot(self):
-        with TALLY_LOCK:
-            by_retriever = {name: dict(stats) for name, stats in TALLY.items()}
+        with self._tally_lock:
+            by_retriever = {name: dict(stats) for name, stats in self._tally.items()}
         return {"by_retriever": by_retriever}
 
     def __enter__(self):
@@ -510,10 +507,9 @@ async def _run_one(payload, endpoint):
 
 
 async def run(payload):
-    with CustomEvidenceEndpoint() as endpoint:
-        if isinstance(payload.get("claims"), list):
-            out = []
-            for item in payload["claims"]:
+    if isinstance(payload.get("claims"), list):
+        async def run_item(item):
+            with CustomEvidenceEndpoint() as endpoint:
                 one = {
                     "claim": item.get("claim", ""),
                     "failures": item.get("failures") or [],
@@ -527,8 +523,11 @@ async def run(payload):
 
                     res = _error_result(f"{e}\n{traceback.format_exc()[-800:]}")
                 res["id"] = item.get("id")
-                out.append(res)
-            return {"ok": True, "claims": out}
+                return res
+
+        out = await asyncio.gather(*(run_item(item) for item in payload["claims"]))
+        return {"ok": True, "claims": out}
+    with CustomEvidenceEndpoint() as endpoint:
         return await _run_one(payload, endpoint)
 
 
