@@ -682,6 +682,12 @@ def test_run_scan_end_to_end_offline(tmp_path):
     d = tmp_path / "docs" / "agents" / "muse"
     assert (d / "perspectives.md").exists() and (d / "questions.md").exists()
     assert (d / "sources.md").exists() and (d / "profile.md").read_text(encoding="utf-8") == "画像"
+    questions_text = (d / "questions.md").read_text(encoding="utf-8")
+    assert "## 交易成本\n- q1" in questions_text  # 既有拷问条目保持原样
+    assert "### 行动" in questions_text
+    assert "- 目标（理想论证）：把「交易成本」从切入点推进为可辩护的论文论证" in questions_text
+    assert "- 障碍：s" in questions_text  # 优先取该卡的最强反驳 steelman
+    assert "- if–then 验收门槛：" in questions_text
     sources_text = (d / "sources.md").read_text(encoding="utf-8")
     assert "evr_e2e" in sources_text
     metadata = [
