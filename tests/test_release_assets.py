@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 
 import pytest
 
@@ -42,6 +45,30 @@ def test_release_assets_stage_manifest_and_scan(tmp_path):
     assert any(f["path"] == "muse_server.py" and f["sha256"] for f in manifest["files"])
 
     release_assets.scan(out)
+
+
+def test_staged_release_server_imports_without_checkout(tmp_path):
+    out = tmp_path / "server"
+    release_assets.stage(out)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(out)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PAPER_MUSE_SERVER_ROOT"] = str(out)
+    env["PAPER_MUSE_APP_DATA_DIR"] = str(tmp_path / "data")
+    env["PAPER_MUSE_CONFIG_DIR"] = str(tmp_path / "config")
+    env["PAPER_MUSE_CACHE_DIR"] = str(tmp_path / "cache")
+    env["PAPER_MUSE_RUNTIME_DIR"] = str(tmp_path / "runtime")
+    env["PAPER_MUSE_LOGS_DIR"] = str(tmp_path / "logs")
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import muse_server"],
+        cwd=out,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_release_assets_scan_rejects_private_state(tmp_path):
