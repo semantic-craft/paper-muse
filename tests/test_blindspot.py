@@ -132,8 +132,50 @@ def test_mark_outliers_requires_high_quality_and_isolation():
     assert cards[0]["quality_score"] > cards[1]["quality_score"]
     assert cards[0]["outlier"] is True
     assert cards[1]["outlier"] is False
+    assert "孤立卡兜底" not in cards[0]["outlier_reason"]
     # 确定性路径不产生真 Elo：没跑 tournament → elo_score 为 None（#51）
     assert cards[0]["elo_score"] is None and cards[1]["elo_score"] is None
+
+
+def test_mark_outliers_falls_back_to_highest_quality_isolated_card():
+    cards = [
+        _card(
+            "高质量共识一",
+            "deepseek",
+            source_models=["deepseek", "gemini"],
+            novelty="交叉空白",
+            gold=True,
+            en_hits=12,
+            zh_hits=0,
+        ),
+        _card(
+            "高质量共识二",
+            "openai",
+            source_models=["openai", "gemini"],
+            novelty="边缘有人做",
+            en_hits=8,
+        ),
+        _card("较高分孤立卡", "deepseek", novelty="主流", en_hits=6),
+        _card("最低分孤立卡", "openai", novelty="主流"),
+    ]
+
+    mark_outliers(cards)
+
+    assert cards[2]["quality_score"] > cards[3]["quality_score"]
+    assert cards[2]["outlier"] is True
+    assert cards[3]["outlier"] is False
+    assert "孤立卡兜底" in cards[2]["outlier_reason"]
+
+
+def test_mark_outliers_does_not_create_outlier_without_isolated_card():
+    cards = [
+        _card("多模型共识", source_models=["deepseek", "gemini"]),
+        _card("簇内近邻", cluster_size=2),
+    ]
+
+    mark_outliers(cards)
+
+    assert [card["outlier"] for card in cards] == [False, False]
 
 
 def test_apply_suppression_filters_known():
@@ -1220,3 +1262,98 @@ def test_gold_outlier_selectivity_not_all_labels_full():
     outliers = [c for c in merged if c.get("outlier")]
     assert 0 < len(golds) < len(merged)        # 不是全 gold
     assert 0 < len(outliers) < len(merged)     # 不是全 outlier
+
+
+# ---------------------------------------------------------------- #91 tension 字段最小贯通
+from blindspot import REQUIRED_CARD_FIELDS, CARD_SNAPSHOT_DEFAULTS, TENSION_WEAK_LABEL
+
+
+def _tension_reply(cards):
+    return json.dumps({"cards": cards})
+
+
+def test_tension_is_soft_field_in_schema_but_not_required():
+    # 软要求（D1）：schema/prompt 支持 tension，但必填集不收——缺 tension 不构成丢卡理由
+    assert "tension" in ENUM_SCHEMA_HINT
+    assert "tension" not in REQUIRED_CARD_FIELDS
+    # 弱张力占位键在单点声明处注册，上墙即预置（快照不变量）
+    assert "tension" in CARD_SNAPSHOT_DEFAULTS
+
+
+def test_enumerate_passes_tension_through_and_keeps_cards_without_it():
+    reply = _tension_reply([
+        {"type": "学科视角", "name": "有张力", "mechanism": "m", "why_nonobvious": "对你新",
+         "steelman": "s", "questions": ["q"], "tension": "反转了法教义学「X 前提」"},
+        {"type": "理论框架", "name": "无张力", "mechanism": "m", "why_nonobvious": "对你新",
+         "steelman": "s", "questions": ["q"]},
+    ])
+    cards = enumerate_cards("t", ["f"], "", "deepseek", FakeLLM([reply]))
+    assert len(cards) == 2                                      # 缺 tension 的卡不被丢弃
+    byname = {c["name"]: c for c in cards}
+    assert byname["有张力"]["tension"] == "反转了法教义学「X 前提」"  # 透传
+    assert "tension" not in byname["无张力"]                    # 缺失即无键（落墙降级为弱张力）
+
+
+def test_enumerate_normalizes_blank_tension_to_absent():
+    # 纯空白 tension 不得冒充张力：折叠后为空 → 视同缺失
+    reply = _tension_reply([
+        {"type": "学科视角", "name": "空白张力", "mechanism": "m", "why_nonobvious": "w",
+         "steelman": "s", "questions": ["q"], "tension": "   \n  "},
+    ])
+    cards = enumerate_cards("t", ["f"], "", "gemini", FakeLLM([reply]))
+    assert "tension" not in cards[0]
+
+
+def test_run_scan_registers_tension_key_and_preserves_value(tmp_path, monkeypatch):
+    import blindspot as B
+
+    monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
+    monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "著作权")
+    emitted_keys = {}
+
+    def on_card(c):
+        emitted_keys[c["name"]] = set(c)
+
+    cards = B.run_scan(
+        "主题", "", str(tmp_path),
+        providers={"m": lambda p: json.dumps({"cards": [
+            {"type": "学科视角", "name": "有张力", "mechanism": "m", "why_nonobvious": "w",
+             "steelman": "s", "questions": ["q"], "tension": "反转了领域「Y 前提」"},
+            {"type": "理论框架", "name": "无张力", "mechanism": "m2", "why_nonobvious": "w2",
+             "steelman": "s2", "questions": ["q2"]},
+        ]})},
+        decompose_llm=lambda p: "",
+        en_search=lambda q: [], zh_search=lambda q: _confirmed_cnki_empty(),
+        own_search=None, on_card=on_card,
+    )
+    # 上墙即注册 tension 键；两卡键集一致（快照不变量：缺 tension 卡也预置该键）
+    assert "tension" in emitted_keys["有张力"]
+    assert "tension" in emitted_keys["无张力"]
+    assert emitted_keys["有张力"] == emitted_keys["无张力"]
+    byname = {c["name"]: c for c in cards}
+    assert byname["有张力"]["tension"] == "反转了领域「Y 前提」"  # 值不被默认清零
+    assert byname["无张力"]["tension"] is None                   # 缺失 = 弱张力占位
+
+
+def test_perspectives_pairs_tension_with_why_and_marks_weak(tmp_path, monkeypatch):
+    import blindspot as B
+
+    monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
+    monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "著作权")
+    B.run_scan(
+        "主题", "", str(tmp_path),
+        providers={"m": lambda p: json.dumps({"cards": [
+            {"type": "学科视角", "name": "有张力", "mechanism": "m", "why_nonobvious": "对你为何新",
+             "steelman": "s", "questions": ["q"], "tension": "反转了法学界「Z 前提」"},
+            {"type": "理论框架", "name": "无张力", "mechanism": "m2", "why_nonobvious": "对你为何新2",
+             "steelman": "s2", "questions": ["q2"]},
+        ]})},
+        decompose_llm=lambda p: "",
+        en_search=lambda q: [], zh_search=lambda q: _confirmed_cnki_empty(),
+        own_search=None, on_card=lambda c: None,
+    )
+    text = (tmp_path / "docs" / "agents" / "muse" / "perspectives.md").read_text(encoding="utf-8")
+    # 双参照系成对：why（对研究者）与 tension（对领域）都落盘
+    assert "为什么非显而易见：对你为何新" in text
+    assert "反转了法学界「Z 前提」" in text              # 强张力卡带领域参照系一行
+    assert TENSION_WEAK_LABEL in text                    # 缺张力卡明示「弱张力/未给出」，不丢卡
