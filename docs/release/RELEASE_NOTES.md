@@ -67,7 +67,7 @@ No-cost release smoke can read:
 
 Current public Apple Silicon main runtime:
 
-- URL: `https://github.com/semantic-craft/paper-muse/releases/download/runtime-main-python-3.12-v1/papermuse-main-runtime-macos-arm64.tar.gz`
+- URL: `https://github.com/semantic-craft/paper-muse-releases/releases/download/runtime-main-python-3.12-v1/papermuse-main-runtime-macos-arm64.tar.gz`
 - sha256: `1c9afd28b26a1b523c47ad88724e482e4332c881910f5acf791fa4cc80a43e79`
 
 Build an embedded main runtime archive:
@@ -80,4 +80,4 @@ Build, sign, notarize, staple, assess, and zip the app:
 
 Or package against the public runtime asset:
 
-`PAPER_MUSE_MAIN_RUNTIME_URL=https://github.com/semantic-craft/paper-muse/releases/download/runtime-main-python-3.12-v1/papermuse-main-runtime-macos-arm64.tar.gz PAPER_MUSE_MAIN_RUNTIME_SHA256=1c9afd28b26a1b523c47ad88724e482e4332c881910f5acf791fa4cc80a43e79 PAPER_MUSE_NOTARY_PROFILE=<keychain-profile> ./tools/release_package.py package`
+`PAPER_MUSE_MAIN_RUNTIME_URL=https://github.com/semantic-craft/paper-muse-releases/releases/download/runtime-main-python-3.12-v1/papermuse-main-runtime-macos-arm64.tar.gz PAPER_MUSE_MAIN_RUNTIME_SHA256=1c9afd28b26a1b523c47ad88724e482e4332c881910f5acf791fa4cc80a43e79 PAPER_MUSE_NOTARY_PROFILE=<keychain-profile> ./tools/release_package.py package`
