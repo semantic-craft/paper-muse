@@ -538,6 +538,78 @@ def test_scan_bg_replaces_streamed_cards_with_final_cards(monkeypatch, tmp_path)
     assert muse_server.SCAN["cards"] == [{"name": "final", "source_models": ["x"], "outlier": False}]
 
 
+def test_scan_bg_activates_knowledge_storm_embedding_proximity(monkeypatch, tmp_path):
+    import knowledge_storm.encoder as encoder_module
+
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("ENCODER_API_TYPE", "openai")
+    monkeypatch.setenv("ENCODER_API_KEY", "encoder-test-key")
+    _stub_scan_externals(monkeypatch, {})
+
+    class FakeEncoder:
+        def encode(self, texts):
+            assert "反馈调节" in texts[0]
+            return [[1.0, 0.0], [0.0, 1.0]]
+
+    monkeypatch.setattr(encoder_module, "Encoder", FakeEncoder)
+
+    def fake_run_scan(**kwargs):
+        cards = [
+            {"type": "学科视角", "name": "控制论视角", "mechanism": "反馈调节",
+             "source_models": ["deepseek"]},
+            {"type": "理论框架", "name": "制度经济学", "mechanism": "交易成本",
+             "source_models": ["gemini"]},
+        ]
+        return blindspot.finalize_card_quality(cards, embedding_fn=kwargs["embedding_fn"])
+
+    monkeypatch.setattr(blindspot, "run_scan", fake_run_scan)
+    muse_server.SCAN.update(
+        output_dir=str(tmp_path / "out"), cards=[], phase="idle", version=0,
+    )
+
+    muse_server.scan_bg(ScanReq(topic="平台数据权力", puzzle=""))
+
+    assert muse_server.SCAN["phase"] == "done"
+    assert all(card["proximity_basis"] == "embedding" for card in muse_server.SCAN["cards"])
+    assert muse_server.SCAN["degradation"] == []
+
+
+def test_scan_bg_degrades_to_lexical_proximity_without_encoder_key(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import run_manifest
+
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("ENCODER_API_TYPE", "openai")
+    _stub_scan_externals(monkeypatch, {})
+
+    def fake_run_scan(**kwargs):
+        cards = [
+            {"type": "学科视角", "name": "控制论视角", "mechanism": "反馈调节",
+             "source_models": ["deepseek"]},
+            {"type": "理论框架", "name": "制度经济学", "mechanism": "交易成本",
+             "source_models": ["gemini"]},
+        ]
+        return blindspot.finalize_card_quality(cards, embedding_fn=kwargs["embedding_fn"])
+
+    monkeypatch.setattr(blindspot, "run_scan", fake_run_scan)
+    output_dir = tmp_path / "out"
+    muse_server.SCAN.update(
+        output_dir=str(output_dir), cards=[], phase="idle", version=0, degradation=[],
+    )
+
+    muse_server.scan_bg(ScanReq(topic="平台数据权力", puzzle=""))
+
+    marker = "Proximity 语义去重降级：缺少 encoder key，使用 lexical-fallback"
+    assert muse_server.SCAN["phase"] == "done"
+    assert all(card["proximity_basis"] == "lexical-fallback" for card in muse_server.SCAN["cards"])
+    assert muse_server.SCAN["degradation"] == [marker]
+    assert TestClient(muse_server.app).get("/scan/status").json()["degradation"] == [marker]
+    assert run_manifest.read(output_dir)[-1]["degradation"] == [marker]
+
+
 def test_scan_status_exposes_has_profile_field(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
