@@ -32,6 +32,9 @@ from zotero_local import ZoteroLocalAdapter
 
 CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 
+# 卡缺失（或空白）张力时产物/卡面统一的占位串——明示「弱张力」而非丢卡（#88 US5）。
+TENSION_WEAK_LABEL = "弱张力/未给出"
+
 # 卡片一旦交给 on_card，就成为 /scan/status 可并发读取的活快照。后续阶段只可更新
 # 这里已注册的键值，不能再扩张键集；新增阶段字段只需在此登记一行。
 CARD_SNAPSHOT_DEFAULTS = {
@@ -51,6 +54,10 @@ CARD_SNAPSHOT_DEFAULTS = {
     "evidence": [],
     "merged_angles": [],
     "feasibility": None,
+    # 张力（对领域读者：反转了哪个默认前提）。软字段（#88 D1），枚举产出、缺失即弱张力。
+    # 与 feasibility 同属「枚举写、后续阶段不改」：在此预置保证键集恒定，
+    # _new_card_snapshot 里连同 feasibility 一并保留原值不被默认清零。
+    "tension": None,
     "quality_score": None,
     "elo_score": None,
     "outlier_reason": None,
@@ -173,9 +180,11 @@ def _new_card_snapshot(card: dict, card_id: int) -> dict:
     """Freeze the complete live-card key set before the card is first emitted."""
     snapshot = dict(card)
     feasibility = snapshot.get("feasibility")
+    tension = snapshot.get("tension")
     snapshot.update(deepcopy(CARD_SNAPSHOT_DEFAULTS))
     snapshot["id"] = card_id
     snapshot["feasibility"] = feasibility
+    snapshot["tension"] = tension          # 枚举给的张力保留；缺失卡落回 None（弱张力占位）
     return snapshot
 
 
@@ -472,6 +481,7 @@ def classify_novelty(en_hits, zh_hits):
 ENUM_SCHEMA_HINT = (
     '只输出 JSON：{"cards": [{"type": "学科视角|理论框架|研究方法", "name": "...", '
     '"mechanism": "一句话机制", "why_nonobvious": "为什么对该研究者非显而易见", '
+    '"tension": "反转了法学界哪个默认前提（对领域读者的张力，与 why_nonobvious 分开；软字段，没有可省）", '
     '"vs_profile": [{"element": "领域|立场|熟悉", "note": "相对画像这一条为何非显而易见（有画像才填）"}], '
     '"steelman": "最强反驳：哪类审稿人会怎么打", "feasibility": "方法卡必填：数据从哪来", '
     '"questions": ["1-2个拷问句"]}]}'
@@ -547,6 +557,13 @@ def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str
             dropped += 1
             continue
         c["source_models"] = [model_tag]
+        # 张力软透传：折叠空白，空则删键（缺失≠空串冒充张力）；缺 tension 不丢卡（软字段 #88 D1）。
+        # 落墙时 _new_card_snapshot 预置 tension=None，缺失卡即以弱张力占位。
+        tension = re.sub(r"\s+", " ", str(c.get("tension", ""))).strip()
+        if tension:
+            c["tension"] = tension
+        else:
+            c.pop("tension", None)
         # vs_profile 只在有画像时有意义（无画像＝无参照系，不让 LLM 凭空绑），归一后按有无回填
         vp = normalize_vs_profile(c.get("vs_profile")) if has_profile else []
         if vp:
@@ -752,7 +769,9 @@ def _write_outputs(output_dir, topic, profile, cards):
         lines += [
             f"\n## {c['name']}（{c['type']}｜{c.get('novelty','?')}｜{badge}）",
             f"- 机制：{c['mechanism']}",
+            # 双参照系成对：why_nonobvious=对研究者，tension=对领域读者；缺张力明示弱张力（#88 US11/US5）
             f"- 为什么非显而易见：{c['why_nonobvious']}",
+            f"- 反转的领域默认前提：{c.get('tension') or TENSION_WEAK_LABEL}",
             f"- 最强反驳：{c['steelman']}",
         ]
         if c.get("outlier_reason"):
