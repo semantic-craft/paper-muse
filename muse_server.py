@@ -1004,9 +1004,61 @@ def _merge_roundtable_into_muse(paper_dir, topic, article, conversation):
     qfile = os.path.join(muse, "questions.md")
     marker = f"## 圆桌深挖：{topic}"
     existing = open(qfile, encoding="utf-8").read() if os.path.exists(qfile) else ""
-    if qs and marker not in existing:
+    failure_file = os.path.join(muse, "failure-points.md")
+    failure_text = (
+        open(failure_file, encoding="utf-8").read()
+        if os.path.exists(failure_file)
+        else ""
+    )
+    card_name = topic.split("：", 1)[0].strip()
+    failure = None
+    for claim in re.finditer(
+        r"^## 主张 [^\n]*：(?P<title>[^\n]+)\n(?P<body>.*?)(?=^## |\Z)",
+        failure_text,
+        re.MULTILINE | re.DOTALL,
+    ):
+        claim_title = re.sub(
+            r"（(?:抽自草稿|构思幕卡片送入|手输主线)）\s*$",
+            "",
+            claim.group("title"),
+        ).strip()
+        if card_name and claim_title == card_name:
+            failure = re.search(
+                r"^### \[[^\]]+\]\s+(.+)$", claim.group("body"), re.MULTILINE
+            )
+            if failure:
+                break
+    card_section = re.search(
+        rf"^## {re.escape(card_name)}\s*$\n(?P<body>.*?)(?=^## |\Z)",
+        existing,
+        re.MULTILINE | re.DOTALL,
+    )
+    scan_obstacle = (
+        re.search(r"^- 障碍：(.+)$", card_section.group("body"), re.MULTILINE)
+        if card_section
+        else None
+    )
+    obstacle = (
+        failure.group(1).strip()
+        if failure
+        else (
+            scan_obstacle.group(1).strip()
+            if scan_obstacle
+            else "圆桌尚未记录明确失败点或最强反驳"
+        )
+    )
+    action = blindspot.format_mcii_action(
+        f"把「{topic}」的圆桌共识收敛为可写入论文的中心论证",
+        obstacle,
+        (
+            "如果能为上述障碍补入至少一条可定位证据，并在圆桌报告中给出明确回应，"
+            "则进入写作；否则回到对抗幕或补检索。"
+        ),
+    )
+    if not re.search(rf"^{re.escape(marker)}$", existing, re.MULTILINE):
+        section = [marker] + [f"- {q}" for q in qs[:15]] + [""] + action
         with open(qfile, "a", encoding="utf-8") as f:
-            f.write(f"\n\n{marker}\n" + "\n".join(f"- {q}" for q in qs[:15]) + "\n")
+            f.write("\n\n" + "\n".join(section) + "\n")
 
 
 @app.post("/report")

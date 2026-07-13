@@ -685,6 +685,16 @@ def _novelty_for(card, topic, en_search, zh_search, own_search=None,
     return card
 
 
+def format_mcii_action(goal: str, obstacle: str, if_then: str) -> list[str]:
+    """Render the additive MCII action contract shared by scan and roundtable outputs."""
+    return [
+        "### 行动",
+        f"- 目标（理想论证）：{goal}",
+        f"- 障碍：{obstacle}",
+        f"- if–then 验收门槛：{if_then}",
+    ]
+
+
 def _write_outputs(output_dir, topic, profile, cards):
     d = _muse_dir(output_dir)
     if profile:
@@ -712,7 +722,23 @@ def _write_outputs(output_dir, topic, profile, cards):
         if c.get("feasibility"):
             lines.append(f"- 可行性/数据：{c['feasibility']}")
         lines.append(f"- 提出方：{'、'.join(c['source_models'])}；英文命中 {c.get('en_hits')}，中文学界命中 {c.get('zh_hits')}，自有库命中 {c.get('own_hits')}")
-        qlines += [f"\n## {c['name']}"] + [f"- {q}" for q in c.get("questions", [])]
+        questions = c.get("questions", [])
+        first_question = next((str(q).strip() for q in questions if str(q).strip()), "本卡的核心拷问")
+        goal = (
+            f"把「{c['name']}」从切入点推进为可辩护的论文论证，"
+            f"并证成其机制：{c['mechanism']}"
+        )
+        obstacle = str(c.get("steelman") or "尚未形成最强反驳").strip()
+        if_then = (
+            f"如果能针对上述障碍补入至少一条可定位证据，并正面回答「{first_question}」，"
+            "则进入圆桌深挖；否则保留为待证切入点。"
+        )
+        qlines += (
+            [f"\n## {c['name']}"]
+            + [f"- {q}" for q in questions]
+            + [""]
+            + format_mcii_action(goal, obstacle, if_then)
+        )
         if c.get("evidence"):
             for ref in c["evidence"]:
                 source = ref.get("source") or {}
