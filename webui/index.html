@@ -1227,6 +1227,10 @@
         <b>发现力打折</b>——本次扫描未设研究者画像，参照系缺失。卡片的「非显而易见」只能相对模型语料判定，不是相对<b>你</b>。<button type="button" class="d-cta" id="discountCta">补一版画像 →</button>
       </div>
     </div>
+    <div id="cardTypeBanner" class="discount" hidden role="status">
+      <span class="d-mark" aria-hidden="true">缺</span>
+      <div class="d-text"><b>卡型配额降级</b>——<span id="cardTypeMessage"></span></div>
+    </div>
     <div id="entries"></div>
   </div>
 
@@ -1636,6 +1640,7 @@ let PROFILE = DEMO_PROFILE;
 let PROFILE_DATA = { field: "", stance: "", familiar: "" };  // 画像三要素，困惑不在此列（#3）
 let PROFILE_LOADED = false;  // GET /profile 成功前不落盘，防空态 blur 覆写清空机器级画像（审核 F1）
 let HAS_PROFILE = null;   // 本次扫描是否有画像（/scan/status 给）；null=未扫/未知，false=无画像 → 出「发现力打折」（#4）
+let CARD_TYPE_STATUS = null; // 扫描收尾的三类卡配额状态；degraded 时在卡墙明示缺类（#80）
 let TOTAL = 0;             // 顶部「手稿 NN / TOTAL」计数
 let shownCount = 0;        // 已入场动画的卡数（增量 stagger 只动新卡）
 let pollTimer = null;
@@ -2176,11 +2181,25 @@ function updateDiscountBanner(){
   el.hidden = !(!DEMO && HAS_PROFILE === false && CARDS.length > 0);
 }
 
+function updateCardTypeBanner(){
+  const el = $("#cardTypeBanner");
+  const message = $("#cardTypeMessage");
+  if (!el || !message) return;
+  const missing = CARD_TYPE_STATUS && Array.isArray(CARD_TYPE_STATUS.missing_card_types)
+    ? CARD_TYPE_STATUS.missing_card_types : [];
+  const degraded = !DEMO && CARD_TYPE_STATUS && CARD_TYPE_STATUS.state === "degraded"
+    && missing.length > 0;
+  el.hidden = !degraded;
+  message.textContent = degraded
+    ? (CARD_TYPE_STATUS.message || `本次扫描缺少${missing.join("、")}`) : "";
+}
+
 /* ══ 主渲染 ══ */
 function render(){
   TOTAL = CARDS.length;
   const box = $("#entries");
   updateDiscountBanner();
+  updateCardTypeBanner();
   if (CARDS.length === 0) {
     // live 且未扫描且非 demo → 首次开笔卡；否则维持原空态提示
     if (!DEMO) {
@@ -2226,6 +2245,7 @@ async function startScan(){
   }
   SELF_LIBRARY_EPOCH += 1;
   SELF_LIBRARY_STATE.clear();
+  CARD_TYPE_STATUS = null;
   setStatus("scanning");
   try {
     await saveProfile();   // 画像先落机器级 researcher.md（扫描据其物化快照，源头恒为机器级）
@@ -2260,6 +2280,7 @@ async function pollOnce(){
   try {
     ingest(s.cards);
     if ("has_profile" in s) HAS_PROFILE = s.has_profile;   // 无画像 → render 出「发现力打折」（#4）
+    if ("card_type_status" in s) CARD_TYPE_STATUS = s.card_type_status;
     render();
     setStatus(s.phase, s.error);
   } catch (e) { /* 渲染异常不拖住轮询生命周期 */ }

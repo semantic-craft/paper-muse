@@ -13,6 +13,7 @@ from blindspot import (
     classify_novelty,
     extract_json,
     CARD_TYPES,
+    card_type_quota_status,
 )
 
 
@@ -36,6 +37,38 @@ def _confirmed_cnki_empty():
         "results": [],
         "evidence": [],
         "status": {"provider": "cnki", "state": "empty", "hits": 0},
+    }
+
+
+def test_card_type_quota_status_is_ready_when_all_types_are_present():
+    status = card_type_quota_status([_card(card_type, type=card_type) for card_type in CARD_TYPES])
+
+    assert status == {
+        "state": "ready",
+        "missing_card_types": [],
+        "message": "",
+    }
+
+
+def test_card_type_quota_status_degrades_when_one_type_is_missing():
+    status = card_type_quota_status(
+        [_card("学科卡", type="学科视角"), _card("理论卡", type="理论框架")]
+    )
+
+    assert status == {
+        "state": "degraded",
+        "missing_card_types": ["研究方法"],
+        "message": "卡型配额降级：缺少研究方法",
+    }
+
+
+def test_card_type_quota_status_lists_two_missing_types_in_contract_order():
+    status = card_type_quota_status([_card("方法卡", type="研究方法")])
+
+    assert status == {
+        "state": "degraded",
+        "missing_card_types": ["学科视角", "理论框架"],
+        "message": "卡型配额降级：缺少学科视角、理论框架",
     }
 
 
