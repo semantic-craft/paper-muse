@@ -433,6 +433,51 @@ def test_emitted_card_carries_merge_target_keys_from_preset(tmp_path, monkeypatc
     assert "feasibility" in keys_at_emit["熵增视角"]
 
 
+def test_run_scan_registered_snapshot_key_exists_at_every_live_stage(tmp_path, monkeypatch):
+    """在单点声明注册未来阶段键后，上墙及后续阶段只能换值，不能再扩张键集。"""
+    import blindspot as B
+
+    monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
+    monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "著作权")
+    monkeypatch.setattr(
+        B,
+        "CARD_SNAPSHOT_DEFAULTS",
+        {**B.CARD_SNAPSHOT_DEFAULTS, "future_stage_value": None},
+    )
+    live_keysets = []
+
+    def remember(card):
+        if card is not None:
+            live_keysets.append(set(card))
+
+    cards = B.run_scan(
+        "主题",
+        "",
+        str(tmp_path),
+        providers={
+            "fast": lambda p: json.dumps({"cards": [
+                {"type": "学科视角", "name": "熵增视角", "mechanism": "m",
+                 "why_nonobvious": "w", "steelman": "s", "questions": ["q"]}
+            ]}),
+            "slow": lambda p: json.dumps({"cards": [
+                {"type": "学科视角", "name": "熵增视角", "mechanism": "m2",
+                 "why_nonobvious": "w2", "steelman": "s2", "questions": ["q2"]}
+            ]}),
+        },
+        decompose_llm=lambda p: "",
+        en_search=lambda q: [],
+        zh_search=lambda q: _confirmed_cnki_empty(),
+        own_search=None,
+        on_card=remember,
+        on_update=remember,
+    )
+
+    assert live_keysets
+    assert "future_stage_value" in live_keysets[0]
+    assert all(keys == live_keysets[0] for keys in live_keysets)
+    assert set(cards[0]) == live_keysets[0]
+
+
 def test_run_scan_merges_angle_variants_in_live_wall(tmp_path, monkeypatch):
     import blindspot as B
 
