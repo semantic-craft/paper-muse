@@ -538,6 +538,61 @@ def test_scan_bg_replaces_streamed_cards_with_final_cards(monkeypatch, tmp_path)
     assert muse_server.SCAN["cards"] == [{"name": "final", "source_models": ["x"], "outlier": False}]
 
 
+def test_scan_bg_exposes_card_type_degradation_and_records_manifest(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import run_manifest
+
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    captured = {}
+    _stub_scan_externals(monkeypatch, captured)
+    cards = [
+        {"type": "学科视角", "name": "学科卡", "evidence": []},
+        {"type": "理论框架", "name": "理论卡", "evidence": []},
+    ]
+    monkeypatch.setattr(blindspot, "run_scan", lambda **kwargs: cards)
+    output_dir = tmp_path / "out"
+    muse_server.SCAN.update(
+        output_dir=str(output_dir), cards=[], phase="idle", version=0,
+        card_type_status=None,
+    )
+
+    muse_server.scan_bg(ScanReq(topic="平台数据权力", puzzle=""))
+
+    expected = {
+        "state": "degraded",
+        "missing_card_types": ["研究方法"],
+        "message": "卡型配额降级：缺少研究方法",
+    }
+    assert muse_server.SCAN["card_type_status"] == expected
+    body = TestClient(muse_server.app).get("/scan/status").json()
+    assert body["card_type_status"] == expected
+    assert run_manifest.read(output_dir)[-1]["degradation"] == [expected["message"]]
+
+
+def test_scan_bg_records_no_card_type_degradation_when_quota_is_complete(monkeypatch, tmp_path):
+    import run_manifest
+
+    monkeypatch.delenv("PAPER_MUSE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    _stub_scan_externals(monkeypatch, {})
+    cards = [
+        {"type": card_type, "name": card_type, "evidence": []}
+        for card_type in blindspot.CARD_TYPES
+    ]
+    monkeypatch.setattr(blindspot, "run_scan", lambda **kwargs: cards)
+    output_dir = tmp_path / "out"
+    muse_server.SCAN.update(
+        output_dir=str(output_dir), cards=[], phase="idle", version=0,
+        card_type_status=None,
+    )
+
+    muse_server.scan_bg(ScanReq(topic="平台数据权力", puzzle=""))
+
+    assert muse_server.SCAN["card_type_status"]["state"] == "ready"
+    assert run_manifest.read(output_dir)[-1]["degradation"] == []
+
+
 def test_scan_status_exposes_has_profile_field(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
