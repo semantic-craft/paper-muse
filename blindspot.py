@@ -301,10 +301,13 @@ def mark_outliers(cards: list) -> list:
     只有真跑过 pairwise tournament 的卡才有 elo_score（#51）。"""
     scores = _quality_ratings(cards)
     floor = min(1500, sorted(scores)[len(scores) // 2]) if scores else 1500
+    isolated_cards = []
     for i, c in enumerate(cards):
         score = scores[i] if i < len(scores) else 1500
         isolated = len(c.get("source_models") or []) == 1 and int(c.get("cluster_size") or 1) == 1
         high_quality = score >= floor
+        if isolated:
+            isolated_cards.append((score, c))
         c["quality_score"] = score
         c.setdefault("elo_score", None)   # 无 matches → 不存在真 Elo（仅占位 None）
         c["outlier_reason"] = (
@@ -313,6 +316,10 @@ def mark_outliers(cards: list) -> list:
             f"{'高于本轮基准' if high_quality else '低于本轮基准'}"
         )
         c["outlier"] = isolated and high_quality
+    if isolated_cards and not any(c["outlier"] for c in cards):
+        _, fallback = max(isolated_cards, key=lambda item: item[0])
+        fallback["outlier"] = True
+        fallback["outlier_reason"] += "；孤立卡兜底标亮"
     return cards
 
 
