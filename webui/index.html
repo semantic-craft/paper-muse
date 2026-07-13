@@ -1448,6 +1448,7 @@ const DEMO_CARDS = [
     ],
     mechanism: "把平台对用户数据的聚合视为局部负熵积累，用熵增框架解释信息不对称如何自我强化。",
     why_nonobvious: "你的框架把数据垄断当作市场结构问题；熵视角把它重述为「信息势差的热力学必然」，绕开了反垄断的静态市场界定。",
+    tension: "数据法默认信息不对称是可规制的制度缺陷；负熵逻辑反转这一前提——它是信息聚合的热力学必然，无法靠监管消除。",
     steelman: "物理隐喻派审稿人会打——「熵在社会科学是修辞不是机制」，要求你给出可测量的熵定义，否则视为伪类比。",
     feasibility: null,
     questions: [
@@ -1476,6 +1477,7 @@ const DEMO_CARDS = [
     ],
     mechanism: "用强制/模仿/规范三种同构压力，解释为何各大平台的治理规则趋同——趋同本身即规制失灵的信号。",
     why_nonobvious: "你默认平台差异来自竞争；制度同构预测它们会趋同，把「规则雷同」从巧合变成可解释的因变量。",
+    tension: "反垄断法默认规则雷同是合谋或竞争的痕迹；制度同构反转这一前提——趋同是强制/模仿/规范三种制度压力的必然，而非合意。",
     steelman: "法教义学审稿人会打——「社会学描述性理论进不了规范分析，法律要的是应然不是实然趋同」。",
     feasibility: null,
     questions: ["同构若是事实，规范上我们该纠正它还是利用它？"],
@@ -1529,6 +1531,7 @@ const DEMO_CARDS = [
     ],
     mechanism: "平台不靠禁止而靠「可见性架构」规训用户行为，数据垄断是全景敞视的当代形态。",
     why_nonobvious: "反垄断话语聚焦价格与市场份额；规训视角把权力重定位到「行为塑造」，解释了免费服务为何仍是权力关系。",
+    tension: "反垄断默认「无价格损害即无市场支配力」；规训视角反转这一前提——权力是可见性架构对行为的塑造，免费服务仍构成支配。",
     steelman: "分析法学审稿人会打——「福柯太软，无法生成可操作的裁判规则，只能做批判不能做教义」。",
     feasibility: null,
     questions: ["规训视角除了批判，能否产出一条可裁判的规则？"],
@@ -1550,6 +1553,7 @@ const DEMO_CARDS = [
     ],
     mechanism: "数据权属不清的真问题不是归谁，而是交易成本过高导致的配置失灵；确权应最小化谈判成本而非追求道德归属。",
     why_nonobvious: "你从人格权/财产权二分入手；科斯把问题从「谁应拥有」转成「怎样分配最省成本」，可能消解确权之争本身。",
+    tension: "数据确权学界默认必先界定权属归属；科斯反转这一前提——真问题是交易成本导致的配置失灵，确权之争本身可被消解。",
     steelman: "权利本位审稿人会打——「把人格数据还原成成本计算，抹掉了尊严维度，法律不能纯效率导向」。",
     feasibility: null,
     questions: [
@@ -1578,6 +1582,7 @@ const DEMO_CARDS = [
     ],
     mechanism: "把平台、数据、监管者建成网络图，用中心性与结构洞指标定位真正的数据权力节点。",
     why_nonobvious: "法律看合同双方；网络分析看整个生态的拓扑，可能发现权力集中在合同之外的「结构洞」上。",
+    tension: "数据法默认控制者可由合同相对方认定；网络分析反转这一前提——真正的权力节点在合同之外的结构洞上。",
     steelman: "方法论审稿人会打——「网络指标漂亮但缺因果，结构洞 ≠ 法律责任，你怎么从拓扑跳到归责？」。",
     feasibility: "数据来源：平台隐私政策披露的数据共享清单 + App SDK 调用图谱（可用 AppInspect 类工具抓取）；样本约 200 个 App。",
     questions: ["拓扑中心性如何转译成法律上的「控制者」认定？"],
@@ -1599,6 +1604,7 @@ const DEMO_CARDS = [
     ],
     mechanism: "平台生态是复杂适应系统，事前规则在涌现行为前必然滞后；规制应从「设定规则」转向「调节系统参数」。",
     why_nonobvious: "你假设好规则能预防危害；复杂系统视角指出涌现不可预测，规制目标应是韧性而非预防。",
+    tension: "规制法默认事前的好规则能预防危害；复杂系统反转这一前提——涌现行为不可预测，规制目标应转向韧性而非预防。",
     steelman: "法治主义审稿人会打——「『调参数』式规制违反法的明确性与可预期性，等于给监管者空白授权」。",
     feasibility: null,
     questions: [
@@ -1880,6 +1886,12 @@ function becuzTagsHTML(c){
 /* ══ 一条手稿 entry ══ */
 function entryHTML(c, i){
   const tm = typeMeta(c.type);
+  // 张力（对领域读者：反转了哪个默认前提）与「相对于你的未知」（对研究者）成对呈现，
+  // 缺张力明示「弱张力/未给出」而非留白——徽标区不动（#91 / #88 US10）。
+  const tension = (c.tension || "").trim();
+  const tensionBody = tension
+    ? esc(tension)
+    : `<span style="color:var(--ink-2)">弱张力/未给出</span>`;
   const feas = c.feasibility
     ? `<div class="feasibility"><span class="h">可行性 · 数据从哪来</span>${esc(c.feasibility)}</div>`
     : "";
@@ -1923,6 +1935,7 @@ function entryHTML(c, i){
     <h3>${esc(c.name)}</h3>
     <p class="mechanism">${esc(c.mechanism)}</p>
     <div class="why"><span class="lead">相对于你的未知</span>${esc(c.why_nonobvious)}</div>
+    <div class="why"><span class="lead">相对领域的张力</span>${tensionBody}</div>
     ${becuzTagsHTML(c)}
 
     ${feas}
