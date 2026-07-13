@@ -2648,7 +2648,7 @@ async function rtStartSession(card){
   try {
     // #47：把卡片已有证据带进圆桌（服务端 seed 进知识库，身份贯穿专家/报告）
     const r = await fetch("/session", { method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ topic, card_id: card.id, evidence: card.evidence || [] }) });
+      body: JSON.stringify({ topic, card_id: card.id, card_name: card.name, evidence: card.evidence || [] }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ("HTTP " + r.status));
     rtPollWarm();
   } catch (e) { rtSetError("圆桌启动失败：" + (e.message || e)); }
