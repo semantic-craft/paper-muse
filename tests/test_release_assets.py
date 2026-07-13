@@ -128,6 +128,15 @@ def test_scan_ui_exposes_structured_cnki_status_and_novelty_reason():
     assert "新颖性判定" in html
 
 
+def test_scan_ui_shows_missing_card_type_degradation():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="cardTypeBanner"' in html
+    assert "CARD_TYPE_STATUS" in html
+    assert "missing_card_types" in html
+    assert "卡型配额降级" in html
+
+
 def test_scan_ui_uses_zotero_locator_and_shows_identity_status():
     html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
 

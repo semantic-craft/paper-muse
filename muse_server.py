@@ -176,7 +176,8 @@ RUNNER_LOCK = threading.Lock()
 
 SCAN = {"phase": "idle", "topic": None, "cards": [], "output_dir": None, "error": None,
         "version": 0,
-        "has_profile": False}  # 本次扫描是否有画像参照系；无 → webui 出「发现力打折」警示（#4）
+        "has_profile": False,  # 本次扫描是否有画像参照系；无 → webui 出「发现力打折」警示（#4）
+        "card_type_status": None}
 SCAN_LOCK = threading.Lock()
 
 # 对抗幕单会话（同 SCAN：个人工具一次一场审查，全局 dict + 一把锁）。mode = draft|line。
@@ -1163,11 +1164,17 @@ def scan_bg(req: ScanReq):
             en_search=blindspot.real_en_search(), zh_search=blindspot.real_cnki_search(),
             own_search=blindspot.real_own_search(), on_card=on_card, on_update=_scan_touch)
         _scan_replace_cards(cards)
+        card_type_status = blindspot.card_type_quota_status(cards)
+        _scan_update(card_type_status=card_type_status)
         _emit_manifest(
             "scan", SCAN["output_dir"], seed=req.topic, started_at=started,
             provider_capability={k: "ready" for k in provs},
             has_profile=bool(profile.strip()),
             evidence_ids=[eid for c in cards for eid in _evidence_ids(c.get("evidence"))],
+            degradation=(
+                [card_type_status["message"]]
+                if card_type_status["state"] == "degraded" else []
+            ),
             artifacts=["perspectives.md", "questions.md", "sources.md", "angle-feedback.md"])
         _scan_update(phase="done")
     except Exception:
@@ -1209,7 +1216,7 @@ def start_scan(req: ScanReq):
         if SCAN["phase"] == "scanning":
             raise HTTPException(409, "扫描进行中")
         SCAN.update(phase="scanning", topic=topic, cards=[], error=None, output_dir=base,
-                    has_profile=False)  # scan_bg 载入画像后据实置位
+                    has_profile=False, card_type_status=None)  # scan_bg 收尾后据实置位
         _scan_bump_locked()
     threading.Thread(target=scan_bg, args=(req,), daemon=True).start()
     return {"ok": True, "output_dir": base}
@@ -1219,8 +1226,9 @@ def start_scan(req: ScanReq):
 def scan_status(since: int | None = None):
     with SCAN_LOCK:
         version = SCAN["version"]
-        phase, topic, output_dir, error = (
-            SCAN["phase"], SCAN["topic"], SCAN["output_dir"], SCAN["error"])
+        phase, topic, output_dir, error, card_type_status = (
+            SCAN["phase"], SCAN["topic"], SCAN["output_dir"], SCAN["error"],
+            SCAN["card_type_status"])
         if since is not None and since == version:
             return {"version": version, "unchanged": True, "phase": phase,
                     "topic": topic, "output_dir": output_dir, "error": error}
@@ -1228,7 +1236,8 @@ def scan_status(since: int | None = None):
         has_profile = SCAN["has_profile"]
     return {"phase": phase, "topic": topic, "cards": cards,
             "output_dir": output_dir, "error": error,
-            "has_profile": has_profile, "version": version, "unchanged": False}
+            "has_profile": has_profile, "card_type_status": card_type_status,
+            "version": version, "unchanged": False}
 
 
 # 产物抽屉：docs/agents/muse/ 下 7 件的存在状态 + 绝对路径（打开/在访达用）。
