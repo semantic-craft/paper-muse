@@ -165,6 +165,7 @@ class ProgressCallback:
 SESSION = {
     "phase": "idle",  # idle | warming | ready | stepping | error
     "topic": None,
+    "card_name": None,
     "model": None,
     "runner": None,
     "progress": [],
@@ -588,6 +589,7 @@ class SessionReq(BaseModel):
     fulltext: bool = False          # True = Jina Reader 全文增强 top3
     output_dir: str | None = None
     card_id: str | int | None = None       # #47：从哪张构思卡进的圆桌（溯源用）
+    card_name: str | None = None
     evidence: list | None = None           # #47：卡片已有的 EvidenceRef 列表，seed 进知识库
 
 
@@ -926,6 +928,7 @@ def create_session(req: SessionReq):
         SESSION.update(
             phase="warming",
             topic=topic,
+            card_name=(req.card_name or "").strip() or None,
             model=provider,
             runner=None,
             progress=[],
@@ -984,7 +987,7 @@ def step(req: StepReq):
         RUNNER_LOCK.release()
 
 
-def _merge_roundtable_into_muse(paper_dir, topic, article, conversation):
+def _merge_roundtable_into_muse(paper_dir, topic, article, conversation, card_name=None):
     """圆桌产物并入七件契约（#16，spec §5/§8）：mindmap.md 用报告标题层级作导图（覆盖），
     questions.md 追加圆桌对谈里的新拷问句（同话题幂等）。
     paper_dir = costorm_* 子目录的上一级 = 论文根（七件契约所在）。"""
@@ -1004,9 +1007,91 @@ def _merge_roundtable_into_muse(paper_dir, topic, article, conversation):
     qfile = os.path.join(muse, "questions.md")
     marker = f"## 圆桌深挖：{topic}"
     existing = open(qfile, encoding="utf-8").read() if os.path.exists(qfile) else ""
-    if qs and marker not in existing:
+    failure_file = os.path.join(muse, "failure-points.md")
+    failure_text = (
+        open(failure_file, encoding="utf-8").read()
+        if os.path.exists(failure_file)
+        else ""
+    )
+    card_name = (card_name or topic.split("：", 1)[0]).strip()
+    failure = None
+    for claim in re.finditer(
+        r"^## 主张 [^：\n]+：(?P<title>[^\n]+)\n(?P<body>.*?)(?=^## |\Z)",
+        failure_text,
+        re.MULTILINE | re.DOTALL,
+    ):
+        claim_title = re.sub(
+            r"（(?:抽自草稿|构思幕卡片送入|手输主线)）\s*$",
+            "",
+            claim.group("title"),
+        ).strip()
+        if card_name and claim_title == card_name:
+            failure = re.search(
+                r"^### \[[^\]]+\]\s+(.+)$", claim.group("body"), re.MULTILINE
+            )
+            if failure:
+                break
+    card_section = re.search(
+        rf"^## {re.escape(card_name)}\s*$\n(?P<body>.*?)(?=^## |\Z)",
+        existing,
+        re.MULTILINE | re.DOTALL,
+    )
+    scan_obstacle = (
+        re.search(r"^- 障碍：(.+)$", card_section.group("body"), re.MULTILINE)
+        if card_section
+        else None
+    )
+    obstacle = (
+        failure.group(1).strip()
+        if failure
+        else (
+            scan_obstacle.group(1).strip()
+            if scan_obstacle
+            else "圆桌尚未记录明确失败点或最强反驳"
+        )
+    )
+    action = blindspot.format_mcii_action(
+        f"把「{topic}」的圆桌共识收敛为可写入论文的中心论证",
+        obstacle,
+        (
+            "如果能为上述障碍补入至少一条可定位证据，并在圆桌报告中给出明确回应，"
+            "则进入写作；否则回到对抗幕或补检索。"
+        ),
+    )
+    section_match = re.search(
+        rf"^{re.escape(marker)}\n.*?(?=^## |\Z)", existing,
+        re.MULTILINE | re.DOTALL)
+    question_lines = [f"- {q}" for q in qs[:15]]
+    if not section_match:
+        section = [marker] + question_lines + [""] + action
         with open(qfile, "a", encoding="utf-8") as f:
-            f.write(f"\n\n{marker}\n" + "\n".join(f"- {q}" for q in qs[:15]) + "\n")
+            f.write("\n\n" + "\n".join(section) + "\n")
+    else:
+        section = section_match.group(0)
+        missing_questions = [
+            line for line in question_lines
+            if not re.search(rf"^{re.escape(line)}$", section, re.MULTILINE)
+        ]
+        if missing_questions:
+            action_match = re.search(r"^### 行动\s*$", section, re.MULTILINE)
+            if action_match:
+                section = (
+                    section[:action_match.start()].rstrip()
+                    + "\n" + "\n".join(missing_questions) + "\n\n"
+                    + section[action_match.start():].lstrip()
+                )
+            else:
+                section = section.rstrip() + "\n" + "\n".join(missing_questions)
+        if not re.search(r"^### 行动\s*$", section, re.MULTILINE):
+            section = section.rstrip() + "\n\n" + action
+        replacement = section.rstrip() + "\n"
+        if replacement != section_match.group(0):
+            existing = (
+                existing[:section_match.start()] + replacement
+                + existing[section_match.end():]
+            )
+            with open(qfile, "w", encoding="utf-8") as f:
+                f.write(existing)
 
 
 @app.post("/report")
@@ -1038,8 +1123,9 @@ def report():
                 json.dump(runner.dump_logging_and_reset(), f, indent=2, ensure_ascii=False)
             files = ["report.md", "conversation.md", "instance_dump.json", "log.json"]
             try:
-                _merge_roundtable_into_muse(os.path.dirname(output_dir), SESSION["topic"],
-                                            article, visible_turns)
+                _merge_roundtable_into_muse(
+                    os.path.dirname(output_dir), SESSION["topic"], article,
+                    visible_turns, SESSION["card_name"])
                 files += ["../docs/agents/muse/mindmap.md", "../docs/agents/muse/questions.md(+圆桌)"]
             except Exception:
                 traceback.print_exc()  # 并入失败不该让已生成的报告 500

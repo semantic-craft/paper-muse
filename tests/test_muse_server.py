@@ -426,11 +426,15 @@ def test_session_accepts_openai_model_without_deepseek(monkeypatch, tmp_path):
     muse_server.SESSION.update(phase="idle", runner=None, error=None)
     client = TestClient(muse_server.app)
 
-    resp = client.post("/session", json={"topic": "平台数据权力", "model": "openai"})
+    resp = client.post(
+        "/session",
+        json={"topic": "平台数据权力：机制", "card_name": "平台数据权力", "model": "openai"},
+    )
 
     assert resp.status_code == 200
     assert resp.json()["model"] == "openai"
     assert muse_server.SESSION["model"] == "openai"
+    assert muse_server.SESSION["card_name"] == "平台数据权力"
 
 
 def test_session_blocked_and_unclobbered_while_runner_locked(monkeypatch, tmp_path):
@@ -760,6 +764,7 @@ def test_roundtable_report_filters_empty_turns_in_conversation_md(tmp_path):
     muse_server.SESSION.update(
         phase="ready",
         topic="圆桌主题",
+        card_name="圆桌主题",
         runner=_Runner(),
         progress=[],
         output_dir=str(tmp_path / "costorm_topic"),
@@ -771,6 +776,162 @@ def test_roundtable_report_filters_empty_turns_in_conversation_md(tmp_path):
     text = (tmp_path / "costorm_topic" / "conversation.md").read_text(encoding="utf-8")
     assert "有效问题？" in text and "有效回答。" in text
     assert "**Background discussion expert**: \n" not in text
+
+
+def test_roundtable_report_appends_idempotent_mcii_action_using_failure_point(tmp_path):
+    muse = tmp_path / "docs" / "agents" / "muse"
+    muse.mkdir(parents=True)
+    qfile = muse / "questions.md"
+    qfile.write_text(
+        "# 拷问弹药：圆桌主题\n\n## 原卡\n- 旧问题？\n\n"
+        "### 行动\n- 障碍：卡片最强反驳\n\n"
+        "## 圆桌深挖：圆桌主题扩展\n- 扩展主题旧问题？\n",
+        encoding="utf-8",
+    )
+    (muse / "failure-points.md").write_text(
+        "# 失败点\n\n## 主张 1：圆桌主题扩展（构思幕卡片送入）\n\n"
+        "### [1a] 别卡的失败点\n- 裁决：**未决**\n\n"
+        "## 主张 2：圆桌主题（构思幕卡片送入）\n\n"
+        "### [2a] 缺少反例检验\n- 裁决：**未决**\n",
+        encoding="utf-8",
+    )
+
+    class _KnowledgeBase:
+        def reorganize(self):
+            pass
+
+    class _Runner:
+        conversation_history = [_Turn("Background discussion moderator", "圆桌形成了什么新问题？")]
+        knowledge_base = _KnowledgeBase()
+
+        def generate_report(self):
+            return "# 圆桌报告\n\n## 共识\n"
+
+        def to_dict(self):
+            return {}
+
+        def dump_logging_and_reset(self):
+            return {}
+
+    muse_server.SESSION.update(
+        phase="ready",
+        topic="圆桌主题",
+        card_name="圆桌主题",
+        model="deepseek",
+        runner=_Runner(),
+        progress=[],
+        output_dir=str(tmp_path / "costorm_topic"),
+        error=None,
+    )
+
+    muse_server.report()
+    first = qfile.read_text(encoding="utf-8")
+    muse_server.report()
+    second = qfile.read_text(encoding="utf-8")
+
+    assert "## 原卡\n- 旧问题？" in first
+    assert "## 圆桌深挖：圆桌主题扩展\n- 扩展主题旧问题？" in first
+    assert "## 圆桌深挖：圆桌主题\n- 圆桌形成了什么新问题？" in first
+    assert "- 目标（理想论证）：把「圆桌主题」的圆桌共识收敛为可写入论文的中心论证" in first
+    assert "- 障碍：缺少反例检验" in first  # failure-points 优先于扫描卡 steelman
+    assert "- if–then 验收门槛：" in first
+    assert second == first
+    assert second.splitlines().count("## 圆桌深挖：圆桌主题") == 1
+
+
+def test_roundtable_report_uses_explicit_card_name_with_separator_for_obstacle(tmp_path):
+    muse = tmp_path / "docs" / "agents" / "muse"
+    muse.mkdir(parents=True)
+    qfile = muse / "questions.md"
+    qfile.write_text(
+        "# 拷问弹药\n\n## 卡名：副标题\n\n"
+        "### 行动\n- 障碍：扫描侧反驳\n",
+        encoding="utf-8",
+    )
+    (muse / "failure-points.md").write_text(
+        "# 失败点\n\n## 主张 1：卡名：副标题（构思幕卡片送入）\n\n"
+        "### [1a] 分隔符卡片的失败点\n- 裁决：**未决**\n",
+        encoding="utf-8",
+    )
+
+    class _KnowledgeBase:
+        def reorganize(self):
+            pass
+
+    class _Runner:
+        conversation_history = [_Turn("Background discussion moderator", "还需要追问什么？")]
+        knowledge_base = _KnowledgeBase()
+
+        def generate_report(self):
+            return "# 圆桌报告\n"
+
+        def to_dict(self):
+            return {}
+
+        def dump_logging_and_reset(self):
+            return {}
+
+    muse_server.SESSION.update(
+        phase="ready",
+        topic="卡名：副标题：机制说明",
+        card_name="卡名：副标题",
+        model="deepseek",
+        runner=_Runner(),
+        progress=[],
+        output_dir=str(tmp_path / "costorm_topic"),
+        error=None,
+    )
+
+    muse_server.report()
+
+    assert "- 障碍：分隔符卡片的失败点" in qfile.read_text(encoding="utf-8")
+
+
+def test_roundtable_report_adds_later_questions_after_action_only_report(tmp_path):
+    muse = tmp_path / "docs" / "agents" / "muse"
+    muse.mkdir(parents=True)
+    qfile = muse / "questions.md"
+    qfile.write_text("# 拷问弹药\n", encoding="utf-8")
+
+    class _KnowledgeBase:
+        def reorganize(self):
+            pass
+
+    class _Runner:
+        conversation_history = [_Turn("Background discussion moderator", "本轮只有陈述。")]
+        knowledge_base = _KnowledgeBase()
+
+        def generate_report(self):
+            return "# 圆桌报告\n"
+
+        def to_dict(self):
+            return {}
+
+        def dump_logging_and_reset(self):
+            return {}
+
+    runner = _Runner()
+    muse_server.SESSION.update(
+        phase="ready",
+        topic="同一主题",
+        card_name="同一主题",
+        model="deepseek",
+        runner=runner,
+        progress=[],
+        output_dir=str(tmp_path / "costorm_topic"),
+        error=None,
+    )
+
+    muse_server.report()
+    runner.conversation_history = [
+        _Turn("Background discussion moderator", "后来形成了什么关键问题？")
+    ]
+    muse_server.report()
+    text = qfile.read_text(encoding="utf-8")
+
+    assert "- 后来形成了什么关键问题？" in text
+    assert text.splitlines().count("## 圆桌深挖：同一主题") == 1
+    assert text.count("- 目标（理想论证）：把「同一主题」") == 1
 
 
 # ---- 对抗幕接口（#10）：只 stub LLM/检索叶子，放真 run_review 跑通 server→引擎 全链 ----
