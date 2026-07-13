@@ -32,6 +32,34 @@ from zotero_local import ZoteroLocalAdapter
 
 CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 
+# 卡片一旦交给 on_card，就成为 /scan/status 可并发读取的活快照。后续阶段只可更新
+# 这里已注册的键值，不能再扩张键集；新增阶段字段只需在此登记一行。
+CARD_SNAPSHOT_DEFAULTS = {
+    "id": None,
+    "outlier": None,
+    "novelty": None,
+    "gold": None,
+    "en_hits": None,
+    "en_source": None,
+    "en_degraded": None,
+    "zh_hits": None,
+    "zh_status": None,
+    "own_hits": None,
+    "own_status": None,
+    "own_identity_status": None,
+    "novelty_reason": None,
+    "evidence": [],
+    "merged_angles": [],
+    "feasibility": None,
+    "quality_score": None,
+    "elo_score": None,
+    "outlier_reason": None,
+    "proximity_basis": None,
+    "cluster_id": None,
+    "cluster_size": 1,
+    "cluster_similarity": None,
+}
+
 _CACHE_VERSION = "retrieval-v3-status"
 _CACHE_STATS = {}
 _CACHE_LOCK = threading.Lock()
@@ -139,6 +167,16 @@ def _merge_unique(seq, incoming):
             seen.add(key)
             out.append(item)
     return out
+
+
+def _new_card_snapshot(card: dict, card_id: int) -> dict:
+    """Freeze the complete live-card key set before the card is first emitted."""
+    snapshot = dict(card)
+    feasibility = snapshot.get("feasibility")
+    snapshot.update(deepcopy(CARD_SNAPSHOT_DEFAULTS))
+    snapshot["id"] = card_id
+    snapshot["feasibility"] = feasibility
+    return snapshot
 
 
 def _merge_card_into(base: dict, incoming: dict, similarity=None) -> dict:
@@ -773,19 +811,7 @@ def run_scan(topic, profile, output_dir, providers, decompose_llm,
                     _merge_card_into(prev, c)
                     touched.append(prev)
                 else:
-                    c = dict(c)
-                    # 徽标字段占位：上墙后原地更新只换值不加键（快照序列化安全）。
-                    # merged_angles/feasibility 必须在此预置：_merge_card_into 会写这两键，
-                    # 若缺则第二家合并时给已上墙的活卡片新增键 → 与 /scan/status 并发
-                    # 序列化撞 RuntimeError: dictionary changed size during iteration。
-                    c.update(id=len(order) + 1, outlier=None, novelty=None, gold=None,
-                             en_hits=None, en_source=None, en_degraded=None,
-                             zh_hits=None, zh_status=None, own_hits=None, own_status=None,
-                             own_identity_status=None, novelty_reason=None,
-                             evidence=[], merged_angles=[], feasibility=c.get("feasibility"),
-                             quality_score=None, elo_score=None, outlier_reason=None,
-                             proximity_basis=None,
-                             cluster_id=None, cluster_size=1, cluster_similarity=None)
+                    c = _new_card_snapshot(c, len(order) + 1)
                     wall[key] = c
                     order.append(key)
                     fresh.append(c)
