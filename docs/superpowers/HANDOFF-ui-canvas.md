@@ -35,7 +35,7 @@ git status --short --branch
 
 ## 一句话现状
 
-PaperMuse 1.1.0 已在 main 备好并打 tag（GitHub Release 尚未发布）；张力/MCII 线的
+PaperMuse 1.1.0 已在 main 备好并打 tag，**GitHub Release 已于 2026-07-14 发布**（内嵌版，见下节）；张力/MCII 线的
 证据基础、本土判据、快照键收口、MCII 三元产物、`tension` 字段贯通、对抗幕 rubric
 均已合并进 main。Codex 离线批次全部完成——5 张票（#77/#78/#74/#80/#93）已合并关闭，
 张力质量闸（#93）已接入 `finalize_card_quality` 收尾链。剩余全是**非离线可结**的债：
@@ -94,9 +94,26 @@ manifest 共用），`card_type_status` 另存结构化细节供 webui。#93 接
 - 批次纪律留档备复用：零付费；一票一分支一 PR、draft 交所有者评审合并；TDD＋离线全量回归；
   PR/issue 注明「真机验证按 2026-07-14 决定延期」；`gh` 全部带 `--repo semantic-craft/paper-muse`。
 
+## v1.1.0 GitHub Release（2026-07-14 已发布）
+
+- 发布地址：`semantic-craft/paper-muse-releases` → tag `papermuse-v1.1.0`
+  （<https://github.com/semantic-craft/paper-muse-releases/releases/tag/papermuse-v1.1.0>）。
+- **发布前审计发现原 draft 资产是坏包**：其 `PaperMuse-macos-arm64.zip` 建于 `7357227`(#100)，
+  早于 `aabda65`(#101「fix(release): include server import dependencies」)。#101 才把
+  `annotation.py`/`run_manifest.py`/`feedback_events.py`/`evidence_graph.py` 加进打包清单
+  `PUBLIC_FILES`＋校验清单 `REQUIRED_PATHS`；原包缺这 4 个证据契约服务端模块，真机首用即崩。
+- **处置**：从 tag `aabda65` 内嵌模型重建（`MAIN_RUNTIME_FILE`＋`PAPER_MUSE_APP_VERSION=1.1.0`），
+  `release_assets.py scan` 按 `REQUIRED_PATHS` 自校验 4 模块通过 → 重签名(397 Mach-O)＋重公证
+  (submission `0b1b1209-7347-47af-ae53-bb267ce307ff`, Accepted)＋staple＋Gatekeeper 全过 →
+  clobber 替换 draft 资产、body 修 commit `7357227`→`aabda65`、更新 zip SHA → 所有者确认后 publish。
+- 最终资产：`PaperMuse-macos-arm64.zip` 301,502,283 B，SHA-256
+  `3cda59011c3ce742f12f81e6c2b7ce9bca627811a4658a8f2a8165cb018afc55`；
+  内嵌 main runtime 源 SHA `1c9afd28…`（blessed 公开资产）。
+- 公证凭据：钥匙串 profile `papermuse-notary`（App Store Connect API key，零明文，Apple 校验通过）。
+
 ## 下一步建议
 
-1. 所有者发布 v1.1.0 GitHub Release（tag 已在远端）——离线线已全绿，可择机发。
+1. ~~发布 v1.1.0 GitHub Release~~ **已于 2026-07-14 发布**（内嵌版，含 #101 修复）。
 2. 所有者在实际使用中跑真机：#84 样张定稿 → 解锁 #92；实践暴露的问题单独立 issue 采证。
 3. 真机跑起来后再回收 #73/#75/#79 与父票 #82/#88；不再有离线可提前做的实现票。
 
