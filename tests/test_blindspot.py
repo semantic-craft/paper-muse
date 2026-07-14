@@ -14,9 +14,10 @@ from blindspot import (
     classify_novelty,
     extract_json,
     CARD_TYPES,
-    TENSION_QUALITY_DIMENSIONS,
+    card_display_sort_key,
     card_type_quota_status,
     tension_quality_gate,
+    tension_quality_checks,
 )
 
 
@@ -46,7 +47,6 @@ def _confirmed_cnki_empty():
 def _doctrinal_tension_card(name="教义重构", **kw):
     card = _card(
         name,
-        tension_community="教义学",
         tension=(
             "合同规则与消费者欺诈规则在事实分类、证明责任和救济上不融贯；"
             "在法源约束下以二层规则重构，改变请求权基础、证明责任与法律后果。"
@@ -54,7 +54,18 @@ def _doctrinal_tension_card(name="教义重构", **kw):
         mechanism="以可验证承诺与信念表达的二层分流恢复体系关联并改变具体适用。",
         why_nonobvious="研究者原先只看宣传真伪，未比较不同请求权的体系后果。",
         steelman="三套制度的规范目的不同，后果差异可能只是合理分工。",
-        steelman_survives=True,
+        tension_evaluation={
+            "community": "doctrinal",
+            "criteria": {
+                "D1": "合同规则、消费者欺诈规则与证明责任在同一案型中不能同时维持。",
+                "D2": "修正只按宣传真伪分流的既有处理，以法源约束下的二层规则重构。",
+                "D3": "重构会改变请求权基础、证明责任与法律后果。",
+                "D4": "规范目的虽不同，但分层后仍保留各请求权的特殊要件与法安定性。",
+            },
+            "originality": "把宣传真假之争重画为跨请求权的体系关联。",
+            "utility": "直接改变请求权、证明责任与救济选择。",
+            "why_distinction": "tension 面向领域体系失配，why 只说明研究者原先的单一视角。",
+        },
     )
     card.update(kw)
     return card
@@ -63,7 +74,6 @@ def _doctrinal_tension_card(name="教义重构", **kw):
 def _sociolegal_tension_card(name="经验反转", **kw):
     card = _card(
         name,
-        tension_community="社科法学",
         tension=(
             "实证法学讨论默认法院以事实或信念定性决定案件成败；"
             "裁判文书与监管决定的分层样本可能限缩该前提，显示举证与请求权结构才是替代机制，"
@@ -72,7 +82,18 @@ def _sociolegal_tension_card(name="经验反转", **kw):
         mechanism="编码裁判样本并比较请求权、证据与救济，以检验替代机制及其法律推论。",
         why_nonobvious="研究者原先准备做规范推演，没有把案件成败前提改写成可检验假说。",
         steelman="公开文书选择性披露，样本偏差可能使该模式不能外推总体。",
-        steelman_survives=True,
+        tension_evaluation={
+            "community": "sociolegal",
+            "criteria": {
+                "S1": "实证法学讨论把事实或信念定性视为决定案件成败的经验前提。",
+                "S2": "以裁判文书和监管决定的分层样本限缩前提，并明确只支持样本内模式。",
+                "S3": "替代机制会改变证明责任设计与请求权结构。",
+                "S4": "用负例检索和样本边界回应选择性公开，结论不越过相关与样本内描述。",
+            },
+            "originality": "把抽象定性争论改写为可证伪的经验前提。",
+            "utility": "把经验修正导回证明责任和制度设计。",
+            "why_distinction": "tension 面向共同体经验前提，why 面向研究者缺少实证设计。",
+        },
     )
     card.update(kw)
     return card
@@ -87,10 +108,9 @@ def test_tension_quality_gate_accepts_both_local_legal_contracts_without_mutatio
 
 
 def test_tension_quality_gate_rejects_card_that_misses_local_criteria():
-    card = _doctrinal_tension_card(
-        tension="这个结论很意外，也值得继续研究。",
-        mechanism="换一个角度理解问题。",
-    )
+    card = _doctrinal_tension_card()
+    card["tension_evaluation"] = deepcopy(card["tension_evaluation"])
+    card["tension_evaluation"]["criteria"].pop("D2")
 
     assert tension_quality_gate(card) is False
 
@@ -108,9 +128,21 @@ def test_tension_quality_gate_rejects_tension_that_repeats_why(why_nonobvious):
     assert tension_quality_gate(card) is False
 
 
+def test_tension_quality_gate_requires_explicit_distinction_for_paraphrase_boundary():
+    card = _doctrinal_tension_card(
+        why_nonobvious="多套规则发生体系冲突，需要二层方案改变举证与救济。",
+    )
+    card["tension_evaluation"] = deepcopy(card["tension_evaluation"])
+    card["tension_evaluation"]["why_distinction"] = ""
+
+    assert tension_quality_gate(card) is False
+
+
 def test_tension_quality_gate_pairs_tension_with_steelman_survival_for_ranking():
     defensible = _doctrinal_tension_card("可辩护张力")
-    defeated = _doctrinal_tension_card("站不住张力", steelman_survives=False)
+    defeated = _doctrinal_tension_card("站不住张力")
+    defeated["tension_evaluation"] = deepcopy(defeated["tension_evaluation"])
+    defeated["tension_evaluation"]["criteria"]["D4"] = ""
 
     cards = finalize_card_quality([defensible, defeated])
     by_name = {card["name"]: card for card in cards}
@@ -118,15 +150,30 @@ def test_tension_quality_gate_pairs_tension_with_steelman_survival_for_ranking()
     assert by_name["可辩护张力"]["tension_quality"] == "strong"
     assert by_name["站不住张力"]["tension_quality"] == "weak"
     assert "steelman_survival" in by_name["站不住张力"]["tension_quality_reasons"]
-    assert by_name["可辩护张力"]["quality_score"] > by_name["站不住张力"]["quality_score"]
+    assert by_name["可辩护张力"]["quality_score"] == by_name["站不住张力"]["quality_score"]
+    assert by_name["可辩护张力"]["outlier"] is by_name["站不住张力"]["outlier"]
+    assert sorted(cards, key=card_display_sort_key)[0]["name"] == "可辩护张力"
 
 
 def test_tension_quality_dimensions_exclude_oppenheimer_clarity():
-    dimensions = " ".join(TENSION_QUALITY_DIMENSIONS).lower()
+    dimensions = " ".join(tension_quality_checks(_doctrinal_tension_card())).lower()
 
     assert "oppenheimer" not in dimensions
     assert "clarity" not in dimensions
     assert "清晰" not in dimensions
+
+
+def test_display_rank_keeps_gold_and_outlier_ahead_then_demotes_weak_tension():
+    cards = [
+        {"name": "普通弱张力", "gold": False, "outlier": False, "tension_quality": "weak"},
+        {"name": "离群", "gold": False, "outlier": True, "tension_quality": "weak"},
+        {"name": "普通强张力", "gold": False, "outlier": False, "tension_quality": "strong"},
+        {"name": "金卡", "gold": True, "outlier": False, "tension_quality": "weak"},
+    ]
+
+    assert [card["name"] for card in sorted(cards, key=card_display_sort_key)] == [
+        "金卡", "离群", "普通强张力", "普通弱张力",
+    ]
 
 
 def test_card_type_quota_status_is_ready_when_all_types_are_present():
@@ -1364,6 +1411,7 @@ def _tension_reply(cards):
 def test_tension_is_soft_field_in_schema_but_not_required():
     # 软要求（D1）：schema/prompt 支持 tension，但必填集不收——缺 tension 不构成丢卡理由
     assert "tension" in ENUM_SCHEMA_HINT
+    assert "tension_evaluation" in ENUM_SCHEMA_HINT
     assert "tension" not in REQUIRED_CARD_FIELDS
     # 弱张力占位键在单点声明处注册，上墙即预置（快照不变量）
     assert "tension" in CARD_SNAPSHOT_DEFAULTS
@@ -1453,10 +1501,13 @@ def test_perspectives_orders_weak_tension_after_strong_peer(tmp_path, monkeypatc
 
     monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
     monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "著作权")
+    weak = _doctrinal_tension_card("先生成但弱")
+    weak["tension_evaluation"] = deepcopy(weak["tension_evaluation"])
+    weak["tension_evaluation"]["criteria"]["D4"] = ""
     B.run_scan(
         "主题", "", str(tmp_path),
         providers={"m": lambda p: json.dumps({"cards": [
-            _doctrinal_tension_card("先生成但弱", steelman_survives=False),
+            weak,
             _doctrinal_tension_card("后生成且强"),
         ]})},
         decompose_llm=lambda p: "",

@@ -141,7 +141,13 @@ def test_scan_ui_sorts_and_marks_weak_tension_without_changing_badges():
     html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
 
     assert "function cardDisplayRank" in html
-    assert 'c.tension_quality === "weak"' in html
+    ranking = html.split("function cardDisplayRank(c){", 1)[1].split(
+        "function compareCardDisplayRank", 1
+    )[0]
+    assert "c.display_rank" in ranking
+    assert "c.gold" not in ranking
+    assert "c.outlier" not in ranking
+    assert "tension_quality" not in ranking
     assert ".sort(compareCardDisplayRank)" in html
     assert "弱张力" in html
     seals = html.split("function sealsHTML(c){", 1)[1].split("/* ══ 卡上", 1)[0]
