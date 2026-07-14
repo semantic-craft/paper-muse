@@ -15,6 +15,7 @@ import subprocess
 import threading
 from contextlib import nullcontext
 from copy import deepcopy
+from difflib import SequenceMatcher
 from pathlib import Path
 from urllib import parse, request
 
@@ -34,6 +35,138 @@ CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 
 # 卡缺失（或空白）张力时产物/卡面统一的占位串——明示「弱张力」而非丢卡（#88 US5）。
 TENSION_WEAK_LABEL = "弱张力/未给出"
+
+# #83 本土判据 + Corley–Gioia + 严谨性配对。这里只检查卡片文本契约，不能验证
+# 法源穷尽、资料真实性或因果，也不得解释为录用/被引预测。
+TENSION_QUALITY_DIMENSIONS = (
+    "local_interestingness",
+    "originality",
+    "utility",
+    "non_repetition",
+    "steelman_survival",
+)
+
+_DOCTRINAL_MATERIALS = (
+    "法源", "规范", "原则", "概念", "通说", "裁判", "规则", "请求权", "构成要件",
+    "证明责任", "法律后果", "救济",
+)
+_DOCTRINAL_DIAGNOSIS = ("冲突", "不融贯", "漏洞", "断裂", "矛盾", "失配", "无法一致")
+_RECONSTRUCTION = ("重构", "重新界定", "修正", "例外", "分层", "分流", "替代", "重画")
+_EMPIRICAL_EVIDENCE = (
+    "资料", "数据", "样本", "案例", "访谈", "观察", "裁判文书", "监管决定", "比较",
+    "编码", "测量",
+)
+_PREMISE_REVISION = ("反转", "否定", "限缩", "替代", "修正", "不成立", "条件下")
+_LEGAL_USE = (
+    "法律解释", "规范评价", "制度设计", "法律适用", "请求权", "构成要件", "证明责任",
+    "裁判理由", "法律后果", "救济", "治理", "适用",
+)
+_STEELMAN_FAILURE = ("无法回应", "尚无回应", "反驳成立", "足以推翻", "不能存活")
+
+
+def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
+    return any(needle in text for needle in needles)
+
+
+def _compact_text(value) -> str:
+    return re.sub(r"[\W_]+", "", str(value or "").lower())
+
+
+def _tension_community(card: dict, text: str) -> str | None:
+    explicit = str(card.get("tension_community") or card.get("community") or "")
+    if "教义" in explicit or "规范法学" in explicit:
+        return "doctrinal"
+    if "社科" in explicit or "实证" in explicit or "经验" in explicit:
+        return "sociolegal"
+    doctrinal = sum(marker in text for marker in _DOCTRINAL_MATERIALS + _DOCTRINAL_DIAGNOSIS)
+    sociolegal = sum(marker in text for marker in _EMPIRICAL_EVIDENCE + ("默认", "前提", "假说"))
+    if doctrinal == sociolegal:
+        return None
+    return "doctrinal" if doctrinal > sociolegal else "sociolegal"
+
+
+def _hits_local_interestingness(card: dict, text: str) -> bool:
+    community = _tension_community(card, text)
+    if community == "doctrinal":
+        material_count = sum(marker in text for marker in _DOCTRINAL_MATERIALS)
+        return (
+            material_count >= 2
+            and _contains_any(text, _DOCTRINAL_DIAGNOSIS)
+            and _contains_any(text, _RECONSTRUCTION)
+            and _contains_any(text, _LEGAL_USE)
+        )
+    if community == "sociolegal":
+        attributable_premise = (
+            _contains_any(text, ("默认", "前提", "假说"))
+            and _contains_any(text, ("法学", "学界", "学者", "法院", "实务", "制度话语"))
+        )
+        return (
+            attributable_premise
+            and _contains_any(text, _EMPIRICAL_EVIDENCE)
+            and _contains_any(text, _PREMISE_REVISION)
+            and _contains_any(text, _LEGAL_USE)
+        )
+    return False
+
+
+def _tension_differs_from_why(card: dict) -> bool:
+    tension = _compact_text(card.get("tension"))
+    why = _compact_text(card.get("why_nonobvious"))
+    if not tension or not why:
+        return False
+    shorter, longer = sorted((tension, why), key=len)
+    if len(shorter) >= 8 and shorter in longer:
+        return False
+    return SequenceMatcher(None, tension, why).ratio() < 0.82
+
+
+def _steelman_survives(card: dict) -> bool:
+    steelman = str(card.get("steelman") or "").strip()
+    if not steelman or _contains_any(steelman, _STEELMAN_FAILURE):
+        return False
+    if "steelman_survives" in card:
+        return card.get("steelman_survives") is True
+    # 现有 schema 只有 steelman 文本；缺少显式结果时只判断文本契约是否存在，不声称
+    # 已验证反驳在真实法源/资料上失败。
+    return True
+
+
+def _tension_quality_checks(card: dict) -> dict[str, bool]:
+    tension = str(card.get("tension") or "").strip()
+    combined = " ".join(
+        str(card.get(field) or "")
+        for field in ("tension", "mechanism", "feasibility")
+    )
+    return {
+        "local_interestingness": bool(tension) and _hits_local_interestingness(card, combined),
+        "originality": bool(tension) and _contains_any(combined, _RECONSTRUCTION + _PREMISE_REVISION),
+        "utility": _contains_any(combined, _LEGAL_USE),
+        "non_repetition": _tension_differs_from_why(card),
+        "steelman_survival": _steelman_survives(card),
+    }
+
+
+def tension_quality_gate(card: dict) -> bool:
+    """离线纯函数：仅按卡片文本契约判强/弱张力，不修改 card、不开网络。"""
+    return all(_tension_quality_checks(card).values())
+
+
+def apply_tension_quality_gate(cards: list) -> list:
+    """O(卡数) 收尾注解；每张卡独立过闸，不做卡间比较。"""
+    for card in cards:
+        checks = _tension_quality_checks(card)
+        card["tension_quality"] = "strong" if all(checks.values()) else "weak"
+        card["tension_quality_reasons"] = [name for name, passed in checks.items() if not passed]
+    return cards
+
+
+def card_display_sort_key(card: dict) -> tuple[bool, bool, bool]:
+    """保留既有 gold/outlier 优先级，再把普通弱张力卡排到强张力卡后。"""
+    return (
+        not bool(card.get("gold")),
+        not bool(card.get("outlier")),
+        card.get("tension_quality") == "weak",
+    )
 
 
 def card_type_quota_status(cards: list) -> dict:
@@ -70,6 +203,8 @@ CARD_SNAPSHOT_DEFAULTS = {
     # 与 feasibility 同属「枚举写、后续阶段不改」：在此预置保证键集恒定，
     # _new_card_snapshot 里连同 feasibility 一并保留原值不被默认清零。
     "tension": None,
+    "tension_quality": None,
+    "tension_quality_reasons": [],
     "quality_score": None,
     "elo_score": None,
     "outlier_reason": None,
@@ -293,13 +428,19 @@ def _card_quality_points(card: dict) -> float:
 
 def _quality_ratings(cards: list, k: int = 32) -> list:
     """确定性质量分（**不是** Elo：无真实 pairwise debate，只是质量点数的公式换算）。
-    首屏便宜、快、不阻塞出卡；真 Elo 见 run_quality_tournament（卡片上墙后异步跑）。"""
+    首屏便宜、快、不阻塞出卡；弱张力先降级，再比较既有质量点数（不引入伪校准权重）。
+    真 Elo 见 run_quality_tournament（卡片上墙后异步跑）。"""
     ratings = [1500.0 for _ in cards]
     quality = [_card_quality_points(c) for c in cards]
     for i in range(len(cards)):
         for j in range(i + 1, len(cards)):
-            diff = quality[i] - quality[j]
-            actual_i = 0.5 if abs(diff) < 4 else (1.0 if diff > 0 else 0.0)
+            weak_i = cards[i].get("tension_quality") == "weak"
+            weak_j = cards[j].get("tension_quality") == "weak"
+            if weak_i != weak_j:
+                actual_i = 0.0 if weak_i else 1.0
+            else:
+                diff = quality[i] - quality[j]
+                actual_i = 0.5 if abs(diff) < 4 else (1.0 if diff > 0 else 0.0)
             expected_i = 1 / (1 + 10 ** ((ratings[j] - ratings[i]) / 400))
             delta = k * (actual_i - expected_i)
             ratings[i] += delta
@@ -470,6 +611,7 @@ def finalize_card_quality(cards: list, embedding_fn=None, embedding_threshold: f
     for i, card in enumerate(merged, start=1):
         card["cluster_id"] = i
         card.setdefault("cluster_size", 1)
+    apply_tension_quality_gate(merged)
     mark_outliers(merged)
     return merged
 
@@ -776,7 +918,7 @@ def _write_outputs(output_dir, topic, profile, cards):
     lines = [f"# 切入点卡片：{topic}\n"]
     qlines = [f"# 拷问弹药（grill-with-docs 用）：{topic}\n"]
     slines = [f"# 文献锚点：{topic}\n"]
-    for c in sorted(cards, key=lambda x: (not x.get("gold", False), not x.get("outlier", False))):
+    for c in sorted(cards, key=card_display_sort_key):
         badges = []
         if c.get("gold"):
             badges.append("🥇英热中冷")
@@ -785,12 +927,19 @@ def _write_outputs(output_dir, topic, profile, cards):
         if c.get("own_hits") and c.get("novelty") in ("交叉空白", "边缘有人做"):
             badges.append("📚已藏未用")
         badge = "｜".join(badges) or "共识"
+        tension = str(c.get("tension") or "").strip()
+        if not tension:
+            tension_display = TENSION_WEAK_LABEL
+        elif c.get("tension_quality") == "weak":
+            tension_display = f"弱张力｜{tension}"
+        else:
+            tension_display = tension
         lines += [
             f"\n## {c['name']}（{c['type']}｜{c.get('novelty','?')}｜{badge}）",
             f"- 机制：{c['mechanism']}",
             # 双参照系成对：why_nonobvious=对研究者，tension=对领域读者；缺张力明示弱张力（#88 US11/US5）
             f"- 为什么非显而易见：{c['why_nonobvious']}",
-            f"- 反转的领域默认前提：{c.get('tension') or TENSION_WEAK_LABEL}",
+            f"- 反转的领域默认前提：{tension_display}",
             f"- 最强反驳：{c['steelman']}",
         ]
         if c.get("outlier_reason"):

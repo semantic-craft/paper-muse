@@ -137,6 +137,18 @@ def test_scan_ui_shows_missing_card_type_degradation():
     assert "卡型配额降级" in html
 
 
+def test_scan_ui_sorts_and_marks_weak_tension_without_changing_badges():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+
+    assert "function cardDisplayRank" in html
+    assert 'c.tension_quality === "weak"' in html
+    assert ".sort(compareCardDisplayRank)" in html
+    assert "弱张力" in html
+    seals = html.split("function sealsHTML(c){", 1)[1].split("/* ══ 卡上", 1)[0]
+    assert "tension" not in seals
+    assert "弱张力" not in seals
+
+
 def test_scan_ui_uses_zotero_locator_and_shows_identity_status():
     html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
 

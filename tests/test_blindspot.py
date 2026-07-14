@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -13,7 +14,9 @@ from blindspot import (
     classify_novelty,
     extract_json,
     CARD_TYPES,
+    TENSION_QUALITY_DIMENSIONS,
     card_type_quota_status,
+    tension_quality_gate,
 )
 
 
@@ -38,6 +41,92 @@ def _confirmed_cnki_empty():
         "evidence": [],
         "status": {"provider": "cnki", "state": "empty", "hits": 0},
     }
+
+
+def _doctrinal_tension_card(name="教义重构", **kw):
+    card = _card(
+        name,
+        tension_community="教义学",
+        tension=(
+            "合同规则与消费者欺诈规则在事实分类、证明责任和救济上不融贯；"
+            "在法源约束下以二层规则重构，改变请求权基础、证明责任与法律后果。"
+        ),
+        mechanism="以可验证承诺与信念表达的二层分流恢复体系关联并改变具体适用。",
+        why_nonobvious="研究者原先只看宣传真伪，未比较不同请求权的体系后果。",
+        steelman="三套制度的规范目的不同，后果差异可能只是合理分工。",
+        steelman_survives=True,
+    )
+    card.update(kw)
+    return card
+
+
+def _sociolegal_tension_card(name="经验反转", **kw):
+    card = _card(
+        name,
+        tension_community="社科法学",
+        tension=(
+            "实证法学讨论默认法院以事实或信念定性决定案件成败；"
+            "裁判文书与监管决定的分层样本可能限缩该前提，显示举证与请求权结构才是替代机制，"
+            "并改变制度设计。"
+        ),
+        mechanism="编码裁判样本并比较请求权、证据与救济，以检验替代机制及其法律推论。",
+        why_nonobvious="研究者原先准备做规范推演，没有把案件成败前提改写成可检验假说。",
+        steelman="公开文书选择性披露，样本偏差可能使该模式不能外推总体。",
+        steelman_survives=True,
+    )
+    card.update(kw)
+    return card
+
+
+def test_tension_quality_gate_accepts_both_local_legal_contracts_without_mutation():
+    for card in (_doctrinal_tension_card(), _sociolegal_tension_card()):
+        before = deepcopy(card)
+
+        assert tension_quality_gate(card) is True
+        assert card == before
+
+
+def test_tension_quality_gate_rejects_card_that_misses_local_criteria():
+    card = _doctrinal_tension_card(
+        tension="这个结论很意外，也值得继续研究。",
+        mechanism="换一个角度理解问题。",
+    )
+
+    assert tension_quality_gate(card) is False
+
+
+@pytest.mark.parametrize(
+    "why_nonobvious",
+    [
+        _doctrinal_tension_card()["tension"],
+        "为什么非显而易见：" + _doctrinal_tension_card()["tension"],
+    ],
+)
+def test_tension_quality_gate_rejects_tension_that_repeats_why(why_nonobvious):
+    card = _doctrinal_tension_card(why_nonobvious=why_nonobvious)
+
+    assert tension_quality_gate(card) is False
+
+
+def test_tension_quality_gate_pairs_tension_with_steelman_survival_for_ranking():
+    defensible = _doctrinal_tension_card("可辩护张力")
+    defeated = _doctrinal_tension_card("站不住张力", steelman_survives=False)
+
+    cards = finalize_card_quality([defensible, defeated])
+    by_name = {card["name"]: card for card in cards}
+
+    assert by_name["可辩护张力"]["tension_quality"] == "strong"
+    assert by_name["站不住张力"]["tension_quality"] == "weak"
+    assert "steelman_survival" in by_name["站不住张力"]["tension_quality_reasons"]
+    assert by_name["可辩护张力"]["quality_score"] > by_name["站不住张力"]["quality_score"]
+
+
+def test_tension_quality_dimensions_exclude_oppenheimer_clarity():
+    dimensions = " ".join(TENSION_QUALITY_DIMENSIONS).lower()
+
+    assert "oppenheimer" not in dimensions
+    assert "clarity" not in dimensions
+    assert "清晰" not in dimensions
 
 
 def test_card_type_quota_status_is_ready_when_all_types_are_present():
@@ -1357,3 +1446,24 @@ def test_perspectives_pairs_tension_with_why_and_marks_weak(tmp_path, monkeypatc
     assert "为什么非显而易见：对你为何新" in text
     assert "反转了法学界「Z 前提」" in text              # 强张力卡带领域参照系一行
     assert TENSION_WEAK_LABEL in text                    # 缺张力卡明示「弱张力/未给出」，不丢卡
+
+
+def test_perspectives_orders_weak_tension_after_strong_peer(tmp_path, monkeypatch):
+    import blindspot as B
+
+    monkeypatch.setattr(B, "decompose_topic", lambda *a: ["f1"])
+    monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "著作权")
+    B.run_scan(
+        "主题", "", str(tmp_path),
+        providers={"m": lambda p: json.dumps({"cards": [
+            _doctrinal_tension_card("先生成但弱", steelman_survives=False),
+            _doctrinal_tension_card("后生成且强"),
+        ]})},
+        decompose_llm=lambda p: "",
+        en_search=lambda q: [], zh_search=lambda q: _confirmed_cnki_empty(),
+        own_search=None, on_card=lambda c: None,
+    )
+
+    text = (tmp_path / "docs" / "agents" / "muse" / "perspectives.md").read_text(encoding="utf-8")
+    assert text.index("后生成且强") < text.index("先生成但弱")
+    assert "弱张力" in text[text.index("先生成但弱"):]
