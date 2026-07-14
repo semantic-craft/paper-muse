@@ -38,9 +38,19 @@ TENSION_WEAK_LABEL = "弱张力/未给出"
 
 # #83 的两套全取式文本契约。自动闸只核对这些说明是否完整，不能验证法源穷尽、
 # 资料真实性或因果，也不得解释为录用/被引预测。
-_TENSION_CRITERIA = {
-    "doctrinal": ("D1", "D2", "D3", "D4"),
-    "sociolegal": ("S1", "S2", "S3", "S4"),
+_TENSION_CRITERION_FIELDS = {
+    "doctrinal": {
+        "D1": ("materials", "conflict", "case_type"),
+        "D2": ("existing_approach", "reconstruction", "constraints"),
+        "D3": ("before", "after", "application_change"),
+        "D4": ("objection", "response", "constraint"),
+    },
+    "sociolegal": {
+        "S1": ("community", "premise"),
+        "S2": ("evidence_path", "sample_boundary", "revision_type"),
+        "S3": ("legal_change", "mechanism"),
+        "S4": ("alternative_explanation", "evidence_limit", "response"),
+    },
 }
 _TENSION_COMMUNITY_ALIASES = {
     "doctrinal": "doctrinal",
@@ -70,26 +80,47 @@ def normalize_tension_evaluation(raw) -> dict | None:
         return None
     community_raw = _clean_explanation(raw.get("community"))
     community = _TENSION_COMMUNITY_ALIASES.get(community_raw.lower())
-    expected = _TENSION_CRITERIA.get(community, ())
+    criterion_fields = _TENSION_CRITERION_FIELDS.get(community, {})
     criteria_raw = raw.get("criteria") if isinstance(raw.get("criteria"), dict) else {}
+    criteria = {}
+    for criterion, fields in criterion_fields.items():
+        item = criteria_raw.get(criterion) if isinstance(criteria_raw.get(criterion), dict) else {}
+        criteria[criterion] = {field: _clean_explanation(item.get(field)) for field in fields}
+    originality = raw.get("originality") if isinstance(raw.get("originality"), dict) else {}
+    utility = raw.get("utility") if isinstance(raw.get("utility"), dict) else {}
+    distinction = raw.get("why_distinction") if isinstance(raw.get("why_distinction"), dict) else {}
     return {
         "community": community,
-        "criteria": {key: _clean_explanation(criteria_raw.get(key)) for key in expected},
-        "originality": _clean_explanation(raw.get("originality")),
-        "utility": _clean_explanation(raw.get("utility")),
-        "why_distinction": _clean_explanation(raw.get("why_distinction")),
+        "criteria": criteria,
+        "originality": {
+            "changed_understanding": _clean_explanation(originality.get("changed_understanding")),
+        },
+        "utility": {
+            "legal_consequence": _clean_explanation(utility.get("legal_consequence")),
+        },
+        "why_distinction": {
+            "tension_reference": _clean_explanation(distinction.get("tension_reference")).lower(),
+            "why_reference": _clean_explanation(distinction.get("why_reference")).lower(),
+            "tension_core": _clean_explanation(distinction.get("tension_core")),
+            "why_core": _clean_explanation(distinction.get("why_core")),
+            "difference": _clean_explanation(distinction.get("difference")),
+        },
     }
 
 
-def _tension_differs_from_why(card: dict) -> bool:
-    tension = _compact_text(card.get("tension"))
-    why = _compact_text(card.get("why_nonobvious"))
-    if not tension or not why:
+def _texts_differ(left, right) -> bool:
+    left = _compact_text(left)
+    right = _compact_text(right)
+    if not left or not right:
         return False
-    shorter, longer = sorted((tension, why), key=len)
+    shorter, longer = sorted((left, right), key=len)
     if len(shorter) >= 8 and shorter in longer:
         return False
-    return SequenceMatcher(None, tension, why).ratio() < 0.82
+    return SequenceMatcher(None, left, right).ratio() < 0.82
+
+
+def _section_complete(section: dict, fields: tuple[str, ...]) -> bool:
+    return isinstance(section, dict) and all(_has_explanation(section.get(field)) for field in fields)
 
 
 def tension_quality_checks(card: dict) -> dict[str, bool]:
@@ -98,23 +129,32 @@ def tension_quality_checks(card: dict) -> dict[str, bool]:
     evaluation = normalize_tension_evaluation(card.get("tension_evaluation"))
     community = evaluation.get("community") if evaluation else None
     criteria = evaluation.get("criteria", {}) if evaluation else {}
-    expected = _TENSION_CRITERIA.get(community, ())
-    survival_key = expected[-1] if expected else None
+    criterion_fields = _TENSION_CRITERION_FIELDS.get(community, {})
+    survival_key = next(reversed(criterion_fields), None)
+    distinction = evaluation.get("why_distinction", {}) if evaluation else {}
     return {
-        "local_interestingness": bool(tension) and bool(expected) and all(
-            _has_explanation(criteria.get(key)) for key in expected
+        "local_interestingness": bool(tension) and bool(criterion_fields) and all(
+            _section_complete(criteria.get(criterion), fields)
+            for criterion, fields in criterion_fields.items()
         ),
-        "originality": bool(evaluation) and _has_explanation(evaluation.get("originality")),
-        "utility": bool(evaluation) and _has_explanation(evaluation.get("utility")),
+        "originality": bool(evaluation) and _section_complete(
+            evaluation.get("originality"), ("changed_understanding",)
+        ),
+        "utility": bool(evaluation) and _section_complete(
+            evaluation.get("utility"), ("legal_consequence",)
+        ),
         "non_repetition": (
             bool(evaluation)
-            and _has_explanation(evaluation.get("why_distinction"))
-            and _tension_differs_from_why(card)
+            and distinction.get("tension_reference") == "field"
+            and distinction.get("why_reference") == "researcher"
+            and _section_complete(distinction, ("tension_core", "why_core", "difference"))
+            and _texts_differ(card.get("tension"), card.get("why_nonobvious"))
+            and _texts_differ(distinction.get("tension_core"), distinction.get("why_core"))
         ),
         "steelman_survival": (
             _has_explanation(card.get("steelman"))
             and bool(survival_key)
-            and _has_explanation(criteria.get(survival_key))
+            and _section_complete(criteria.get(survival_key), criterion_fields.get(survival_key, ()))
         ),
     }
 
@@ -629,16 +669,40 @@ ENUM_SCHEMA_HINT = (
     '"mechanism": "一句话机制", "why_nonobvious": "为什么对该研究者非显而易见", '
     '"tension": "反转了法学界哪个默认前提（对领域读者的张力，与 why_nonobvious 分开；软字段，没有可省）", '
     '"tension_evaluation": {"community": "doctrinal|sociolegal", '
-    '"criteria": {"D1": "逐项说明", "D2": "逐项说明", '
-    '"D3": "逐项说明", "D4": "反驳后仍存活的回应"}, '
-    '"originality": "改变了什么理解", "utility": "推出何种法律适用或制度变化", '
-    '"why_distinction": "说明 tension 与 why_nonobvious 的参照系和内容差异"}, '
+    '"criteria": {"D1": {"materials": "至少两项规范材料", "conflict": "具体冲突", "case_type": "案型"}, '
+    '"D2": {"existing_approach": "既有学说或方案", "reconstruction": "新重构", "constraints": "法源方法约束"}, '
+    '"D3": {"before": "重构前适用", "after": "重构后适用", "application_change": "具体差异"}, '
+    '"D4": {"objection": "最强体系内反驳", "response": "为何仍存活", "constraint": "高位法源或安定性约束"}}, '
+    '"originality": {"changed_understanding": "改变了什么理解"}, '
+    '"utility": {"legal_consequence": "推出何种法律适用或制度变化"}, '
+    '"why_distinction": {"tension_reference": "field", "why_reference": "researcher", '
+    '"tension_core": "领域前提核心命题", "why_core": "研究者盲点核心命题", '
+    '"difference": "两者为何不是同义改写"}}, '
     '"vs_profile": [{"element": "领域|立场|熟悉", "note": "相对画像这一条为何非显而易见（有画像才填）"}], '
     '"steelman": "最强反驳：哪类审稿人会怎么打", "feasibility": "方法卡必填：数据从哪来", '
-    '"questions": ["1-2个拷问句"]}]}。'
-    'tension_evaluation.criteria：教义学卡使用示例中的 D1、D2、D3、D4 四键；'
-    '社科法学卡把四键改为 S1、S2、S3、S4。'
+    '"questions": ["1-2个拷问句"]}]}'
 )
+
+TENSION_QUALITY_PROMPT = """
+张力质量证据必须逐项填写；这是文本契约自检，不是录用/被引预测，也不能验证法源穷尽、资料真实性或因果。
+
+【教义学｜#83 原样判据】
+D1｜体系诊断可定位：点名至少两项冲突/断裂的规范材料、原则、概念、通说、裁判理由或法律后果，并说明具体案型。
+D2｜重构相对既有研究成立：说明拟修正的既有学说/处理方案，并提出受法源和方法约束的新概念、规则、例外或关系结构。
+D3｜适用差异可推出：指出重构前后至少一个请求权基础、构成要件、证明责任、裁判理由或法律后果的可比较变化。
+D4｜体系内 steelman 存活：给出最强体系内反驳，并说明方案为何不违反更高位法源、基本原则、法安定性或相邻制度。
+先判断该卡是否精确定位了现行规范、原则、概念、通说或裁判后果之间的不融贯/漏洞；再判断它是否在法源与既有学说约束内提出了真正改变法律适用的重构。只有“体系诊断可定位 + 重构相对既有研究成立 + 适用差异可推出 + 最强体系内反驳后仍存活”四项同时满足，才可标强张力；否则标弱张力。
+
+【社科法学｜#83 原样判据】
+S1｜默认经验前提可归属：把前提写成可由资料支持或反驳的经验命题，并说明属于哪类学术/制度话语。
+S2｜反转有资料路径与边界：给出检验前提的资料、样本/案例选择与比较方式，并明确否定、限缩条件或替代机制。
+S3｜法学推论可导出：指出经验修正将改变哪个法律解释、规范评价或制度设计，并给出中间机制。
+S4｜替代解释与证据 steelman 存活：列出最强替代解释、样本偏差/测量误差或反例，并说明证据只到描述、相关、机制线索还是因果。
+先判断该卡是否点名了某共同体可检验的经验默认前提，再判断资料能否否定、限缩或以替代机制修正该前提，并能否由此导出明确的法律解释、规范评价或制度设计变化。只有“默认前提可归属 + 反转有资料路径与边界 + 法学推论可导出 + 最强替代解释/证据反驳后仍存活”四项同时满足，才可标强张力；否则标弱张力。
+社科法学 criteria 必须改用：S1={community,premise}；S2={evidence_path,sample_boundary,revision_type}；S3={legal_change,mechanism}；S4={alternative_explanation,evidence_limit,response}。
+
+共同防呆：originality.changed_understanding 与 utility.legal_consequence 必须同时具体；why_distinction 的两条核心命题必须分别指向 field 与 researcher 且不得同义重复；反驳无回应即弱张力。
+""".strip()
 
 REQUIRED_CARD_FIELDS = {"type", "name", "mechanism", "why_nonobvious", "steelman", "questions"}
 
@@ -700,7 +764,7 @@ def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str
         "硬性配额：三类卡各至少 2 张——学科视角（其他学科怎么看这个问题）、"
         "理论框架（具体理论及其机制）、研究方法（实证/比较法/计算法学等，必附 feasibility 数据来源）。"
         "卡片之间必须彼此截然不同（学科、方法论、规范/实证、时间尺度错开），拒绝同一角度的变体。\n"
-        + ENUM_SCHEMA_HINT
+        + ENUM_SCHEMA_HINT + "\n" + TENSION_QUALITY_PROMPT
     )
     raw = extract_json(llm_call(prompt)).get("cards", [])
     cards = []

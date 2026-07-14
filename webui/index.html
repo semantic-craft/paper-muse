@@ -1888,18 +1888,22 @@ function becuzTagsHTML(c){
   }).join(" ");
 }
 
-/* ══ 一条手稿 entry ══ */
-function entryHTML(c, i){
-  const tm = typeMeta(c.type);
+function tensionBodyHTML(c){
   // 张力（对领域读者：反转了哪个默认前提）与「相对于你的未知」（对研究者）成对呈现，
   // 缺张力明示「弱张力/未给出」而非留白——徽标区不动（#91 / #88 US10）。
   const tension = (c.tension || "").trim();
   const weakTension = c.tension_quality === "weak";
-  const tensionBody = tension
+  return tension
     ? (weakTension
       ? `<span style="color:var(--ink-2)">弱张力</span> · ${esc(tension)}`
       : esc(tension))
     : `<span style="color:var(--ink-2)">弱张力/未给出</span>`;
+}
+
+/* ══ 一条手稿 entry ══ */
+function entryHTML(c, i){
+  const tm = typeMeta(c.type);
+  const tensionBody = tensionBodyHTML(c);
   const feas = c.feasibility
     ? `<div class="feasibility"><span class="h">可行性 · 数据从哪来</span>${esc(c.feasibility)}</div>`
     : "";

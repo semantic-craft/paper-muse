@@ -155,6 +155,34 @@ def test_scan_ui_sorts_and_marks_weak_tension_without_changing_badges():
     assert "弱张力" not in seals
 
 
+def test_scan_ui_executes_weak_tension_sort_and_render_contract():
+    html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+    tension_js = "function tensionBodyHTML" + html.split(
+        "function tensionBodyHTML", 1
+    )[1].split("/* ══ 一条手稿 entry", 1)[0]
+    ranking_js = "function cardDisplayRank" + html.split(
+        "function cardDisplayRank", 1
+    )[1].split("/* 给每张卡分配", 1)[0]
+    script = f"""
+function esc(value) {{ return String(value); }}
+{tension_js}
+{ranking_js}
+const cards = [
+  {{name: "弱", display_rank: [1, 1, 1]}},
+  {{name: "金", display_rank: [0, 1, 1]}},
+  {{name: "强", display_rank: [1, 1, 0]}},
+  {{name: "离群", display_rank: [1, 0, 1]}}
+];
+const rendered = tensionBodyHTML({{tension: "原始张力", tension_quality: "weak"}});
+console.log(JSON.stringify({{order: cards.sort(compareCardDisplayRank).map(c => c.name), rendered}}));
+"""
+
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+    payload = json.loads(result.stdout)
+    assert payload["order"] == ["金", "离群", "强", "弱"]
+    assert "弱张力" in payload["rendered"] and "原始张力" in payload["rendered"]
+
+
 def test_scan_ui_uses_zotero_locator_and_shows_identity_status():
     html = (release_assets.ROOT / "webui" / "index.html").read_text(encoding="utf-8")
 

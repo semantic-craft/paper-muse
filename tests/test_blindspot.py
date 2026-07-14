@@ -57,14 +57,36 @@ def _doctrinal_tension_card(name="教义重构", **kw):
         tension_evaluation={
             "community": "doctrinal",
             "criteria": {
-                "D1": "合同规则、消费者欺诈规则与证明责任在同一案型中不能同时维持。",
-                "D2": "修正只按宣传真伪分流的既有处理，以法源约束下的二层规则重构。",
-                "D3": "重构会改变请求权基础、证明责任与法律后果。",
-                "D4": "规范目的虽不同，但分层后仍保留各请求权的特殊要件与法安定性。",
+                "D1": {
+                    "materials": "合同规则、消费者欺诈规则与证明责任三项规范材料。",
+                    "conflict": "同一陈述的事实分类、举证与救济后果不能同时维持。",
+                    "case_type": "身心灵付费课程宣传与履行纠纷。",
+                },
+                "D2": {
+                    "existing_approach": "既有处理只按宣传是真是假在制度间分流。",
+                    "reconstruction": "改用可验证承诺与信念表达的二层规则。",
+                    "constraints": "重构受现行法源和各请求权特殊要件约束。",
+                },
+                "D3": {
+                    "before": "重构前同一陈述被笼统归入单一请求权。",
+                    "after": "重构后按承诺可验证性与特殊要件分别适用。",
+                    "application_change": "请求权基础、证明责任与法律后果随之改变。",
+                },
+                "D4": {
+                    "objection": "三套制度规范目的不同，差异可能只是合理分工。",
+                    "response": "二层结构保留各制度特殊要件，只处理无理由冲突。",
+                    "constraint": "方案不违反法源位阶、法安定性与相邻制度边界。",
+                },
             },
-            "originality": "把宣传真假之争重画为跨请求权的体系关联。",
-            "utility": "直接改变请求权、证明责任与救济选择。",
-            "why_distinction": "tension 面向领域体系失配，why 只说明研究者原先的单一视角。",
+            "originality": {"changed_understanding": "把宣传真假之争重画为跨请求权的体系关联。"},
+            "utility": {"legal_consequence": "直接改变请求权、证明责任与救济选择。"},
+            "why_distinction": {
+                "tension_reference": "field",
+                "why_reference": "researcher",
+                "tension_core": "多套规范材料在同一案型中发生体系失配并需重构。",
+                "why_core": "研究者原先只从宣传真伪的单一视角切入。",
+                "difference": "前者挑战领域体系，后者描述研究者个人的知识盲点。",
+            },
         },
     )
     card.update(kw)
@@ -85,14 +107,34 @@ def _sociolegal_tension_card(name="经验反转", **kw):
         tension_evaluation={
             "community": "sociolegal",
             "criteria": {
-                "S1": "实证法学讨论把事实或信念定性视为决定案件成败的经验前提。",
-                "S2": "以裁判文书和监管决定的分层样本限缩前提，并明确只支持样本内模式。",
-                "S3": "替代机制会改变证明责任设计与请求权结构。",
-                "S4": "用负例检索和样本边界回应选择性公开，结论不越过相关与样本内描述。",
+                "S1": {
+                    "community": "实证法学与相关制度讨论。",
+                    "premise": "法院以事实或信念定性决定案件成败。",
+                },
+                "S2": {
+                    "evidence_path": "编码裁判文书与监管决定并分层比较请求权和证据。",
+                    "sample_boundary": "只主张公开文书样本内模式，并用负例检索控制遗漏。",
+                    "revision_type": "限缩原前提并检验举证结构这一替代机制。",
+                },
+                "S3": {
+                    "legal_change": "经验修正会改变证明责任设计与请求权结构。",
+                    "mechanism": "案件成败由举证与请求权结构而非抽象定性驱动。",
+                },
+                "S4": {
+                    "alternative_explanation": "公开文书选择性披露可能制造观察到的模式。",
+                    "evidence_limit": "证据只支持样本内描述与相关，不能声称总体因果。",
+                    "response": "使用负例检索、分层样本并明确外推边界。",
+                },
             },
-            "originality": "把抽象定性争论改写为可证伪的经验前提。",
-            "utility": "把经验修正导回证明责任和制度设计。",
-            "why_distinction": "tension 面向共同体经验前提，why 面向研究者缺少实证设计。",
+            "originality": {"changed_understanding": "把抽象定性争论改写为可证伪的经验前提。"},
+            "utility": {"legal_consequence": "把经验修正导回证明责任和制度设计。"},
+            "why_distinction": {
+                "tension_reference": "field",
+                "why_reference": "researcher",
+                "tension_core": "共同体默认抽象定性决定案件成败。",
+                "why_core": "研究者原先缺少把问题改写成可检验假说的设计。",
+                "difference": "前者反转共同体经验前提，后者指出研究者方法盲点。",
+            },
         },
     )
     card.update(kw)
@@ -128,12 +170,15 @@ def test_tension_quality_gate_rejects_tension_that_repeats_why(why_nonobvious):
     assert tension_quality_gate(card) is False
 
 
-def test_tension_quality_gate_requires_explicit_distinction_for_paraphrase_boundary():
+def test_tension_quality_gate_rejects_semantic_paraphrase_with_false_distinction_claim():
     card = _doctrinal_tension_card(
         why_nonobvious="多套规则发生体系冲突，需要二层方案改变举证与救济。",
     )
     card["tension_evaluation"] = deepcopy(card["tension_evaluation"])
-    card["tension_evaluation"]["why_distinction"] = ""
+    distinction = card["tension_evaluation"]["why_distinction"]
+    distinction["tension_core"] = "规则冲突需要二层重构以改变举证和救济。"
+    distinction["why_core"] = "规则冲突需要二层重构以改变举证和救济。"
+    distinction["difference"] = "两句话使用了不同措辞。"
 
     assert tension_quality_gate(card) is False
 
@@ -142,7 +187,7 @@ def test_tension_quality_gate_pairs_tension_with_steelman_survival_for_ranking()
     defensible = _doctrinal_tension_card("可辩护张力")
     defeated = _doctrinal_tension_card("站不住张力")
     defeated["tension_evaluation"] = deepcopy(defeated["tension_evaluation"])
-    defeated["tension_evaluation"]["criteria"]["D4"] = ""
+    defeated["tension_evaluation"]["criteria"]["D4"]["response"] = ""
 
     cards = finalize_card_quality([defensible, defeated])
     by_name = {card["name"]: card for card in cards}
@@ -1401,7 +1446,12 @@ def test_gold_outlier_selectivity_not_all_labels_full():
 
 
 # ---------------------------------------------------------------- #91 tension 字段最小贯通
-from blindspot import REQUIRED_CARD_FIELDS, CARD_SNAPSHOT_DEFAULTS, TENSION_WEAK_LABEL
+from blindspot import (
+    CARD_SNAPSHOT_DEFAULTS,
+    REQUIRED_CARD_FIELDS,
+    TENSION_QUALITY_PROMPT,
+    TENSION_WEAK_LABEL,
+)
 
 
 def _tension_reply(cards):
@@ -1412,6 +1462,9 @@ def test_tension_is_soft_field_in_schema_but_not_required():
     # 软要求（D1）：schema/prompt 支持 tension，但必填集不收——缺 tension 不构成丢卡理由
     assert "tension" in ENUM_SCHEMA_HINT
     assert "tension_evaluation" in ENUM_SCHEMA_HINT
+    assert "体系诊断可定位" in TENSION_QUALITY_PROMPT
+    assert "替代解释与证据 steelman 存活" in TENSION_QUALITY_PROMPT
+    assert "录用/被引预测" in TENSION_QUALITY_PROMPT
     assert "tension" not in REQUIRED_CARD_FIELDS
     # 弱张力占位键在单点声明处注册，上墙即预置（快照不变量）
     assert "tension" in CARD_SNAPSHOT_DEFAULTS
@@ -1503,7 +1556,7 @@ def test_perspectives_orders_weak_tension_after_strong_peer(tmp_path, monkeypatc
     monkeypatch.setattr(B, "_topic_zh_keyword", lambda *a: "著作权")
     weak = _doctrinal_tension_card("先生成但弱")
     weak["tension_evaluation"] = deepcopy(weak["tension_evaluation"])
-    weak["tension_evaluation"]["criteria"]["D4"] = ""
+    weak["tension_evaluation"]["criteria"]["D4"]["response"] = ""
     B.run_scan(
         "主题", "", str(tmp_path),
         providers={"m": lambda p: json.dumps({"cards": [
