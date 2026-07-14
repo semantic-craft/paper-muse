@@ -2229,7 +2229,8 @@ function render(){
 }
 
 function cardDisplayRank(c){
-  return [c.gold ? 0 : 1, c.outlier ? 0 : 1, c.tension_quality === "weak" ? 1 : 0];
+  return Array.isArray(c.display_rank) && c.display_rank.length === 3
+    ? c.display_rank : [1, 1, 0];
 }
 function compareCardDisplayRank(a, b){
   const left = cardDisplayRank(a), right = cardDisplayRank(b);

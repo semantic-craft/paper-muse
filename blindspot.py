@@ -36,77 +36,49 @@ CARD_TYPES = ["学科视角", "理论框架", "研究方法"]
 # 卡缺失（或空白）张力时产物/卡面统一的占位串——明示「弱张力」而非丢卡（#88 US5）。
 TENSION_WEAK_LABEL = "弱张力/未给出"
 
-# #83 本土判据 + Corley–Gioia + 严谨性配对。这里只检查卡片文本契约，不能验证
-# 法源穷尽、资料真实性或因果，也不得解释为录用/被引预测。
-TENSION_QUALITY_DIMENSIONS = (
-    "local_interestingness",
-    "originality",
-    "utility",
-    "non_repetition",
-    "steelman_survival",
-)
-
-_DOCTRINAL_MATERIALS = (
-    "法源", "规范", "原则", "概念", "通说", "裁判", "规则", "请求权", "构成要件",
-    "证明责任", "法律后果", "救济",
-)
-_DOCTRINAL_DIAGNOSIS = ("冲突", "不融贯", "漏洞", "断裂", "矛盾", "失配", "无法一致")
-_RECONSTRUCTION = ("重构", "重新界定", "修正", "例外", "分层", "分流", "替代", "重画")
-_EMPIRICAL_EVIDENCE = (
-    "资料", "数据", "样本", "案例", "访谈", "观察", "裁判文书", "监管决定", "比较",
-    "编码", "测量",
-)
-_PREMISE_REVISION = ("反转", "否定", "限缩", "替代", "修正", "不成立", "条件下")
-_LEGAL_USE = (
-    "法律解释", "规范评价", "制度设计", "法律适用", "请求权", "构成要件", "证明责任",
-    "裁判理由", "法律后果", "救济", "治理", "适用",
-)
-_STEELMAN_FAILURE = ("无法回应", "尚无回应", "反驳成立", "足以推翻", "不能存活")
+# #83 的两套全取式文本契约。自动闸只核对这些说明是否完整，不能验证法源穷尽、
+# 资料真实性或因果，也不得解释为录用/被引预测。
+_TENSION_CRITERIA = {
+    "doctrinal": ("D1", "D2", "D3", "D4"),
+    "sociolegal": ("S1", "S2", "S3", "S4"),
+}
+_TENSION_COMMUNITY_ALIASES = {
+    "doctrinal": "doctrinal",
+    "教义学": "doctrinal",
+    "法教义学": "doctrinal",
+    "sociolegal": "sociolegal",
+    "社科法学": "sociolegal",
+    "实证法学": "sociolegal",
+}
 
 
-def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
-    return any(needle in text for needle in needles)
+def _clean_explanation(value) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
 def _compact_text(value) -> str:
     return re.sub(r"[\W_]+", "", str(value or "").lower())
 
 
-def _tension_community(card: dict, text: str) -> str | None:
-    explicit = str(card.get("tension_community") or card.get("community") or "")
-    if "教义" in explicit or "规范法学" in explicit:
-        return "doctrinal"
-    if "社科" in explicit or "实证" in explicit or "经验" in explicit:
-        return "sociolegal"
-    doctrinal = sum(marker in text for marker in _DOCTRINAL_MATERIALS + _DOCTRINAL_DIAGNOSIS)
-    sociolegal = sum(marker in text for marker in _EMPIRICAL_EVIDENCE + ("默认", "前提", "假说"))
-    if doctrinal == sociolegal:
+def _has_explanation(value) -> bool:
+    return len(_compact_text(value)) >= 8
+
+
+def normalize_tension_evaluation(raw) -> dict | None:
+    """Normalize the #83 text-contract payload without inventing missing evidence."""
+    if not isinstance(raw, dict):
         return None
-    return "doctrinal" if doctrinal > sociolegal else "sociolegal"
-
-
-def _hits_local_interestingness(card: dict, text: str) -> bool:
-    community = _tension_community(card, text)
-    if community == "doctrinal":
-        material_count = sum(marker in text for marker in _DOCTRINAL_MATERIALS)
-        return (
-            material_count >= 2
-            and _contains_any(text, _DOCTRINAL_DIAGNOSIS)
-            and _contains_any(text, _RECONSTRUCTION)
-            and _contains_any(text, _LEGAL_USE)
-        )
-    if community == "sociolegal":
-        attributable_premise = (
-            _contains_any(text, ("默认", "前提", "假说"))
-            and _contains_any(text, ("法学", "学界", "学者", "法院", "实务", "制度话语"))
-        )
-        return (
-            attributable_premise
-            and _contains_any(text, _EMPIRICAL_EVIDENCE)
-            and _contains_any(text, _PREMISE_REVISION)
-            and _contains_any(text, _LEGAL_USE)
-        )
-    return False
+    community_raw = _clean_explanation(raw.get("community"))
+    community = _TENSION_COMMUNITY_ALIASES.get(community_raw.lower())
+    expected = _TENSION_CRITERIA.get(community, ())
+    criteria_raw = raw.get("criteria") if isinstance(raw.get("criteria"), dict) else {}
+    return {
+        "community": community,
+        "criteria": {key: _clean_explanation(criteria_raw.get(key)) for key in expected},
+        "originality": _clean_explanation(raw.get("originality")),
+        "utility": _clean_explanation(raw.get("utility")),
+        "why_distinction": _clean_explanation(raw.get("why_distinction")),
+    }
 
 
 def _tension_differs_from_why(card: dict) -> bool:
@@ -120,53 +92,67 @@ def _tension_differs_from_why(card: dict) -> bool:
     return SequenceMatcher(None, tension, why).ratio() < 0.82
 
 
-def _steelman_survives(card: dict) -> bool:
-    steelman = str(card.get("steelman") or "").strip()
-    if not steelman or _contains_any(steelman, _STEELMAN_FAILURE):
-        return False
-    if "steelman_survives" in card:
-        return card.get("steelman_survives") is True
-    # 现有 schema 只有 steelman 文本；缺少显式结果时只判断文本契约是否存在，不声称
-    # 已验证反驳在真实法源/资料上失败。
-    return True
-
-
-def _tension_quality_checks(card: dict) -> dict[str, bool]:
+def tension_quality_checks(card: dict) -> dict[str, bool]:
+    """Return the exact dimensions enforced by the offline gate."""
     tension = str(card.get("tension") or "").strip()
-    combined = " ".join(
-        str(card.get(field) or "")
-        for field in ("tension", "mechanism", "feasibility")
-    )
+    evaluation = normalize_tension_evaluation(card.get("tension_evaluation"))
+    community = evaluation.get("community") if evaluation else None
+    criteria = evaluation.get("criteria", {}) if evaluation else {}
+    expected = _TENSION_CRITERIA.get(community, ())
+    survival_key = expected[-1] if expected else None
     return {
-        "local_interestingness": bool(tension) and _hits_local_interestingness(card, combined),
-        "originality": bool(tension) and _contains_any(combined, _RECONSTRUCTION + _PREMISE_REVISION),
-        "utility": _contains_any(combined, _LEGAL_USE),
-        "non_repetition": _tension_differs_from_why(card),
-        "steelman_survival": _steelman_survives(card),
+        "local_interestingness": bool(tension) and bool(expected) and all(
+            _has_explanation(criteria.get(key)) for key in expected
+        ),
+        "originality": bool(evaluation) and _has_explanation(evaluation.get("originality")),
+        "utility": bool(evaluation) and _has_explanation(evaluation.get("utility")),
+        "non_repetition": (
+            bool(evaluation)
+            and _has_explanation(evaluation.get("why_distinction"))
+            and _tension_differs_from_why(card)
+        ),
+        "steelman_survival": (
+            _has_explanation(card.get("steelman"))
+            and bool(survival_key)
+            and _has_explanation(criteria.get(survival_key))
+        ),
     }
 
 
 def tension_quality_gate(card: dict) -> bool:
     """离线纯函数：仅按卡片文本契约判强/弱张力，不修改 card、不开网络。"""
-    return all(_tension_quality_checks(card).values())
+    return all(tension_quality_checks(card).values())
 
 
 def apply_tension_quality_gate(cards: list) -> list:
     """O(卡数) 收尾注解；每张卡独立过闸，不做卡间比较。"""
     for card in cards:
-        checks = _tension_quality_checks(card)
+        checks = tension_quality_checks(card)
         card["tension_quality"] = "strong" if all(checks.values()) else "weak"
         card["tension_quality_reasons"] = [name for name, passed in checks.items() if not passed]
     return cards
 
 
-def card_display_sort_key(card: dict) -> tuple[bool, bool, bool]:
-    """保留既有 gold/outlier 优先级，再把普通弱张力卡排到强张力卡后。"""
+def _computed_card_display_rank(card: dict) -> tuple[int, int, int]:
     return (
-        not bool(card.get("gold")),
-        not bool(card.get("outlier")),
-        card.get("tension_quality") == "weak",
+        0 if card.get("gold") else 1,
+        0 if card.get("outlier") else 1,
+        1 if card.get("tension_quality") == "weak" else 0,
     )
+
+
+def card_display_sort_key(card: dict) -> tuple[int, int, int]:
+    """Consume the engine-authored rank, falling back only for direct/unit callers."""
+    rank = card.get("display_rank")
+    if isinstance(rank, (list, tuple)) and len(rank) == 3:
+        return tuple(int(part) for part in rank)
+    return _computed_card_display_rank(card)
+
+
+def apply_card_display_ranks(cards: list) -> list:
+    for card in cards:
+        card["display_rank"] = list(_computed_card_display_rank(card))
+    return cards
 
 
 def card_type_quota_status(cards: list) -> dict:
@@ -203,8 +189,10 @@ CARD_SNAPSHOT_DEFAULTS = {
     # 与 feasibility 同属「枚举写、后续阶段不改」：在此预置保证键集恒定，
     # _new_card_snapshot 里连同 feasibility 一并保留原值不被默认清零。
     "tension": None,
+    "tension_evaluation": None,
     "tension_quality": None,
     "tension_quality_reasons": [],
+    "display_rank": None,
     "quality_score": None,
     "elo_score": None,
     "outlier_reason": None,
@@ -328,10 +316,12 @@ def _new_card_snapshot(card: dict, card_id: int) -> dict:
     snapshot = dict(card)
     feasibility = snapshot.get("feasibility")
     tension = snapshot.get("tension")
+    tension_evaluation = deepcopy(snapshot.get("tension_evaluation"))
     snapshot.update(deepcopy(CARD_SNAPSHOT_DEFAULTS))
     snapshot["id"] = card_id
     snapshot["feasibility"] = feasibility
     snapshot["tension"] = tension          # 枚举给的张力保留；缺失卡落回 None（弱张力占位）
+    snapshot["tension_evaluation"] = tension_evaluation
     return snapshot
 
 
@@ -428,19 +418,13 @@ def _card_quality_points(card: dict) -> float:
 
 def _quality_ratings(cards: list, k: int = 32) -> list:
     """确定性质量分（**不是** Elo：无真实 pairwise debate，只是质量点数的公式换算）。
-    首屏便宜、快、不阻塞出卡；弱张力先降级，再比较既有质量点数（不引入伪校准权重）。
-    真 Elo 见 run_quality_tournament（卡片上墙后异步跑）。"""
+    首屏便宜、快、不阻塞出卡；真 Elo 见 run_quality_tournament（卡片上墙后异步跑）。"""
     ratings = [1500.0 for _ in cards]
     quality = [_card_quality_points(c) for c in cards]
     for i in range(len(cards)):
         for j in range(i + 1, len(cards)):
-            weak_i = cards[i].get("tension_quality") == "weak"
-            weak_j = cards[j].get("tension_quality") == "weak"
-            if weak_i != weak_j:
-                actual_i = 0.0 if weak_i else 1.0
-            else:
-                diff = quality[i] - quality[j]
-                actual_i = 0.5 if abs(diff) < 4 else (1.0 if diff > 0 else 0.0)
+            diff = quality[i] - quality[j]
+            actual_i = 0.5 if abs(diff) < 4 else (1.0 if diff > 0 else 0.0)
             expected_i = 1 / (1 + 10 ** ((ratings[j] - ratings[i]) / 400))
             delta = k * (actual_i - expected_i)
             ratings[i] += delta
@@ -613,6 +597,7 @@ def finalize_card_quality(cards: list, embedding_fn=None, embedding_threshold: f
         card.setdefault("cluster_size", 1)
     apply_tension_quality_gate(merged)
     mark_outliers(merged)
+    apply_card_display_ranks(merged)
     return merged
 
 
@@ -643,9 +628,16 @@ ENUM_SCHEMA_HINT = (
     '只输出 JSON：{"cards": [{"type": "学科视角|理论框架|研究方法", "name": "...", '
     '"mechanism": "一句话机制", "why_nonobvious": "为什么对该研究者非显而易见", '
     '"tension": "反转了法学界哪个默认前提（对领域读者的张力，与 why_nonobvious 分开；软字段，没有可省）", '
+    '"tension_evaluation": {"community": "doctrinal|sociolegal", '
+    '"criteria": {"D1": "逐项说明", "D2": "逐项说明", '
+    '"D3": "逐项说明", "D4": "反驳后仍存活的回应"}, '
+    '"originality": "改变了什么理解", "utility": "推出何种法律适用或制度变化", '
+    '"why_distinction": "说明 tension 与 why_nonobvious 的参照系和内容差异"}, '
     '"vs_profile": [{"element": "领域|立场|熟悉", "note": "相对画像这一条为何非显而易见（有画像才填）"}], '
     '"steelman": "最强反驳：哪类审稿人会怎么打", "feasibility": "方法卡必填：数据从哪来", '
-    '"questions": ["1-2个拷问句"]}]}'
+    '"questions": ["1-2个拷问句"]}]}。'
+    'tension_evaluation.criteria：教义学卡使用示例中的 D1、D2、D3、D4 四键；'
+    '社科法学卡把四键改为 S1、S2、S3、S4。'
 )
 
 REQUIRED_CARD_FIELDS = {"type", "name", "mechanism", "why_nonobvious", "steelman", "questions"}
@@ -725,6 +717,11 @@ def enumerate_cards(topic: str, fundamentals: list, profile: str, model_tag: str
             c["tension"] = tension
         else:
             c.pop("tension", None)
+        evaluation = normalize_tension_evaluation(c.get("tension_evaluation"))
+        if evaluation and evaluation.get("community"):
+            c["tension_evaluation"] = evaluation
+        else:
+            c.pop("tension_evaluation", None)
         # vs_profile 只在有画像时有意义（无画像＝无参照系，不让 LLM 凭空绑），归一后按有无回填
         vp = normalize_vs_profile(c.get("vs_profile")) if has_profile else []
         if vp:
