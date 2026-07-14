@@ -176,8 +176,8 @@ def test_tension_quality_gate_rejects_semantic_paraphrase_with_false_distinction
     )
     card["tension_evaluation"] = deepcopy(card["tension_evaluation"])
     distinction = card["tension_evaluation"]["why_distinction"]
-    distinction["tension_core"] = "规则冲突需要二层重构以改变举证和救济。"
-    distinction["why_core"] = "规则冲突需要二层重构以改变举证和救济。"
+    distinction["tension_core"] = "合同规则和消费者保护规则在分类举证救济方面不融贯，需要分层重构。"
+    distinction["why_core"] = "两套规范在案型判断、证明分配及救济结论上彼此矛盾，须以二层方案改造。"
     distinction["difference"] = "两句话使用了不同措辞。"
 
     assert tension_quality_gate(card) is False
