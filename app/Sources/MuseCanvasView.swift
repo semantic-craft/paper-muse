@@ -6,7 +6,8 @@ struct MuseCanvasView: View {
     @State private var phase: Phase = .loading
     @State private var errorText = ""
     @State private var setupText = ""
-    @State private var deepseekKey = ""
+    @State private var provider = "deepseek"   // deepseek | openai | gemini
+    @State private var llmKey = ""
     @State private var tavilyKey = ""
     @State private var saving = false
 
@@ -41,9 +42,16 @@ struct MuseCanvasView: View {
                         .font(.caption).foregroundStyle(.secondary)
                         .multilineTextAlignment(.center).frame(maxWidth: 520)
                     VStack(spacing: 8) {
-                        SecureField("DeepSeek API Key（必填）", text: $deepseekKey)
+                        Picker("模型来源", selection: $provider) {
+                            Text("DeepSeek").tag("deepseek")
+                            Text("OpenAI").tag("openai")
+                            Text("Gemini").tag("gemini")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        SecureField((provider == "openai" ? "OpenAI" : provider == "gemini" ? "Gemini" : "DeepSeek") + " API Key（必填）", text: $llmKey)
                         SecureField("Tavily API Key（检索用，可留空）", text: $tavilyKey)
-                        Text("key 只写入本机 secrets.toml，不上传。")
+                        Text("选一个模型来源填 key，即成为圆桌默认；key 只写入本机 secrets.toml，不上传。")
                             .font(.caption2).foregroundStyle(.tertiary)
                     }
                     .textFieldStyle(.roundedBorder)
@@ -52,7 +60,7 @@ struct MuseCanvasView: View {
                     HStack {
                         Button(saving ? "保存中…" : "保存并检查") { Task { await saveSecrets() } }
                             .keyboardShortcut(.defaultAction)
-                            .disabled(saving || deepseekKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                            .disabled(saving || llmKey.trimmingCharacters(in: .whitespaces).isEmpty)
                         Button("重新检查") { Task { await boot() } }.disabled(saving)
                         Button("先打开画布") { phase = .ready }.disabled(saving)
                     }
@@ -101,8 +109,8 @@ struct MuseCanvasView: View {
     private func saveSecrets() async {
         saving = true
         do {
-            try await MuseServer.shared.saveSecrets(deepseek: deepseekKey, tavily: tavilyKey)
-            deepseekKey = ""
+            try await MuseServer.shared.saveSecrets(provider: provider, apiKey: llmKey, tavily: tavilyKey)
+            llmKey = ""
             tavilyKey = ""
             saving = false
             await boot()
