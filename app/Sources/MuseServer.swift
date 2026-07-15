@@ -79,12 +79,18 @@ final class MuseServer {
         return try JSONDecoder().decode(SetupStatus.self, from: data)
     }
 
-    /// 应用内首配：把用户粘贴的 key POST 给本地引擎写入 secrets.toml（引擎自己知道 dev/release 该写哪）。
-    func saveSecrets(deepseek: String, tavily: String) async throws {
-        var payload: [String: String] = [:]
-        let d = deepseek.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// 应用内首配：把所选 provider 的 key POST 给本地引擎写入 secrets.toml（引擎自己知道 dev/release 该写哪、并把 provider 记为圆桌默认）。
+    func saveSecrets(provider: String, apiKey: String, tavily: String) async throws {
+        let field: String
+        switch provider {
+        case "openai": field = "openai_api_key"
+        case "gemini": field = "google_api_key"
+        default: field = "deepseek_api_key"
+        }
+        var payload: [String: String] = ["provider": provider]
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let t = tavily.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !d.isEmpty { payload["deepseek_api_key"] = d }
+        if !key.isEmpty { payload[field] = key }
         if !t.isEmpty { payload["tavily_api_key"] = t }
         var request = URLRequest(url: baseURL.appendingPathComponent("setup/secrets"))
         request.httpMethod = "POST"
