@@ -244,6 +244,38 @@ def _copy_config_template():
     return dst if dst.exists() else None
 
 
+def _write_secrets(updates):
+    """把 {ENV_KEY: value} 就地写入 _secrets_path()：已有行改值、缺失行追加。返回文件路径。
+
+    首次写入时以 secrets.toml.example 为底（保留注释/结构），dev/release 均写各自 _secrets_path()。
+    """
+    path = _secrets_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+    else:
+        template = _copy_config_template()
+        if template is None:
+            example = SERVER_ROOT / "secrets.toml.example"
+            template = example if example.exists() else None
+        text = Path(template).read_text(encoding="utf-8") if template else ""
+    for key, value in updates.items():
+        line = '%s="%s"' % (key, str(value).replace('"', '\\"'))
+        pat = re.compile(r"^[ \t]*%s[ \t]*=.*$" % re.escape(key), re.M)
+        if pat.search(text):
+            text = pat.sub(lambda _m: line, text, count=1)
+        else:
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += line + "\n"
+    path.write_text(text, encoding="utf-8")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return path
+
+
 def _write_sidecar_failure(runtime_dir: Path, message: str):
     path = adversary.sidecar_failed_path(runtime_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -813,6 +845,41 @@ def health():
 @app.get("/setup/status")
 def setup_status():
     return _setup_status()
+
+
+class SetupSecretsReq(BaseModel):
+    deepseek_api_key: str | None = None
+    tavily_api_key: str | None = None
+    openai_api_key: str | None = None
+    google_api_key: str | None = None
+    encoder_api_type: str | None = None
+
+
+@app.post("/setup/secrets")
+def setup_secrets(req: SetupSecretsReq):
+    """应用内首配：把用户粘贴的 key 就地写入 secrets.toml，回填最新 setup 状态。仅本地 127.0.0.1 可达。"""
+    field_env = {
+        "deepseek_api_key": "DEEPSEEK_API_KEY",
+        "tavily_api_key": "TAVILY_API_KEY",
+        "openai_api_key": "OPENAI_API_KEY",
+        "google_api_key": "GOOGLE_API_KEY",
+        "encoder_api_type": "ENCODER_API_TYPE",
+    }
+    updates = {}
+    for field, env in field_env.items():
+        value = (getattr(req, field) or "").strip()
+        if value:
+            updates[env] = value
+    if not updates:
+        raise HTTPException(400, "没有要写入的 key")
+    # 有 LLM key 就补齐 encoder 类型以过门槛；没配 encoder key 会自动降级、不阻塞。
+    if updates.keys() & {"DEEPSEEK_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"}:
+        updates.setdefault("ENCODER_API_TYPE", (os.getenv("ENCODER_API_TYPE") or "").strip() or "openai")
+    try:
+        path = _write_secrets(updates)
+    except OSError as e:
+        raise HTTPException(500, f"写入 secrets.toml 失败：{e}")
+    return {"ok": True, "secrets_file": str(path), "setup": _setup_status()}
 
 
 @app.get("/release/health")
