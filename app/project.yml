@@ -21,8 +21,8 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: 论文构思者
-        CFBundleShortVersionString: "1.2.0"
-        CFBundleVersion: "3"
+        CFBundleShortVersionString: "1.3.0"
+        CFBundleVersion: "4"
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:
