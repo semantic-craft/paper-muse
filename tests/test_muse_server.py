@@ -50,6 +50,7 @@ def _clear_runtime_env(monkeypatch):
         "PAPER_MUSE_RUNTIME_DIR",
         "PAPER_MUSE_LOGS_DIR",
         "PAPER_MUSE_OUTPUT_DIR",
+        "PAPER_MUSE_ROUNDTABLE_MODEL",
         "PAPER_MUSE_SECRETS_FILE",
         "PAPER_MUSE_SIDECAR_PYTHON",
         "PAPER_MUSE_SIDECAR_SCRIPT",
@@ -145,7 +146,9 @@ def test_setup_status_reports_missing_required_keys(monkeypatch, tmp_path):
     body = client.get("/setup/status").json()
 
     assert body["setup_required"] is True
-    assert "DEEPSEEK_API_KEY" in body["missing_required_keys"]
+    assert "LLM_PROVIDER_KEY" in body["missing_required_keys"]  # 任一 LLM 即可，不锁死 DeepSeek
+    assert "TAVILY_API_KEY" in body["missing_required_keys"]
+    assert body["has_llm_provider"] is False
     assert body["paths"]["secrets_file"] == str(secrets.resolve())
     assert "首次设置未完成" in body["message"]
 
@@ -206,6 +209,47 @@ def test_setup_secrets_rejects_empty_payload(monkeypatch, tmp_path):
     client = TestClient(muse_server.app)
 
     assert client.post("/setup/secrets", json={}).status_code == 400
+
+
+def test_setup_secrets_openai_only_clears_gate(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    _clear_provider_env(monkeypatch)
+    secrets = tmp_path / "secrets.toml"
+    monkeypatch.setenv("PAPER_MUSE_SECRETS_FILE", str(secrets))
+    monkeypatch.setenv("PAPER_MUSE_CONFIG_DIR", str(tmp_path / "config"))
+    client = TestClient(muse_server.app)
+
+    resp = client.post(
+        "/setup/secrets",
+        json={"openai_api_key": "sk-real-openai-1", "tavily_api_key": "tvly-real-2", "provider": "openai"},
+    ).json()
+
+    # 只配 OpenAI（无 DeepSeek）也过首屏门槛
+    assert resp["ok"] is True
+    assert resp["setup"]["setup_required"] is False
+    assert resp["setup"]["has_llm_provider"] is True
+    written = secrets.read_text(encoding="utf-8")
+    assert 'OPENAI_API_KEY="sk-real-openai-1"' in written
+    assert 'sk-YOUR_DEEPSEEK_KEY' in written  # DeepSeek 仍是模板占位符（没被要求/写入真 key）
+    # 所选 provider 持久化为圆桌默认
+    assert 'PAPER_MUSE_ROUNDTABLE_MODEL="openai"' in written
+
+
+def test_default_roundtable_model_follows_config(monkeypatch, tmp_path):
+    _clear_runtime_env(monkeypatch)
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("PAPER_MUSE_SECRETS_FILE", str(tmp_path / "secrets.toml"))
+
+    # 无覆盖 + 仅 Gemini 配置 → 自动挑已配置的 gemini
+    monkeypatch.setenv("GOOGLE_API_KEY", "AIza-real-gemini")
+    assert muse_server._default_roundtable_model() == "gemini"
+    assert muse_server._roundtable_model_spec(None)[0] == "gemini"
+
+    # 显式覆盖（所选 provider 持久化）优先
+    monkeypatch.setenv("PAPER_MUSE_ROUNDTABLE_MODEL", "openai")
+    assert muse_server._roundtable_model_spec(None)[0] == "openai"
 
 
 def test_topic_suggest_uses_newest_markdown_heading(monkeypatch, tmp_path):
@@ -271,7 +315,7 @@ def test_release_health_reports_missing_required_key(monkeypatch, tmp_path):
     body = client.get("/release/health").json()
 
     assert body["state"] == "missing_required_key"
-    assert "DEEPSEEK_API_KEY" in body["components"]["setup"]["missing_required_keys"]
+    assert "LLM_PROVIDER_KEY" in body["components"]["setup"]["missing_required_keys"]
 
 
 def test_release_health_reports_optional_degraded_not_blocking(monkeypatch, tmp_path):

@@ -459,7 +459,7 @@ def _developer_path_warnings():
 
 
 def release_health_status():
-    setup = _setup_status(REQUIRED_ROUNDTABLE_KEYS)
+    setup = _firstrun_setup_status()
     runtime = _main_runtime_status()
     optional = _optional_capabilities()
     sidecar = adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir())
@@ -581,6 +581,28 @@ def _setup_status(required_keys=REQUIRED_ROUNDTABLE_KEYS):
     }
 
 
+def _firstrun_setup_status():
+    """首屏门槛：任一 LLM provider key（DeepSeek/OpenAI/Gemini）+ Tavily + encoder 类型即可，不锁死 DeepSeek。"""
+    status = _setup_status(ROUNDTABLE_BASE_KEYS)  # 缺的仅 TAVILY_API_KEY / ENCODER_API_TYPE
+    need_llm = not status["has_llm_provider"]
+    missing = (["LLM_PROVIDER_KEY"] if need_llm else []) + list(status["missing_required_keys"])
+    status["missing_required_keys"] = missing
+    status["setup_required"] = bool(missing)
+    status["ok"] = not missing
+    if missing:
+        parts = []
+        if need_llm:
+            parts.append("一个 LLM key（DeepSeek / OpenAI / Gemini 任一）")
+        if "TAVILY_API_KEY" in missing:
+            parts.append("Tavily 检索 key")
+        if "ENCODER_API_TYPE" in missing:
+            parts.append("ENCODER_API_TYPE")
+        status["message"] = "首次设置未完成：缺少 " + "、".join(parts) + "。可在应用内直接填写，或写入 secrets.toml。"
+    else:
+        status["message"] = "设置完成"
+    return status
+
+
 def _require_setup(required_keys=REQUIRED_ROUNDTABLE_KEYS):
     status = _setup_status(required_keys)
     if status["missing_required_keys"]:
@@ -592,8 +614,20 @@ def _raise_setup_http(error: SetupRequiredError):
     raise HTTPException(status_code=428, detail=str(error))
 
 
+def _default_roundtable_model():
+    """圆桌未显式指定 model 时的默认：显式覆盖 PAPER_MUSE_ROUNDTABLE_MODEL > 已配置的首个 LLM provider > deepseek。"""
+    _load_provider_config()
+    override = (os.getenv("PAPER_MUSE_ROUNDTABLE_MODEL") or "").strip()
+    if override:
+        return override
+    for provider, key_name in ROUNDTABLE_PROVIDER_KEYS.items():
+        if _configured_key(key_name):
+            return provider
+    return "deepseek"
+
+
 def _roundtable_model_spec(model: str):
-    raw = (model or "deepseek").strip()
+    raw = (model or _default_roundtable_model()).strip()
     key = raw.lower()
     for provider in ROUNDTABLE_DEFAULT_MODELS:
         prefix = provider + "/"
@@ -615,7 +649,7 @@ def _roundtable_required_keys(req: "SessionReq"):
 
 class SessionReq(BaseModel):
     topic: str
-    model: str = "deepseek-v4-flash"
+    model: str | None = None  # None → _default_roundtable_model()（跟随已配置/所选 provider）
     retrieve_top_k: int = 5
     warmstart_experts: int = 2
     warmstart_turns: int = 1
@@ -844,7 +878,7 @@ def health():
 
 @app.get("/setup/status")
 def setup_status():
-    return _setup_status()
+    return _firstrun_setup_status()
 
 
 class SetupSecretsReq(BaseModel):
@@ -853,6 +887,7 @@ class SetupSecretsReq(BaseModel):
     openai_api_key: str | None = None
     google_api_key: str | None = None
     encoder_api_type: str | None = None
+    provider: str | None = None  # 首选 LLM：deepseek | openai | gemini（写入后作圆桌默认）
 
 
 @app.post("/setup/secrets")
@@ -872,6 +907,10 @@ def setup_secrets(req: SetupSecretsReq):
             updates[env] = value
     if not updates:
         raise HTTPException(400, "没有要写入的 key")
+    # 首选 provider → 圆桌默认（写入 PAPER_MUSE_ROUNDTABLE_MODEL，_default_roundtable_model 读它）。
+    provider = (req.provider or "").strip().lower()
+    if provider in ROUNDTABLE_PROVIDER_KEYS:
+        updates["PAPER_MUSE_ROUNDTABLE_MODEL"] = provider
     # 有 LLM key 就补齐 encoder 类型以过门槛；没配 encoder key 会自动降级、不阻塞。
     if updates.keys() & {"DEEPSEEK_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"}:
         updates.setdefault("ENCODER_API_TYPE", (os.getenv("ENCODER_API_TYPE") or "").strip() or "openai")
@@ -879,7 +918,7 @@ def setup_secrets(req: SetupSecretsReq):
         path = _write_secrets(updates)
     except OSError as e:
         raise HTTPException(500, f"写入 secrets.toml 失败：{e}")
-    return {"ok": True, "secrets_file": str(path), "setup": _setup_status()}
+    return {"ok": True, "secrets_file": str(path), "setup": _firstrun_setup_status()}
 
 
 @app.get("/release/health")
