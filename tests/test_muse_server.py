@@ -150,6 +150,64 @@ def test_setup_status_reports_missing_required_keys(monkeypatch, tmp_path):
     assert "首次设置未完成" in body["message"]
 
 
+def test_setup_secrets_writes_keys_and_clears_gate(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    _clear_provider_env(monkeypatch)
+    secrets = tmp_path / "secrets.toml"
+    monkeypatch.setenv("PAPER_MUSE_SECRETS_FILE", str(secrets))
+    monkeypatch.setenv("PAPER_MUSE_CONFIG_DIR", str(tmp_path / "config"))
+    client = TestClient(muse_server.app)
+
+    resp = client.post(
+        "/setup/secrets",
+        json={"deepseek_api_key": "sk-real-deepseek-123", "tavily_api_key": "tvly-real-456"},
+    ).json()
+
+    assert resp["ok"] is True
+    assert resp["secrets_file"] == str(secrets.resolve())
+    written = secrets.read_text(encoding="utf-8")
+    assert 'DEEPSEEK_API_KEY="sk-real-deepseek-123"' in written
+    assert 'TAVILY_API_KEY="tvly-real-456"' in written
+    assert 'ENCODER_API_TYPE="openai"' in written  # 自动补齐以过门槛
+    # 三项必填齐了 → 首配不再 required；GET 复查一致
+    assert resp["setup"]["setup_required"] is False
+    assert resp["setup"]["missing_required_keys"] == []
+    assert client.get("/setup/status").json()["setup_required"] is False
+
+
+def test_setup_secrets_updates_existing_line_without_dup(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    _clear_provider_env(monkeypatch)
+    secrets = tmp_path / "secrets.toml"
+    secrets.write_text('DEEPSEEK_API_KEY="sk-YOUR_DEEPSEEK_KEY"\n', encoding="utf-8")
+    monkeypatch.setenv("PAPER_MUSE_SECRETS_FILE", str(secrets))
+    monkeypatch.setenv("PAPER_MUSE_CONFIG_DIR", str(tmp_path / "config"))
+    client = TestClient(muse_server.app)
+
+    client.post("/setup/secrets", json={"deepseek_api_key": "sk-real-777"})
+
+    written = secrets.read_text(encoding="utf-8")
+    assert 'DEEPSEEK_API_KEY="sk-real-777"' in written
+    assert "sk-YOUR_DEEPSEEK_KEY" not in written  # 占位符被改掉，不新增重复行
+    assert written.count("DEEPSEEK_API_KEY=") == 1
+
+
+def test_setup_secrets_rejects_empty_payload(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    _clear_runtime_env(monkeypatch)
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("PAPER_MUSE_SECRETS_FILE", str(tmp_path / "secrets.toml"))
+    monkeypatch.setenv("PAPER_MUSE_CONFIG_DIR", str(tmp_path / "config"))
+    client = TestClient(muse_server.app)
+
+    assert client.post("/setup/secrets", json={}).status_code == 400
+
+
 def test_topic_suggest_uses_newest_markdown_heading(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 

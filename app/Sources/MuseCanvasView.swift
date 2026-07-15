@@ -6,6 +6,9 @@ struct MuseCanvasView: View {
     @State private var phase: Phase = .loading
     @State private var errorText = ""
     @State private var setupText = ""
+    @State private var deepseekKey = ""
+    @State private var tavilyKey = ""
+    @State private var saving = false
 
     enum Phase { case loading, ready, setupRequired, failed }
 
@@ -37,9 +40,21 @@ struct MuseCanvasView: View {
                     Text(setupText)
                         .font(.caption).foregroundStyle(.secondary)
                         .multilineTextAlignment(.center).frame(maxWidth: 520)
+                    VStack(spacing: 8) {
+                        SecureField("DeepSeek API Key（必填）", text: $deepseekKey)
+                        SecureField("Tavily API Key（检索用，可留空）", text: $tavilyKey)
+                        Text("key 只写入本机 secrets.toml，不上传。")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 360)
+                    .disabled(saving)
                     HStack {
-                        Button("重新检查") { Task { await boot() } }
-                        Button("先打开画布") { phase = .ready }
+                        Button(saving ? "保存中…" : "保存并检查") { Task { await saveSecrets() } }
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(saving || deepseekKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                        Button("重新检查") { Task { await boot() } }.disabled(saving)
+                        Button("先打开画布") { phase = .ready }.disabled(saving)
                     }
                     .controlSize(.large)
                 }
@@ -80,6 +95,20 @@ struct MuseCanvasView: View {
         } catch {
             errorText = error.localizedDescription
             phase = .failed
+        }
+    }
+
+    private func saveSecrets() async {
+        saving = true
+        do {
+            try await MuseServer.shared.saveSecrets(deepseek: deepseekKey, tavily: tavilyKey)
+            deepseekKey = ""
+            tavilyKey = ""
+            saving = false
+            await boot()
+        } catch {
+            saving = false
+            setupText = "保存失败：\(error.localizedDescription)"
         }
     }
 }
