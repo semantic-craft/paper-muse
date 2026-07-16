@@ -69,8 +69,12 @@ app/PaperMuse.xcodeproj/
 /.agents/skills/obsidian-vault
 /.agents/skills/claude-handoff
 /.agents/skills/loop-me
+/.agents/skills/setup-ts-deep-modules
 /.agents/skills/wizard
 /.agents/skills/writing-beats
 /.agents/skills/writing-fragments
 /.agents/skills/writing-shape
+/.codex/skills
+/.copilot/skills
+/.opencode/skills
 # <<< dev-link <<<
