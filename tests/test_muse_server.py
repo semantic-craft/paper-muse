@@ -132,6 +132,16 @@ def test_release_runtime_paths_drive_secrets_and_results(monkeypatch, tmp_path):
     assert (config_dir / "secrets.toml.example").exists()
 
 
+def test_default_secrets_path_stays_outside_repository(monkeypatch, tmp_path):
+    _clear_runtime_env(monkeypatch)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+
+    path = muse_server._secrets_path()
+
+    assert path.name == "secrets.toml"
+    assert not path.is_relative_to(muse_server.SERVER_ROOT)
+
+
 def test_setup_status_reports_missing_required_keys(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
@@ -280,6 +290,25 @@ def test_topic_suggest_is_empty_without_output_dir(monkeypatch):
     assert client.get("/topic/suggest").json() == {"topic": "", "path": None}
 
 
+def test_local_api_rejects_untrusted_host_and_hides_internal_errors(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(muse_server.app)
+    assert client.get("/health", headers={"host": "untrusted.example"}).status_code == 400
+
+    private_detail = "internal-token-marker"
+
+    def fail_health():
+        raise RuntimeError(private_detail)
+
+    monkeypatch.setattr(muse_server, "release_health_status", fail_health)
+    response = client.get("/release/health")
+
+    assert response.status_code == 503
+    assert private_detail not in response.text
+    assert response.json()["detail"] == "发布健康检查暂时不可用，请查看本机日志"
+
+
 def test_release_health_reports_runtime_missing(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
@@ -404,7 +433,8 @@ def test_sidecar_status_endpoint_reports_missing_and_failed(monkeypatch, tmp_pat
     failed = client.get("/sidecar/status").json()
     assert failed["state"] == "failed" and "checksum" in failed["message"]
 
-    drafts = client.get("/adversary/drafts", params={"output_dir": str(tmp_path)}).json()
+    monkeypatch.setenv("PAPER_MUSE_OUTPUT_DIR", str(tmp_path))
+    drafts = client.get("/adversary/drafts").json()
     assert drafts["dir"] == str(tmp_path)
 
 
@@ -428,11 +458,16 @@ def test_evidence_status_endpoint_reports_optional_paperqa(monkeypatch, tmp_path
     monkeypatch.setattr(
         muse_server.paperqa_bridge,
         "paperqa_status",
-        lambda pdf_dir=None: {"state": "pdf_dir_missing", "optional": True, "pdf_dir": pdf_dir},
+        lambda: {
+            "state": "pdf_dir_missing",
+            "optional": True,
+            "pdf_dir": os.environ.get("PAPER_MUSE_PDF_DIR"),
+        },
     )
+    monkeypatch.setenv("PAPER_MUSE_PDF_DIR", str(tmp_path))
     client = TestClient(muse_server.app)
 
-    body = client.get("/evidence/status", params={"pdf_dir": str(tmp_path)}).json()
+    body = client.get("/evidence/status").json()
 
     assert body["state"] == "pdf_dir_missing"
     assert body["pdf_dir"] == str(tmp_path)
@@ -460,14 +495,13 @@ def test_evidence_ask_uses_current_scan_output_dir(monkeypatch, tmp_path):
             "question": "自有库里有没有反例？",
             "card_id": 7,
             "card_name": "形式可逆与实质不可逆",
-            "pdf_dir": str(tmp_path / "pdfs"),
             "timeout": 45,
         },
     ).json()
 
     assert body["ok"] is True
     assert captured["question"] == "自有库里有没有反例？"
-    assert captured["pdf_dir"] == str(tmp_path / "pdfs")
+    assert "pdf_dir" not in captured
     assert captured["output_dir"] == str(tmp_path / "paper")
     assert captured["timeout"] == 45
     assert captured["target"] == {
@@ -488,16 +522,14 @@ def test_evidence_ref_can_be_read_by_id_without_parsing_markdown(monkeypatch, tm
         if output_dir == str(tmp_path) and evidence_id == "evr_example"
         else None,
     )
+    with muse_server.SCAN_LOCK:
+        muse_server.SCAN.update(output_dir=str(tmp_path))
     client = TestClient(muse_server.app)
 
-    body = client.get(
-        "/evidence/evr_example", params={"output_dir": str(tmp_path)}
-    ).json()
+    body = client.get("/evidence/evr_example").json()
 
     assert body == expected
-    missing = client.get(
-        "/evidence/evr_missing", params={"output_dir": str(tmp_path)}
-    )
+    missing = client.get("/evidence/evr_missing")
     assert missing.status_code == 404
 
 
@@ -1249,6 +1281,11 @@ def test_list_drafts_skips_generated_products(tmp_path):
     assert "提纲.md" in names and str(Path("01_成品稿") / "初稿.md") in names
     assert not any("perspectives" in n for n in names)
 
+    with pytest.raises(RuntimeError, match="相对于论文目录"):
+        muse_server._resolve_draft(str(tmp_path), str(tmp_path / "提纲.md"))
+    with pytest.raises(RuntimeError, match="超出论文目录"):
+        muse_server._resolve_draft(str(tmp_path), "../outside.md")
+
 
 def test_start_adversary_validates_bad_mode_and_empty(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
@@ -1323,8 +1360,10 @@ def test_evidence_graph_endpoint_projects_cards_and_claims(tmp_path):
     from fastapi.testclient import TestClient
 
     _seed_graph_artifacts(tmp_path)
+    with muse_server.SCAN_LOCK:
+        muse_server.SCAN.update(output_dir=str(tmp_path))
     client = TestClient(muse_server.app)
-    r = client.get("/evidence/graph", params={"output_dir": str(tmp_path)})
+    r = client.get("/evidence/graph")
 
     assert r.status_code == 200
     data = r.json()
@@ -1341,7 +1380,9 @@ def test_evidence_graph_route_not_shadowed_by_evidence_id(tmp_path):
     # "graph" 必须命中 /evidence/graph，而非被 /evidence/{evidence_id} 当作 id → 404
     from fastapi.testclient import TestClient
 
+    with muse_server.SCAN_LOCK:
+        muse_server.SCAN.update(output_dir=str(tmp_path))
     client = TestClient(muse_server.app)
-    r = client.get("/evidence/graph", params={"output_dir": str(tmp_path)})
+    r = client.get("/evidence/graph")
     assert r.status_code == 200                       # 空目录 → 空投影，非 404
     assert r.json()["cards"] == [] and r.json()["claims"] == []
