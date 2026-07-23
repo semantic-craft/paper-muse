@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible Paper Muse problem
+title: "[BUG] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. This is a public issue.
+
+        **Do not upload API keys, tokens, cookies, complete output archives, unpublished papers, private datasets, raw logs, or absolute local paths.** Use a synthetic topic and the smallest redacted excerpt that still reproduces the problem.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior without including private material.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: List the smallest reproducible steps. Replace personal paths with placeholders such as `$PROJECT_ROOT`.
+      placeholder: |
+        1. Start Paper Muse with ...
+        2. Use the synthetic topic ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Paper Muse version
+      placeholder: e.g. 1.3.0
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Paste only the relevant excerpt. Remove tokens, document text, usernames, machine names, and absolute paths first.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-data check
+      options:
+        - label: I confirmed that this report contains no secrets, unpublished material, private data, or identifying local paths.
+          required: true

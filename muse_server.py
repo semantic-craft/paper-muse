@@ -7,7 +7,7 @@
 
 接口：
     GET  /health   → {"ok": true}
-    POST /session  {topic, model?, retrieve_top_k?, warmstart_experts?, warmstart_turns?, output_dir?}
+    POST /session  {topic, model?, retrieve_top_k?, warmstart_experts?, warmstart_turns?}
                    立即返回；热身在后台线程跑，进度看 /status
     GET  /status   → {phase: idle|warming|ready|stepping|error, progress: [...], turns: [...], topic, output_dir, error?}
     POST /step     {utterance?: ""} 空=让圆桌自行推进一轮；非空=先插话再让圆桌回应。阻塞到本轮完成，返回新增 turns
@@ -15,20 +15,21 @@
     GET  /profile       → {field, stance, familiar} 机器级研究者画像（缺文件回全空）
     POST /profile       {field?, stance?, familiar?} 写机器级 researcher.md（不含困惑）
     GET  /topic/suggest → {topic?, path?} 从 PAPER_MUSE_OUTPUT_DIR 最近 md 标题预填主题
-    POST /scan          {topic, puzzle?, output_dir?} 起盲区扫描（画像取自 researcher.md，困惑本次传），轮询 /scan/status
+    POST /scan          {topic, puzzle?} 起盲区扫描（画像取自 researcher.md，困惑本次传），轮询 /scan/status
     GET  /scan/status   → {phase: idle|scanning|done|error, cards: [...], output_dir, error?, has_profile}
                           has_profile=false（无画像参照系）→ webui 明示「发现力打折」
     POST /scan/feedback {name, verdict: 已知|新但不适用|新且值得深挖} 三键反馈（喂抑制表）
-    GET  /evidence/status?pdf_dir= → PaperQA2 自有 PDF 库证据层可用性（可选能力，缺失不阻断启动）
-    POST /evidence/ask {question, pdf_dir?, output_dir?, timeout?} 调 PaperQA2 深挖自有库并追加 sources.md
-    GET  /adversary/drafts?output_dir= → {dir, drafts:[{name,path}]} 有稿模式草稿选择器（扫 *.md 含 01_成品稿/）
-    POST /adversary     {mode: draft|line, draft?, line?, from_card?, output_dir?} 起对抗审查，轮询 /adversary/status
+    GET  /evidence/status → PaperQA2 自有 PDF 库证据层可用性（可选能力，缺失不阻断启动）
+    POST /evidence/ask {question, timeout?} 调 PaperQA2 深挖自有库并追加 sources.md
+    GET  /adversary/drafts → {dir, drafts:[{name,path}]} 有稿模式草稿选择器（扫 *.md 含 01_成品稿/）
+    POST /adversary     {mode: draft|line, draft?, line?, from_card?} 起对抗审查，轮询 /adversary/status
     GET  /adversary/status → {phase: idle|reviewing|done|error, mode, claims:[{text,span,failures:[...]}], output_dir, error?}
                              失败点带 verdict(已证伪|有佐证|未决)＋evidence；未决=无据不放行。落 failure-points.md
     GET  /perf/status   → 本进程检索缓存、sidecar 调用等性能计数（供 tools/perf_smoke.py 读数）
 """
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -63,6 +64,7 @@ os.chdir(SERVER_ROOT)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
 
 import blindspot
@@ -190,10 +192,124 @@ ADV_LOCK = threading.Lock()
 SIDECAR_BOOTSTRAP_LOCK = threading.Lock()
 
 app = FastAPI()
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["127.0.0.1", "localhost", "testserver"],
+)
 
 # web 画布：muse_server 同源静态托管 webui/（WKWebView 加载 /ui/，fetch /scan 无跨域）
 # 挂在 /ui 子路径，不遮挡 /scan、/session 等 API 路由。
 app.mount("/ui", StaticFiles(directory=str(SERVER_ROOT / "webui"), html=True), name="ui")
+
+
+def _safe_endpoint(label, callback):
+    """Keep internal exceptions and paths in local logs, never API responses."""
+    try:
+        return callback()
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("%s failed", label)
+        raise HTTPException(503, f"{label}暂时不可用，请查看本机日志") from None
+
+
+_PUBLIC_COMPONENT_STATES = {
+    "available",
+    "bootstrap_failed",
+    "bootstrap_in_progress",
+    "dev",
+    "failed",
+    "installing",
+    "installed",
+    "missing",
+    "pdf_dir_missing",
+    "ready",
+    "runtime_missing",
+    "unavailable",
+}
+
+
+def _public_component_status(status):
+    """Return operational state without paths, subprocess output, or exception text."""
+    state = status.get("state")
+    if state not in _PUBLIC_COMPONENT_STATES:
+        state = "unknown"
+    result = {"state": state}
+    for key in ("optional", "installed", "ready"):
+        if key in status:
+            result[key] = bool(status[key])
+    result["message"] = {
+        "bootstrap_failed": "本地运行时检查失败",
+        "bootstrap_in_progress": "本地运行时正在安装",
+        "failed": "本地组件检查失败，请查看本机日志",
+        "installing": "本地组件正在安装",
+        "missing": "本地组件尚未安装",
+        "pdf_dir_missing": "尚未配置本地 PDF 目录",
+        "runtime_missing": "本地运行时尚未安装",
+        "unavailable": "可选本地组件不可用",
+    }.get(state, "本地组件可用")
+    return result
+
+
+def _public_release_health(status):
+    components = status.get("components") or {}
+    setup = components.get("setup") or {}
+    missing = [
+        key
+        for key in setup.get("missing_required_keys") or []
+        if key in {*KNOWN_PROVIDER_KEYS, "LLM_PROVIDER_KEY"}
+    ]
+    provider_keys = setup.get("provider_keys") or {}
+    optional = components.get("optional_capabilities") or {}
+    warnings = (components.get("developer_paths") or {}).get("warnings") or []
+    state = status.get("state")
+    if state not in {
+        "bootstrap_failed",
+        "bootstrap_in_progress",
+        "developer_path",
+        "missing_required_key",
+        "ready",
+        "ready_degraded",
+        "runtime_missing",
+    }:
+        state = "unknown"
+    return {
+        "ok": bool(status.get("ok")),
+        "state": state,
+        "blocking": bool(status.get("blocking")),
+        "release_mode": bool(status.get("release_mode")),
+        "components": {
+            "runtime": _public_component_status(components.get("runtime") or {}),
+            "server_import": {"state": "ready"},
+            "setup": {
+                "ok": bool(setup.get("ok")),
+                "setup_required": bool(setup.get("setup_required")),
+                "missing_required_keys": missing,
+                "provider_keys": {
+                    key: bool(provider_keys.get(key)) for key in KNOWN_PROVIDER_KEYS
+                },
+                "has_llm_provider": bool(setup.get("has_llm_provider")),
+            },
+            "optional_capabilities": {
+                key: _public_component_status(optional.get(key) or {})
+                for key in ("cnki", "zsearch", "paperqa")
+            },
+            "sidecar": _public_component_status(components.get("sidecar") or {}),
+            "developer_paths": {
+                "state": "warning" if warnings else "ok",
+                "warning_count": len(warnings),
+            },
+        },
+        "message": {
+            "bootstrap_failed": "本地运行时检查失败",
+            "bootstrap_in_progress": "本地运行时正在安装",
+            "developer_path": "发布模式正在使用开发目录",
+            "missing_required_key": "首次设置尚未完成",
+            "ready": "Ready",
+            "ready_degraded": "Ready with optional capability degradation",
+            "runtime_missing": "本地运行时尚未安装",
+        }.get(state, "状态未知"),
+    }
 
 
 def _env_path(name):
@@ -206,12 +322,35 @@ def _set_path_env(name, value):
         os.environ[name] = str(_abs_path(value))
 
 
+def _config_dir():
+    configured = _env_path("PAPER_MUSE_CONFIG_DIR")
+    if configured is not None:
+        return configured
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "PaperMuse"
+    if os.name == "nt":
+        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "PaperMuse"
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "paper-muse"
+
+
 def _secrets_path():
     explicit = os.environ.get("PAPER_MUSE_SECRETS_FILE")
     if explicit:
         return _abs_path(explicit)
-    config_dir = _env_path("PAPER_MUSE_CONFIG_DIR")
-    return (config_dir / "secrets.toml") if config_dir else (SERVER_ROOT / "secrets.toml")
+    destination = _config_dir() / "secrets.toml"
+    legacy = SERVER_ROOT / "secrets.toml"
+    if not destination.exists() and legacy.is_file():
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            legacy.replace(destination)
+        except OSError:
+            logging.exception("legacy secrets.toml migration failed")
+            return legacy
+        try:
+            os.chmod(destination, 0o600)
+        except OSError:
+            logging.exception("setting migrated secrets.toml permissions failed")
+    return destination
 
 
 def _results_base():
@@ -233,9 +372,7 @@ def _sidecar_status_runtime_dir():
 
 
 def _copy_config_template():
-    config_dir = _env_path("PAPER_MUSE_CONFIG_DIR")
-    if config_dir is None:
-        return None
+    config_dir = _config_dir()
     config_dir.mkdir(parents=True, exist_ok=True)
     src = SERVER_ROOT / "secrets.toml.example"
     dst = config_dir / "secrets.toml.example"
@@ -307,8 +444,9 @@ def _sidecar_bootstrap_bg(runtime_dir: Path):
         )
         if result.returncode != 0:
             raise RuntimeError((result.stderr or result.stdout or "sidecar bootstrap failed")[-2000:])
-    except Exception as e:
-        _write_sidecar_failure(runtime_dir, str(e))
+    except Exception:
+        logging.exception("sidecar bootstrap failed")
+        _write_sidecar_failure(runtime_dir, "sidecar bootstrap failed; inspect local logs")
     finally:
         marker.unlink(missing_ok=True)
 
@@ -387,12 +525,14 @@ def _main_runtime_status():
                 "message": "main runtime python is not executable"}
     try:
         result = subprocess.run([str(python), "--version"], capture_output=True, text=True, timeout=10)
-    except Exception as e:
+    except Exception:
+        logging.exception("main runtime health check failed")
         return {"state": "bootstrap_failed", "runtime_dir": str(runtime_dir), "python": str(python),
-                "message": str(e)}
+                "message": "main runtime health check failed"}
     if result.returncode != 0:
+        logging.error("main runtime health check exited with code %s", result.returncode)
         return {"state": "bootstrap_failed", "runtime_dir": str(runtime_dir), "python": str(python),
-                "message": (result.stderr or result.stdout or "main runtime health check failed")[-500:]}
+                "message": "main runtime health check failed"}
     return {"state": "ready", "runtime_dir": str(runtime_dir), "python": str(python),
             "version": (result.stdout or result.stderr or "").strip()}
 
@@ -554,7 +694,7 @@ def _setup_status(required_keys=REQUIRED_ROUNDTABLE_KEYS):
     provider_keys = {name: _configured_key(name) for name in KNOWN_PROVIDER_KEYS}
     missing = [name for name in required_keys if not provider_keys.get(name)]
     paths = {
-        "config_dir": str(_env_path("PAPER_MUSE_CONFIG_DIR") or SERVER_ROOT),
+        "config_dir": str(_config_dir()),
         "secrets_file": str(_secrets_path()),
         "secrets_template": str(template or (SERVER_ROOT / "secrets.toml.example")),
         "researcher_profile": str(blindspot.researcher_md_path()),
@@ -655,7 +795,6 @@ class SessionReq(BaseModel):
     warmstart_turns: int = 1
     retriever: str = "tavily"       # tavily | perplexity | mixed
     fulltext: bool = False          # True = Jina Reader 全文增强 top3
-    output_dir: str | None = None
     card_id: str | int | None = None       # #47：从哪张构思卡进的圆桌（溯源用）
     card_name: str | None = None
     evidence: list | None = None           # #47：卡片已有的 EvidenceRef 列表，seed 进知识库
@@ -668,7 +807,6 @@ class StepReq(BaseModel):
 class ScanReq(BaseModel):
     topic: str
     puzzle: str = ""                # 本次困惑：与主题并列的一次性输入，不进画像（ADR-0001/#3）
-    output_dir: str | None = None
 
 
 class ProfileReq(BaseModel):
@@ -687,18 +825,15 @@ class EvidenceAskReq(BaseModel):
     question: str
     card_id: int | str | None = None
     card_name: str | None = None
-    pdf_dir: str | None = None
-    output_dir: str | None = None
     timeout: int = paperqa_bridge.DEFAULT_TIMEOUT
 
 
 class AdversaryReq(BaseModel):
     mode: str = "line"              # draft=有稿（读 draft 草稿）| line=无稿（攻击 line 主线句）
     model: str | None = None        # 可选：openai/deepseek/gemini；空则按 adversary.REVIEW_PREFERENCE
-    draft: str | None = None        # 有稿：草稿 .md（相对 output_dir 或绝对路径）
+    draft: str | None = None        # 有稿：PAPER_MUSE_OUTPUT_DIR 下的相对 .md 路径
     line: str | None = None         # 无稿：主线句
     from_card: bool = False         # 无稿来源=构思幕卡片一键送入（仅标注 from）
-    output_dir: str | None = None
 
 
 def _scan_bump_locked():
@@ -867,7 +1002,8 @@ def warm_start_bg(req: SessionReq):
                     getattr(runner, "knowledge_base", None), req.evidence)
         SESSION["phase"] = "ready"
     except Exception:
-        SESSION["error"] = traceback.format_exc()
+        logging.exception("roundtable warm start failed")
+        SESSION["error"] = "圆桌初始化失败，请查看本机日志"
         SESSION["phase"] = "error"
 
 
@@ -916,34 +1052,50 @@ def setup_secrets(req: SetupSecretsReq):
         updates.setdefault("ENCODER_API_TYPE", (os.getenv("ENCODER_API_TYPE") or "").strip() or "openai")
     try:
         path = _write_secrets(updates)
-    except OSError as e:
-        raise HTTPException(500, f"写入 secrets.toml 失败：{e}")
+    except OSError:
+        logging.exception("writing secrets.toml failed")
+        raise HTTPException(500, "保存密钥失败，请检查本机配置目录") from None
     return {"ok": True, "secrets_file": str(path), "setup": _firstrun_setup_status()}
 
 
 @app.get("/release/health")
 def release_health():
-    return release_health_status()
+    return _safe_endpoint(
+        "发布健康检查",
+        lambda: _public_release_health(release_health_status()),
+    )
 
 
 @app.get("/sidecar/status")
 def sidecar_status():
-    return adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir())
+    return _safe_endpoint(
+        "Sidecar 状态检查",
+        lambda: _public_component_status(
+            adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir())
+        ),
+    )
 
 
 @app.post("/sidecar/bootstrap")
 def sidecar_bootstrap():
-    return {"ok": True, "sidecar": _start_sidecar_bootstrap()}
+    return _safe_endpoint(
+        "Sidecar 安装",
+        lambda: {
+            "ok": True,
+            "sidecar": _public_component_status(_start_sidecar_bootstrap()),
+        },
+    )
 
 
 @app.get("/evidence/status")
-def evidence_status(pdf_dir: str | None = None):
-    return paperqa_bridge.paperqa_status(pdf_dir=pdf_dir)
+def evidence_status():
+    return _safe_endpoint(
+        "证据库状态检查",
+        lambda: _public_component_status(paperqa_bridge.paperqa_status()),
+    )
 
 
-def _current_evidence_output_dir(explicit=None):
-    if explicit:
-        return explicit
+def _current_evidence_output_dir():
     with SCAN_LOCK:
         scan_dir = SCAN["output_dir"]
     if scan_dir:
@@ -955,7 +1107,7 @@ def _current_evidence_output_dir(explicit=None):
 @app.post("/evidence/ask")
 def evidence_ask(req: EvidenceAskReq):
     started = _now_iso()
-    evidence_dir = _current_evidence_output_dir(req.output_dir)
+    evidence_dir = _current_evidence_output_dir()
     try:
         load_api_key(toml_file_path=str(_secrets_path()))
         payload = paperqa_bridge.ask_self_library(
@@ -965,14 +1117,15 @@ def evidence_ask(req: EvidenceAskReq):
                 if req.card_id is not None or req.card_name
                 else None
             ),
-            pdf_dir=req.pdf_dir,
             output_dir=evidence_dir,
             timeout=max(30, min(int(req.timeout), 3600)),
         )
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    except Exception as e:
-        raise HTTPException(500, f"PaperQA 证据问答失败：{e}")
+    except ValueError:
+        logging.info("PaperQA request rejected", exc_info=True)
+        raise HTTPException(400, "PaperQA 请求参数无效，请检查本机配置") from None
+    except Exception:
+        logging.exception("PaperQA evidence request failed")
+        raise HTTPException(500, "PaperQA 证据问答失败，请查看本机日志") from None
     # #49：卡片证据问答落 manifest（seed=问题；关联返回的 evidence ids + 降级）
     _emit_manifest(
         "evidence", evidence_dir, seed=req.question, started_at=started,
@@ -983,11 +1136,11 @@ def evidence_ask(req: EvidenceAskReq):
 
 
 @app.get("/evidence/graph")
-def evidence_graph_view(output_dir: str | None = None):
+def evidence_graph_view():
     """#53 证据图投影：按卡片/按主张分组的证据关系（read-only，纯投影七件产物、不改源）。
     须声明在 /evidence/{evidence_id} 之前，否则 "graph" 会被当作 evidence_id 匹配。
     返回 {cards, claims, views, meta}：views 按节点 id 预分组（evidence_for_card/claim）。"""
-    base = _current_evidence_output_dir(output_dir)
+    base = _current_evidence_output_dir()
     if not base:
         return {"cards": [], "claims": [], "views": {}, "meta": {}}
     graph = evidence_graph.build_graph(base)
@@ -1002,8 +1155,8 @@ def evidence_graph_view(output_dir: str | None = None):
 
 
 @app.get("/evidence/{evidence_id}")
-def evidence_by_id(evidence_id: str, output_dir: str | None = None):
-    base = _current_evidence_output_dir(output_dir)
+def evidence_by_id(evidence_id: str):
+    base = _current_evidence_output_dir()
     if not base:
         raise HTTPException(404, "No evidence output directory is active")
     evidence = paperqa_bridge.read_evidence(base, evidence_id)
@@ -1032,7 +1185,7 @@ def create_session(req: SessionReq):
             _raise_setup_http(e)
         req.topic = topic
         provider, model = _roundtable_model_spec(req.model)
-        base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
+        base = os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
         SESSION.update(
             phase="warming",
             topic=topic,
@@ -1087,8 +1240,9 @@ def step(req: StepReq):
             if _turn_has_utterance(turn):
                 new_turns.append(turn_to_dict(turn))
             return {"turns": new_turns}
-        except Exception as e:
-            raise HTTPException(500, f"本轮发言失败：{e}")
+        except Exception:
+            logging.exception("roundtable step failed")
+            raise HTTPException(500, "本轮发言失败，请查看本机日志") from None
         finally:
             SESSION["phase"] = "ready"
     finally:
@@ -1242,8 +1396,9 @@ def report():
                            started_at=report_started, model=SESSION["model"] or "",
                            artifacts=["report.md", "conversation.md", "instance_dump.json", "log.json"])
             return {"output_dir": output_dir, "files": files}
-        except Exception as e:
-            raise HTTPException(500, f"生成报告失败：{e}")
+        except Exception:
+            logging.exception("roundtable report generation failed")
+            raise HTTPException(500, "生成报告失败，请查看本机日志") from None
         finally:
             SESSION["phase"] = "ready"
     finally:
@@ -1307,7 +1462,8 @@ def scan_bg(req: ScanReq):
             artifacts=["perspectives.md", "questions.md", "sources.md", "angle-feedback.md"])
         _scan_update(phase="done")
     except Exception:
-        _scan_update(error=traceback.format_exc(), phase="error")
+        logging.exception("blindspot scan failed")
+        _scan_update(error="盲区扫描失败，请查看本机日志", phase="error")
 
 
 @app.get("/profile")
@@ -1339,7 +1495,9 @@ def start_scan(req: ScanReq):
             raise SetupRequiredError("首次设置未完成：缺少 DEEPSEEK_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY 至少一个。")
     except SetupRequiredError as e:
         _raise_setup_http(e)
-    base = req.output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base() / "muse" / sanitize_topic(topic))
+    base = os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(
+        _results_base() / "muse" / sanitize_topic(topic)
+    )
     # 同 /step：相位检查与置位必须原子，堵并发 /scan 双双通过检查各起一个扫描线程
     with SCAN_LOCK:
         if SCAN["phase"] == "scanning":
@@ -1421,8 +1579,8 @@ def scan_feedback(req: FeedbackReq):
 
 # ---- 对抗幕（spec §6）：/scan 系的孪生——单会话一把锁，POST 起 + status 轮询增量 ----
 
-def _adv_base(output_dir=None):
-    return output_dir or os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
+def _adv_base():
+    return os.environ.get("PAPER_MUSE_OUTPUT_DIR") or str(_results_base())
 
 
 def _list_drafts(base):
@@ -1440,10 +1598,13 @@ def _list_drafts(base):
 
 
 def _resolve_draft(base, name):
-    p = Path(name)
-    if not p.is_absolute():
-        p = Path(base) / name
-    p = p.resolve()
+    root = Path(base).expanduser().resolve()
+    requested = Path(name)
+    if requested.is_absolute():
+        raise RuntimeError("草稿路径必须相对于论文目录")
+    p = (root / requested).resolve()
+    if not p.is_relative_to(root):
+        raise RuntimeError("草稿路径超出论文目录")
     if p.suffix != ".md" or not p.exists():
         raise RuntimeError(f"草稿不存在或非 .md：{name}")
     return p.read_text(encoding="utf-8")
@@ -1487,13 +1648,14 @@ def adversary_bg(req: AdversaryReq):
             artifacts=["failure-points.md"] + (["annotation-handoff.json"] if has_draft else []))
         _adv_update(phase="done")
     except Exception:
-        _adv_update(error=traceback.format_exc(), phase="error")
+        logging.exception("adversarial review failed")
+        _adv_update(error="对抗审查失败，请查看本机日志", phase="error")
 
 
 @app.get("/adversary/drafts")
-def adversary_drafts(output_dir: str | None = None):
-    """有稿模式草稿选择器：扫 output_dir（缺省 PAPER_MUSE_OUTPUT_DIR）下的 .md 草稿。"""
-    base = _adv_base(output_dir)
+def adversary_drafts():
+    """有稿模式草稿选择器：只扫 PAPER_MUSE_OUTPUT_DIR（或应用结果目录）。"""
+    base = _adv_base()
     return {"dir": base, "drafts": _list_drafts(base)}
 
 
@@ -1511,7 +1673,7 @@ def start_adversary(req: AdversaryReq):
             raise SetupRequiredError("首次设置未完成：缺少 DEEPSEEK_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY 至少一个。")
     except SetupRequiredError as e:
         _raise_setup_http(e)
-    base = _adv_base(req.output_dir)
+    base = _adv_base()
     # 同 /scan：相位检查与置位原子，堵并发 /adversary 双双通过检查各起一场审查
     with ADV_LOCK:
         if ADV["phase"] == "reviewing":
@@ -1547,13 +1709,23 @@ def adversary_status(since: int | None = None):
 
 @app.get("/perf/status")
 def perf_status():
-    return {
-        "code_version": run_manifest.code_version(),   # #49：smoke 读数携带代码版本，旧读数不冒充新代码
-        "retrieval_cache": blindspot.retrieval_cache_stats(),
-        "sidecar": adversary.sidecar_stats(),
-        "sidecar_runtime": adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir()),
-        "llm_cache": {"available": False, "note": "LiteLLM cache hits are not exposed here"},
-    }
+    return _safe_endpoint(
+        "性能状态检查",
+        lambda: {
+            "code_version": run_manifest.code_version(),
+            "retrieval_cache": blindspot.retrieval_cache_stats(),
+            "sidecar": adversary.sidecar_stats(),
+            "sidecar_runtime": _public_component_status(
+                adversary.sidecar_status(
+                    runtime_dir=_sidecar_status_runtime_dir()
+                )
+            ),
+            "llm_cache": {
+                "available": False,
+                "note": "LiteLLM cache hits are not exposed here",
+            },
+        },
+    )
 
 
 if __name__ == "__main__":

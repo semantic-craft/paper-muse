@@ -1,40 +1,71 @@
-name: Build and upload Python package
+name: Build and publish Python package
 
 on:
-  workflow_dispatch:  # Allows manual triggering of the workflow
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pypi-publish
+  cancel-in-progress: false
 
 jobs:
   build:
-
+    name: Build distributions
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@master
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
-      - name: Compare versions in setup.py and knowledge_storm/__init__.py
+      - name: Verify package versions match
         run: |
-          VERSION_SETUP=$(grep -oP '(?<=version=\").*(?=\")' setup.py)
-          VERSION_INIT=$(grep -oP '(?<=__version__ = \").*(?=\")' knowledge_storm/__init__.py)
-          echo "Version in setup.py: $VERSION_SETUP"
-          echo "Version in __init__.py: $VERSION_INIT"
-          if [ "$VERSION_SETUP" != "$VERSION_INIT" ]; then
-            echo "Error: Version mismatch between setup.py ($VERSION_SETUP) and knowledge_storm/__init__.py ($VERSION_INIT)"
-            exit 1
-          fi
-        shell: bash
-      - name: Install dependencies
-        run: python3 -m pip install setuptools wheel twine
-      - name: Install dependencies
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          setup_version = re.search(
+              r'version="([^"]+)"', Path("setup.py").read_text(encoding="utf-8")
+          ).group(1)
+          init_version = re.search(
+              r'__version__ = "([^"]+)"',
+              Path("knowledge_storm/__init__.py").read_text(encoding="utf-8"),
+          ).group(1)
+          if setup_version != init_version:
+              raise SystemExit(
+                  f"Package version mismatch: setup.py={setup_version}, "
+                  f"knowledge_storm={init_version}"
+              )
+          PY
+      - name: Build and validate distributions
         run: |
-          python3 -m pip install --upgrade pip setuptools wheel
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-      - name: Build a binary wheel
-        run: python3 setup.py sdist bdist_wheel
-      - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+          python -m pip install --disable-pip-version-check build==1.5.0 twine==6.2.0
+          python -m build
+          python -m twine check dist/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          name: python-package
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish with PyPI trusted publishing
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/knowledge-storm
+    permissions:
+      id-token: write # Required only for PyPI trusted publishing (OIDC).
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-package
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
