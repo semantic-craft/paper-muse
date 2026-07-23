@@ -12,6 +12,8 @@ __pycache__/
 *.pt
 gpt*.txt
 *.env
+.env.*
+!.env.example
 local/
 local_*
 build/
@@ -23,6 +25,16 @@ dist/
 # Project-specific
 secrets.toml
 *.log
+*.har
+*.key
+*.p12
+*.pfx
+*.pem
+*.mobileprovision
+*.xcarchive/
+.netrc
+.npmrc
+.pypirc
 */assertion.log
 *results/
 .venv/

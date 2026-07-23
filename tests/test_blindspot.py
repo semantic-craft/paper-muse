@@ -35,6 +35,12 @@ def _card(name, model="m1", **kw):
     return base
 
 
+def test_normalize_name_strips_notes_without_regex_backtracking():
+    assert normalize_name("平台治理（Platform Governance）视角") == "平台治理视角"
+    unmatched = "(" * 20_000 + "x"
+    assert normalize_name(unmatched) == unmatched
+
+
 def _confirmed_cnki_empty():
     return {
         "hits": 0,
@@ -445,7 +451,7 @@ def test_academic_en_search_combines_s2_and_openalex(monkeypatch, tmp_path):
 
     def fake_http(url, headers=None, timeout=20):
         seen.append((url, headers or {}))
-        if "semanticscholar.org" in url:
+        if urlparse(url).hostname == "api.semanticscholar.org":
             assert (headers or {}).get("x-api-key") == "s2-test"
             assert parse_qs(urlparse(url).query)["query"] == [
                 "Has anyone studied 平台数据?"

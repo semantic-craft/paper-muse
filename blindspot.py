@@ -347,8 +347,26 @@ _PROFILE_KEYS = {key for key, _ in PROFILE_ELEMENTS}
 
 # ---- 纯函数层 ----
 
+def _strip_parenthetical_notes(value: str) -> str:
+    """线性删除成对的中英文括号注记；未闭合括号原样保留。"""
+    out = []
+    pending = []
+    for char in value:
+        if not pending:
+            if char in "（(":
+                pending.append(char)
+            else:
+                out.append(char)
+        elif char in "）)":
+            pending.clear()
+        else:
+            pending.append(char)
+    out.extend(pending)
+    return "".join(out)
+
+
 def normalize_name(name: str) -> str:
-    s = re.sub(r"[（(][^）)]*[）)]", "", name)  # 括号注记（缩写/译名）整体剔除
+    s = _strip_parenthetical_notes(name)
     s = re.sub(r"[\s【】\[\]\-—·]", "", s.strip().lower())
     return s
 
@@ -875,7 +893,7 @@ def _zh_name_core(name: str) -> str:
     """卡名 → 知网可检索的中文核心词。
     冒烟实证（2026-07-07）：CNKI 对「全名（英文）＋整句主题」长复合查询必空且 ~42s/次，
     「控制论 著作权」两短词才有真命中——查询必须收敛到中文短词。"""
-    core = re.sub(r"[（(][^）)]*[）)]", "", name)      # 去括号注（多为英文名）
+    core = _strip_parenthetical_notes(name)
     core = re.sub(r"[A-Za-z0-9·\-–—'']+", "", core)   # 去英文/数字残留
     core = re.sub(r"\s+", "", core).strip("：:，,、 ")
     if "：" in core:

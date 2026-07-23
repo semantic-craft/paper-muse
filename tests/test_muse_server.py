@@ -132,6 +132,37 @@ def test_release_runtime_paths_drive_secrets_and_results(monkeypatch, tmp_path):
     assert (config_dir / "secrets.toml.example").exists()
 
 
+def test_default_secrets_path_stays_outside_repository(monkeypatch, tmp_path):
+    _clear_runtime_env(monkeypatch)
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    monkeypatch.setattr(muse_server, "SERVER_ROOT", server_root)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+
+    path = muse_server._secrets_path()
+
+    assert path.name == "secrets.toml"
+    assert not path.is_relative_to(muse_server.SERVER_ROOT)
+
+
+def test_legacy_secrets_migrate_outside_repository(monkeypatch, tmp_path):
+    _clear_runtime_env(monkeypatch)
+    server_root = tmp_path / "server"
+    config_dir = tmp_path / "config"
+    server_root.mkdir()
+    legacy = server_root / "secrets.toml"
+    legacy.write_text('ENCODER_API_TYPE="openai"\n', encoding="utf-8")
+    monkeypatch.setattr(muse_server, "SERVER_ROOT", server_root)
+    monkeypatch.setenv("PAPER_MUSE_CONFIG_DIR", str(config_dir))
+
+    path = muse_server._secrets_path()
+
+    assert path == config_dir.resolve() / "secrets.toml"
+    assert path.read_text(encoding="utf-8") == 'ENCODER_API_TYPE="openai"\n'
+    assert not legacy.exists()
+    assert path.stat().st_mode & 0o077 == 0
+
+
 def test_setup_status_reports_missing_required_keys(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
@@ -280,6 +311,25 @@ def test_topic_suggest_is_empty_without_output_dir(monkeypatch):
     assert client.get("/topic/suggest").json() == {"topic": "", "path": None}
 
 
+def test_local_api_rejects_untrusted_host_and_hides_internal_errors(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(muse_server.app)
+    assert client.get("/health", headers={"host": "untrusted.example"}).status_code == 400
+
+    private_detail = "internal-token-marker"
+
+    def fail_health():
+        raise RuntimeError(private_detail)
+
+    monkeypatch.setattr(muse_server, "release_health_status", fail_health)
+    response = client.get("/release/health")
+
+    assert response.status_code == 503
+    assert private_detail not in response.text
+    assert response.json()["detail"] == "发布健康检查暂时不可用，请查看本机日志"
+
+
 def test_release_health_reports_runtime_missing(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
@@ -297,6 +347,7 @@ def test_release_health_reports_runtime_missing(monkeypatch, tmp_path):
     assert body["blocking"] is True
     assert body["components"]["runtime"]["state"] == "runtime_missing"
     assert body["components"]["sidecar"]["state"] == "missing"
+    assert str(tmp_path) not in json.dumps(body)
 
 
 def test_release_health_reports_missing_required_key(monkeypatch, tmp_path):
@@ -357,7 +408,10 @@ def test_release_health_warns_on_developer_path_in_release_mode(monkeypatch, tmp
 
     assert body["state"] == "developer_path"
     assert body["blocking"] is True
-    assert body["components"]["developer_paths"]["warnings"]
+    assert body["components"]["developer_paths"] == {
+        "state": "warning",
+        "warning_count": 1,
+    }
 
 
 def test_release_health_allows_staged_server_root_in_release_mode(monkeypatch, tmp_path):
@@ -384,7 +438,10 @@ def test_release_health_allows_staged_server_root_in_release_mode(monkeypatch, t
 
     assert body["state"] == "ready_degraded"
     assert body["blocking"] is False
-    assert body["components"]["developer_paths"] == {"state": "ok", "warnings": []}
+    assert body["components"]["developer_paths"] == {
+        "state": "ok",
+        "warning_count": 0,
+    }
 
 
 def test_sidecar_status_endpoint_reports_missing_and_failed(monkeypatch, tmp_path):
@@ -399,12 +456,16 @@ def test_sidecar_status_endpoint_reports_missing_and_failed(monkeypatch, tmp_pat
 
     runtime_dir.mkdir()
     adversary.sidecar_failed_path(runtime_dir).write_text(
-        json.dumps({"error": "checksum mismatch"}), encoding="utf-8"
+        json.dumps({"error": f"checksum mismatch at {tmp_path}"}), encoding="utf-8"
     )
     failed = client.get("/sidecar/status").json()
-    assert failed["state"] == "failed" and "checksum" in failed["message"]
+    assert failed["state"] == "failed"
+    assert failed["message"] == "本地组件检查失败，请查看本机日志"
+    assert str(tmp_path) not in json.dumps(failed)
+    assert "runtime_dir" not in failed and "python" not in failed and "script" not in failed
 
-    drafts = client.get("/adversary/drafts", params={"output_dir": str(tmp_path)}).json()
+    monkeypatch.setenv("PAPER_MUSE_OUTPUT_DIR", str(tmp_path))
+    drafts = client.get("/adversary/drafts").json()
     assert drafts["dir"] == str(tmp_path)
 
 
@@ -428,14 +489,22 @@ def test_evidence_status_endpoint_reports_optional_paperqa(monkeypatch, tmp_path
     monkeypatch.setattr(
         muse_server.paperqa_bridge,
         "paperqa_status",
-        lambda pdf_dir=None: {"state": "pdf_dir_missing", "optional": True, "pdf_dir": pdf_dir},
+        lambda: {
+            "state": "pdf_dir_missing",
+            "optional": True,
+            "pdf_dir": os.environ.get("PAPER_MUSE_PDF_DIR"),
+        },
     )
+    monkeypatch.setenv("PAPER_MUSE_PDF_DIR", str(tmp_path))
     client = TestClient(muse_server.app)
 
-    body = client.get("/evidence/status", params={"pdf_dir": str(tmp_path)}).json()
+    body = client.get("/evidence/status").json()
 
     assert body["state"] == "pdf_dir_missing"
-    assert body["pdf_dir"] == str(tmp_path)
+    assert body["optional"] is True
+    assert body["message"] == "尚未配置本地 PDF 目录"
+    assert "pdf_dir" not in body
+    assert str(tmp_path) not in json.dumps(body)
 
 
 def test_evidence_ask_uses_current_scan_output_dir(monkeypatch, tmp_path):
@@ -460,14 +529,13 @@ def test_evidence_ask_uses_current_scan_output_dir(monkeypatch, tmp_path):
             "question": "自有库里有没有反例？",
             "card_id": 7,
             "card_name": "形式可逆与实质不可逆",
-            "pdf_dir": str(tmp_path / "pdfs"),
             "timeout": 45,
         },
     ).json()
 
     assert body["ok"] is True
     assert captured["question"] == "自有库里有没有反例？"
-    assert captured["pdf_dir"] == str(tmp_path / "pdfs")
+    assert "pdf_dir" not in captured
     assert captured["output_dir"] == str(tmp_path / "paper")
     assert captured["timeout"] == 45
     assert captured["target"] == {
@@ -488,16 +556,14 @@ def test_evidence_ref_can_be_read_by_id_without_parsing_markdown(monkeypatch, tm
         if output_dir == str(tmp_path) and evidence_id == "evr_example"
         else None,
     )
+    with muse_server.SCAN_LOCK:
+        muse_server.SCAN.update(output_dir=str(tmp_path))
     client = TestClient(muse_server.app)
 
-    body = client.get(
-        "/evidence/evr_example", params={"output_dir": str(tmp_path)}
-    ).json()
+    body = client.get("/evidence/evr_example").json()
 
     assert body == expected
-    missing = client.get(
-        "/evidence/evr_missing", params={"output_dir": str(tmp_path)}
-    )
+    missing = client.get("/evidence/evr_missing")
     assert missing.status_code == 404
 
 
@@ -1249,6 +1315,11 @@ def test_list_drafts_skips_generated_products(tmp_path):
     assert "提纲.md" in names and str(Path("01_成品稿") / "初稿.md") in names
     assert not any("perspectives" in n for n in names)
 
+    with pytest.raises(RuntimeError, match="相对于论文目录"):
+        muse_server._resolve_draft(str(tmp_path), str(tmp_path / "提纲.md"))
+    with pytest.raises(RuntimeError, match="超出论文目录"):
+        muse_server._resolve_draft(str(tmp_path), "../outside.md")
+
 
 def test_start_adversary_validates_bad_mode_and_empty(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
@@ -1297,6 +1368,9 @@ def test_perf_status_exposes_observability_counters():
     assert body["retrieval_cache"]["errors"] == 0
     assert body["retrieval_cache"]["by_retriever"] == {}
     assert body["sidecar"] == {"single_invocations": 0, "batch_invocations": 0, "claims_requested": 0}
+    assert "runtime_dir" not in body["sidecar_runtime"]
+    assert "python" not in body["sidecar_runtime"]
+    assert "script" not in body["sidecar_runtime"]
     assert body["llm_cache"]["available"] is False
 
 
@@ -1323,8 +1397,10 @@ def test_evidence_graph_endpoint_projects_cards_and_claims(tmp_path):
     from fastapi.testclient import TestClient
 
     _seed_graph_artifacts(tmp_path)
+    with muse_server.SCAN_LOCK:
+        muse_server.SCAN.update(output_dir=str(tmp_path))
     client = TestClient(muse_server.app)
-    r = client.get("/evidence/graph", params={"output_dir": str(tmp_path)})
+    r = client.get("/evidence/graph")
 
     assert r.status_code == 200
     data = r.json()
@@ -1341,7 +1417,9 @@ def test_evidence_graph_route_not_shadowed_by_evidence_id(tmp_path):
     # "graph" 必须命中 /evidence/graph，而非被 /evidence/{evidence_id} 当作 id → 404
     from fastapi.testclient import TestClient
 
+    with muse_server.SCAN_LOCK:
+        muse_server.SCAN.update(output_dir=str(tmp_path))
     client = TestClient(muse_server.app)
-    r = client.get("/evidence/graph", params={"output_dir": str(tmp_path)})
+    r = client.get("/evidence/graph")
     assert r.status_code == 200                       # 空目录 → 空投影，非 404
     assert r.json()["cards"] == [] and r.json()["claims"] == []
