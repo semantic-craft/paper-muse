@@ -306,6 +306,10 @@ def test_repeated_question_persists_one_markdown_section_and_readable_evidence(
     assert first["id"] == second["id"]
     sources = output_dir / "docs" / "agents" / "muse" / "sources.md"
     assert sources.read_text(encoding="utf-8").count("## 自有库证据问答") == 1
+    assert "PaperQA2 / 已配置的本地文献库（路径已省略）" in sources.read_text(
+        encoding="utf-8"
+    )
+    assert str(pdf_dir) not in sources.read_text(encoding="utf-8")
     evidence_id = first["evidence"][0]["id"]
     stored = paperqa_bridge.read_evidence(output_dir, evidence_id)
     assert stored == first["evidence"][0]
@@ -433,6 +437,42 @@ def test_paperqa_failures_are_recoverable_and_never_fake_an_empty_answer(
     assert payload["evidence"] == []
     assert payload["status"]["state"] == expected_state
     assert str(tmp_path) not in json.dumps(payload)
+
+
+def test_paperqa_child_failure_logs_only_safe_diagnostic_type(
+    monkeypatch, tmp_path, caplog
+):
+    pdf_dir = tmp_path / "pdfs"
+    pdf_dir.mkdir()
+    ready = {
+        "state": "ready",
+        "ready": True,
+        "python": "/fake/python",
+        "pdf_dir": str(pdf_dir),
+    }
+    monkeypatch.setattr(paperqa_bridge, "paperqa_status", lambda **_kw: ready)
+    private_detail = f"provider key failed at {tmp_path}"
+
+    class Result:
+        returncode = 1
+        stderr = private_detail
+        stdout = paperqa_bridge.RESULT_MARK + json.dumps(
+            {
+                "ok": False,
+                "error_type": "AuthenticationError",
+                "error": private_detail,
+            }
+        )
+
+    monkeypatch.setattr(paperqa_bridge.subprocess, "run", lambda *_a, **_kw: Result())
+
+    with caplog.at_level("ERROR"):
+        payload = paperqa_bridge.ask_self_library("问题", pdf_dir=pdf_dir)
+
+    assert payload["status"]["state"] == "error"
+    assert "error_type=AuthenticationError" in caplog.text
+    assert private_detail not in caplog.text
+    assert private_detail not in json.dumps(payload)
 
 
 @pytest.mark.parametrize("agent_status", ["truncated", "unsure", "fail"])

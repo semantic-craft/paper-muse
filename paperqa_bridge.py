@@ -55,6 +55,11 @@ def _parse_marker(stdout: str) -> dict | None:
     return None
 
 
+def _safe_error_type(value) -> str:
+    name = str(value or "")
+    return name if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name) else "unknown"
+
+
 def _emit(payload: dict):
     print(RESULT_MARK + json.dumps(payload, ensure_ascii=False))
 
@@ -590,11 +595,15 @@ def _append_sources_contract_unlocked(output_dir: str | Path, payload: dict) -> 
     status = (payload.get("status") or {}).get("state") or (
         "degraded" if payload.get("degraded") else "ok"
     )
+    capability = payload.get("capability") or {}
+    library_label = (
+        "已配置的本地文献库（路径已省略）" if capability.get("ready") else "未配置"
+    )
     lines = [
         "",
         marker,
         f"## 自有库证据问答：{payload.get('question', '').strip()}",
-        f"- 来源：PaperQA2 / {(payload.get('capability') or {}).get('pdf_dir') or '未配置'}",
+        f"- 来源：PaperQA2 / {library_label}",
         f"- 状态：{status}",
     ]
     if payload.get("degraded"):
@@ -675,7 +684,13 @@ def ask_self_library(
         return _finalize_answer(payload, target, output_dir)
     raw_payload = _parse_marker(result.stdout)
     if result.returncode != 0:
-        logging.error("PaperQA query exited with code %s", result.returncode)
+        logging.error(
+            "PaperQA query exited with code %s; error_type=%s; marker=%s; stderr=%s",
+            result.returncode,
+            _safe_error_type((raw_payload or {}).get("error_type")),
+            bool(raw_payload),
+            bool(result.stderr),
+        )
         payload = _degraded(q, status, "PaperQA query failed", state="error")
     elif not raw_payload or raw_payload.get("ok") is not True:
         payload = _degraded(
@@ -749,7 +764,7 @@ def main(argv: list[str] | None = None) -> int:
             _emit(_run_paperqa_question(args.question, args.paper_dir))
             return 0
         except Exception as e:
-            _emit({"ok": False, "error": str(e)})
+            _emit({"ok": False, "error_type": _safe_error_type(type(e).__name__)})
             return 1
     parser.print_help(sys.stderr)
     return 2
