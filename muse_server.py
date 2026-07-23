@@ -213,6 +213,105 @@ def _safe_endpoint(label, callback):
         raise HTTPException(503, f"{label}暂时不可用，请查看本机日志") from None
 
 
+_PUBLIC_COMPONENT_STATES = {
+    "available",
+    "bootstrap_failed",
+    "bootstrap_in_progress",
+    "dev",
+    "failed",
+    "installing",
+    "installed",
+    "missing",
+    "pdf_dir_missing",
+    "ready",
+    "runtime_missing",
+    "unavailable",
+}
+
+
+def _public_component_status(status):
+    """Return operational state without paths, subprocess output, or exception text."""
+    state = status.get("state")
+    if state not in _PUBLIC_COMPONENT_STATES:
+        state = "unknown"
+    result = {"state": state}
+    for key in ("optional", "installed", "ready"):
+        if key in status:
+            result[key] = bool(status[key])
+    result["message"] = {
+        "bootstrap_failed": "本地运行时检查失败",
+        "bootstrap_in_progress": "本地运行时正在安装",
+        "failed": "本地组件检查失败，请查看本机日志",
+        "installing": "本地组件正在安装",
+        "missing": "本地组件尚未安装",
+        "pdf_dir_missing": "尚未配置本地 PDF 目录",
+        "runtime_missing": "本地运行时尚未安装",
+        "unavailable": "可选本地组件不可用",
+    }.get(state, "本地组件可用")
+    return result
+
+
+def _public_release_health(status):
+    components = status.get("components") or {}
+    setup = components.get("setup") or {}
+    missing = [
+        key
+        for key in setup.get("missing_required_keys") or []
+        if key in {*KNOWN_PROVIDER_KEYS, "LLM_PROVIDER_KEY"}
+    ]
+    provider_keys = setup.get("provider_keys") or {}
+    optional = components.get("optional_capabilities") or {}
+    warnings = (components.get("developer_paths") or {}).get("warnings") or []
+    state = status.get("state")
+    if state not in {
+        "bootstrap_failed",
+        "bootstrap_in_progress",
+        "developer_path",
+        "missing_required_key",
+        "ready",
+        "ready_degraded",
+        "runtime_missing",
+    }:
+        state = "unknown"
+    return {
+        "ok": bool(status.get("ok")),
+        "state": state,
+        "blocking": bool(status.get("blocking")),
+        "release_mode": bool(status.get("release_mode")),
+        "components": {
+            "runtime": _public_component_status(components.get("runtime") or {}),
+            "server_import": {"state": "ready"},
+            "setup": {
+                "ok": bool(setup.get("ok")),
+                "setup_required": bool(setup.get("setup_required")),
+                "missing_required_keys": missing,
+                "provider_keys": {
+                    key: bool(provider_keys.get(key)) for key in KNOWN_PROVIDER_KEYS
+                },
+                "has_llm_provider": bool(setup.get("has_llm_provider")),
+            },
+            "optional_capabilities": {
+                key: _public_component_status(optional.get(key) or {})
+                for key in ("cnki", "zsearch", "paperqa")
+            },
+            "sidecar": _public_component_status(components.get("sidecar") or {}),
+            "developer_paths": {
+                "state": "warning" if warnings else "ok",
+                "warning_count": len(warnings),
+            },
+        },
+        "message": {
+            "bootstrap_failed": "本地运行时检查失败",
+            "bootstrap_in_progress": "本地运行时正在安装",
+            "developer_path": "发布模式正在使用开发目录",
+            "missing_required_key": "首次设置尚未完成",
+            "ready": "Ready",
+            "ready_degraded": "Ready with optional capability degradation",
+            "runtime_missing": "本地运行时尚未安装",
+        }.get(state, "状态未知"),
+    }
+
+
 def _env_path(name):
     value = os.environ.get(name)
     return _abs_path(value) if value else None
@@ -238,7 +337,20 @@ def _secrets_path():
     explicit = os.environ.get("PAPER_MUSE_SECRETS_FILE")
     if explicit:
         return _abs_path(explicit)
-    return _config_dir() / "secrets.toml"
+    destination = _config_dir() / "secrets.toml"
+    legacy = SERVER_ROOT / "secrets.toml"
+    if not destination.exists() and legacy.is_file():
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            legacy.replace(destination)
+        except OSError:
+            logging.exception("legacy secrets.toml migration failed")
+            return legacy
+        try:
+            os.chmod(destination, 0o600)
+        except OSError:
+            logging.exception("setting migrated secrets.toml permissions failed")
+    return destination
 
 
 def _results_base():
@@ -948,14 +1060,19 @@ def setup_secrets(req: SetupSecretsReq):
 
 @app.get("/release/health")
 def release_health():
-    return _safe_endpoint("发布健康检查", release_health_status)
+    return _safe_endpoint(
+        "发布健康检查",
+        lambda: _public_release_health(release_health_status()),
+    )
 
 
 @app.get("/sidecar/status")
 def sidecar_status():
     return _safe_endpoint(
         "Sidecar 状态检查",
-        lambda: adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir()),
+        lambda: _public_component_status(
+            adversary.sidecar_status(runtime_dir=_sidecar_status_runtime_dir())
+        ),
     )
 
 
@@ -963,7 +1080,10 @@ def sidecar_status():
 def sidecar_bootstrap():
     return _safe_endpoint(
         "Sidecar 安装",
-        lambda: {"ok": True, "sidecar": _start_sidecar_bootstrap()},
+        lambda: {
+            "ok": True,
+            "sidecar": _public_component_status(_start_sidecar_bootstrap()),
+        },
     )
 
 
@@ -971,7 +1091,7 @@ def sidecar_bootstrap():
 def evidence_status():
     return _safe_endpoint(
         "证据库状态检查",
-        paperqa_bridge.paperqa_status,
+        lambda: _public_component_status(paperqa_bridge.paperqa_status()),
     )
 
 
@@ -1595,8 +1715,10 @@ def perf_status():
             "code_version": run_manifest.code_version(),
             "retrieval_cache": blindspot.retrieval_cache_stats(),
             "sidecar": adversary.sidecar_stats(),
-            "sidecar_runtime": adversary.sidecar_status(
-                runtime_dir=_sidecar_status_runtime_dir()
+            "sidecar_runtime": _public_component_status(
+                adversary.sidecar_status(
+                    runtime_dir=_sidecar_status_runtime_dir()
+                )
             ),
             "llm_cache": {
                 "available": False,
