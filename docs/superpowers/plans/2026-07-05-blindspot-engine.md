@@ -35,7 +35,7 @@
 - [ ] **Step 1: 建分支**
 
 ```bash
-cd /Users/xianweizhang/Projects/paper-muse && git checkout -b feat/blindspot-engine
+cd "$(git rev-parse --show-toplevel)" && git checkout -b feat/blindspot-engine
 ```
 
 - [ ] **Step 2: 写失败测试**（`tests/test_blindspot.py`，全离线）
@@ -798,7 +798,7 @@ def scan_feedback(req: FeedbackReq):
 - [ ] **Step 2: curl E2E（真实小跑一发）**
 
 ```bash
-cd /Users/xianweizhang/Projects/paper-muse
+cd "$(git rev-parse --show-toplevel)"
 lsof -ti tcp:8765 | xargs kill 2>/dev/null; sleep 1
 nohup .venv/bin/python muse_server.py --port 8765 > /tmp/muse_scan_e2e.log 2>&1 &
 sleep 6

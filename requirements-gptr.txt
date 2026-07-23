@@ -4,7 +4,7 @@
 # 与主 venv 的 knowledge_storm（storm/co-storm 驱动构思幕扫描＋圆桌）冲突，装进主 venv 大概率搞崩已绿底座。
 # 故重依赖只进独立 .venv-gptr，主引擎经子进程调 gptr_sidecar.py（stdin/stdout JSON）跨环境通信。
 #
-# 建（本机 / Metis 各自重建，不跨机同步 venv）：
+# 建（各开发机各自重建，不跨机同步 venv）：
 #   uv venv .venv-gptr --python 3.12
 #   VIRTUAL_ENV="$PWD/.venv-gptr" uv pip install -r requirements-gptr.txt
 #
