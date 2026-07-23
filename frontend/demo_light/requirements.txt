@@ -5,6 +5,6 @@ unidecode
 extra-streamlit-components==0.1.60
 streamlit_extras
 deprecation==2.1.0
-st-pages==0.4.5
+st-pages==1.0.1
 streamlit-float
 streamlit-option-menu
