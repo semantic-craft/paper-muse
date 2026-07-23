@@ -312,6 +312,53 @@ def _public_release_health(status):
     }
 
 
+def _public_evidence_payload(payload):
+    """Keep evidence content while dropping runtime paths and failure details."""
+    status = payload.get("status") or {}
+    state = status.get("state")
+    if state not in {
+        "bad-payload",
+        "degraded",
+        "error",
+        "ok",
+        "ready",
+        "timeout",
+        "unavailable",
+    }:
+        state = "unknown"
+    evidence = payload.get("evidence")
+    target = payload.get("target")
+    result = {
+        "id": str(payload.get("id") or ""),
+        "ok": bool(payload.get("ok")),
+        "degraded": bool(payload.get("degraded")),
+        "question": str(payload.get("question") or ""),
+        "answer": str(payload.get("answer") or ""),
+        "formatted_answer": str(payload.get("formatted_answer") or ""),
+        "evidence": evidence if isinstance(evidence, list) else [],
+        "status": {
+            "provider": "paperqa",
+            "state": state,
+            "query": str(status.get("query") or payload.get("question") or ""),
+            "hits": status.get("hits") if isinstance(status.get("hits"), int) else None,
+        },
+        "provider_version": str(payload.get("provider_version") or ""),
+        "index_version": str(payload.get("index_version") or ""),
+    }
+    if result["degraded"]:
+        result["message"] = "PaperQA 暂时不可用或结果降级，请查看本机日志"
+    if isinstance(target, dict):
+        result["target"] = {
+            "kind": str(target.get("kind") or ""),
+            "id": str(target.get("id") or ""),
+            "name": str(target.get("name") or ""),
+        }
+    agent_status = payload.get("agent_status")
+    if agent_status in {"success", "partial", "fail"}:
+        result["agent_status"] = agent_status
+    return result
+
+
 def _env_path(name):
     value = os.environ.get(name)
     return _abs_path(value) if value else None
@@ -1126,13 +1173,18 @@ def evidence_ask(req: EvidenceAskReq):
     except Exception:
         logging.exception("PaperQA evidence request failed")
         raise HTTPException(500, "PaperQA 证据问答失败，请查看本机日志") from None
+    public_payload = _public_evidence_payload(payload)
     # #49：卡片证据问答落 manifest（seed=问题；关联返回的 evidence ids + 降级）
     _emit_manifest(
         "evidence", evidence_dir, seed=req.question, started_at=started,
-        evidence_ids=_evidence_ids(payload.get("evidence")),
-        degradation=([str(payload.get("message"))] if payload.get("degraded") else []),
+        evidence_ids=_evidence_ids(public_payload.get("evidence")),
+        degradation=(
+            [str(public_payload.get("message"))]
+            if public_payload.get("degraded")
+            else []
+        ),
         artifacts=["sources.md", "evidence.json"])
-    return payload
+    return public_payload
 
 
 @app.get("/evidence/graph")

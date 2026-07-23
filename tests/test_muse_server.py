@@ -545,6 +545,50 @@ def test_evidence_ask_uses_current_scan_output_dir(monkeypatch, tmp_path):
     }
 
 
+def test_evidence_ask_redacts_runtime_failure_details(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    private_detail = f"subprocess failed at {tmp_path}"
+    monkeypatch.setattr(muse_server, "load_api_key", lambda **_kw: None)
+    monkeypatch.setattr(
+        muse_server.paperqa_bridge,
+        "ask_self_library",
+        lambda question, **_kwargs: {
+            "id": "evb_example",
+            "ok": False,
+            "degraded": True,
+            "question": question,
+            "answer": "",
+            "formatted_answer": "",
+            "evidence": [],
+            "status": {
+                "provider": "paperqa",
+                "state": "error",
+                "query": question,
+                "hits": None,
+                "message": private_detail,
+            },
+            "capability": {
+                "python": str(tmp_path / "python"),
+                "pdf_dir": str(tmp_path / "pdfs"),
+                "message": private_detail,
+            },
+            "message": private_detail,
+        },
+    )
+    with muse_server.SCAN_LOCK:
+        muse_server.SCAN.update(output_dir=str(tmp_path / "paper"))
+    client = TestClient(muse_server.app)
+
+    body = client.post("/evidence/ask", json={"question": "是否存在反例？"}).json()
+
+    assert body["ok"] is False and body["degraded"] is True
+    assert body["message"] == "PaperQA 暂时不可用或结果降级，请查看本机日志"
+    assert "capability" not in body
+    assert private_detail not in json.dumps(body)
+    assert str(tmp_path) not in json.dumps(body)
+
+
 def test_evidence_ref_can_be_read_by_id_without_parsing_markdown(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
