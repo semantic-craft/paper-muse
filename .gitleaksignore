@@ -1,0 +1,5 @@
+# Historical FreshWiki fixture: the same third-party article URL query token,
+# not a Paper Muse credential. Keep the exception fingerprint-specific.
+121d3726989ddf11ba134d8efbfe46b8d3f5f50a:FreshWiki/json/The_Northman.json:generic-api-key:265
+121d3726989ddf11ba134d8efbfe46b8d3f5f50a:FreshWiki/json/The_Northman.json:generic-api-key:701
+121d3726989ddf11ba134d8efbfe46b8d3f5f50a:FreshWiki/txt/The_Northman.txt:generic-api-key:84
