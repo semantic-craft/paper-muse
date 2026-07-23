@@ -381,6 +381,7 @@ def test_concurrent_card_answers_do_not_lose_structured_or_markdown_results(tmp_
     ("mode", "result", "expected_state"),
     [
         ("timeout", None, "timeout"),
+        ("exception", None, "error"),
         (None, {"returncode": 0, "stdout": "not-json", "stderr": ""}, "bad-payload"),
         (
             None,
@@ -407,10 +408,12 @@ def test_paperqa_failures_are_recoverable_and_never_fake_an_empty_answer(
     }
     monkeypatch.setattr(paperqa_bridge, "paperqa_status", lambda **_kw: ready)
 
-    if mode == "timeout":
+    if mode in {"timeout", "exception"}:
 
         def fake_run(*_args, **_kwargs):
-            raise paperqa_bridge.subprocess.TimeoutExpired("paperqa", 31)
+            if mode == "timeout":
+                raise paperqa_bridge.subprocess.TimeoutExpired("paperqa", 31)
+            raise RuntimeError(f"private runtime path: {tmp_path}")
 
     else:
 
@@ -429,6 +432,7 @@ def test_paperqa_failures_are_recoverable_and_never_fake_an_empty_answer(
     assert payload["answer"] == ""
     assert payload["evidence"] == []
     assert payload["status"]["state"] == expected_state
+    assert str(tmp_path) not in json.dumps(payload)
 
 
 @pytest.mark.parametrize("agent_status", ["truncated", "unsure", "fail"])

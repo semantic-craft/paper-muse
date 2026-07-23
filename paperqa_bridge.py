@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
 import subprocess
@@ -90,16 +91,21 @@ def paperqa_status(
         version = subprocess.run(
             [str(py), "--version"], capture_output=True, text=True, timeout=10
         )
-    except Exception as e:
-        return {**base, "state": "failed", "installed": True, "message": str(e)}
-    if version.returncode != 0:
+    except Exception:
+        logging.exception("PaperQA Python version check failed")
         return {
             **base,
             "state": "failed",
             "installed": True,
-            "message": (version.stderr or version.stdout or "python --version failed")[
-                -500:
-            ],
+            "message": "PaperQA runtime check failed",
+        }
+    if version.returncode != 0:
+        logging.error("PaperQA Python version check exited with code %s", version.returncode)
+        return {
+            **base,
+            "state": "failed",
+            "installed": True,
+            "message": "PaperQA runtime check failed",
         }
 
     try:
@@ -109,18 +115,22 @@ def paperqa_status(
             text=True,
             timeout=30,
         )
-    except Exception as e:
-        return {**base, "state": "failed", "installed": True, "message": str(e)}
-    payload = _parse_marker(health.stdout)
-    if health.returncode != 0 or not payload or payload.get("ok") is not True:
-        message = (payload or {}).get("error") or (
-            health.stderr or health.stdout or "PaperQA health check failed"
-        )
+    except Exception:
+        logging.exception("PaperQA health check failed")
         return {
             **base,
             "state": "failed",
             "installed": True,
-            "message": str(message)[-500:],
+            "message": "PaperQA health check failed",
+        }
+    payload = _parse_marker(health.stdout)
+    if health.returncode != 0 or not payload or payload.get("ok") is not True:
+        logging.error("PaperQA health check exited with code %s", health.returncode)
+        return {
+            **base,
+            "state": "failed",
+            "installed": True,
+            "message": "PaperQA health check failed",
         }
 
     base = {**base, "installed": True, "paperqa_version": payload.get("version")}
@@ -137,6 +147,17 @@ def paperqa_status(
             "message": f"PDF 目录不存在：{papers}",
         }
     return {**base, "state": "ready", "ready": True, "message": "PaperQA ready"}
+
+
+def _capability_snapshot(status: dict) -> dict:
+    """Keep capability state without local runtime or library paths."""
+    return {
+        "state": str(status.get("state") or "unknown"),
+        "optional": bool(status.get("optional")),
+        "installed": bool(status.get("installed")),
+        "ready": bool(status.get("ready")),
+        "paperqa_version": str(status.get("paperqa_version") or ""),
+    }
 
 
 def _degraded(question: str, status: dict, message: str | None = None,
@@ -174,7 +195,7 @@ def _degraded(question: str, status: dict, message: str | None = None,
             "hits": None,
             "message": message or status.get("message") or "PaperQA unavailable",
         },
-        "capability": status,
+        "capability": _capability_snapshot(status),
         "provider_version": str(status.get("paperqa_version") or ""),
         "index_version": "",
         "message": message or status.get("message") or "PaperQA unavailable",
@@ -648,20 +669,21 @@ def ask_self_library(
         message = f"PaperQA query timed out after {e.timeout}s"
         payload = _degraded(q, status, message, state="timeout")
         return _finalize_answer(payload, target, output_dir)
-    except Exception as e:
-        payload = _degraded(q, status, str(e), state="error")
+    except Exception:
+        logging.exception("PaperQA query failed")
+        payload = _degraded(q, status, "PaperQA query failed", state="error")
         return _finalize_answer(payload, target, output_dir)
     raw_payload = _parse_marker(result.stdout)
     if result.returncode != 0:
-        message = (raw_payload or {}).get("error") or (
-            result.stderr or result.stdout or "PaperQA query failed"
-        )[-1000:]
-        payload = _degraded(q, status, message, state="error")
+        logging.error("PaperQA query exited with code %s", result.returncode)
+        payload = _degraded(q, status, "PaperQA query failed", state="error")
     elif not raw_payload or raw_payload.get("ok") is not True:
-        message = (raw_payload or {}).get(
-            "error"
-        ) or "PaperQA returned malformed output"
-        payload = _degraded(q, status, message, state="bad-payload")
+        payload = _degraded(
+            q,
+            status,
+            "PaperQA returned malformed output",
+            state="bad-payload",
+        )
     else:
         bundle = paperqa_payload_to_bundle(raw_payload, question=q, status=status)
         agent_status = str(raw_payload.get("agent_status") or "success").lower()
@@ -674,7 +696,7 @@ def ask_self_library(
                     "ok": False,
                     "degraded": True,
                     "agent_status": agent_status,
-                    "capability": status,
+                    "capability": _capability_snapshot(status),
                     "message": message,
                     "status": {
                         **bundle["status"],
@@ -693,7 +715,7 @@ def ask_self_library(
                 "ok": True,
                 "degraded": False,
                 "agent_status": agent_status,
-                "capability": status,
+                "capability": _capability_snapshot(status),
             }
     return _finalize_answer(payload, target, output_dir)
 
