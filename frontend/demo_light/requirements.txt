@@ -2,7 +2,7 @@ streamlit==1.54.0
 streamlit-card
 markdown
 unidecode
-extra-streamlit-components==0.1.60
+extra-streamlit-components==0.1.81
 streamlit_extras
 deprecation==2.1.0
 st-pages==0.4.5
